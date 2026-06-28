@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
+	"github.com/xhrobj/gopherkeeper/internal/client/config"
 )
 
 var (
@@ -13,8 +15,17 @@ var (
 )
 
 func main() {
+	cfg, err := config.Parse(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to parse config: %v\n", err)
+		os.Exit(1)
+	}
+
 	buildinfo.Print(buildVersion, buildDate, buildCommit)
+
 	echoBanner()
+
+	fmt.Printf("Server address: %s\n", cfg.Address)
 }
 
 func echoBanner() {

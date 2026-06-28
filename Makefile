@@ -1,10 +1,5 @@
 .PHONY: build build-server build-client run-server run-client test clean
 
-BIN_DIR := bin
-
-SERVER := $(BIN_DIR)/server
-CLIENT := $(BIN_DIR)/client
-
 # данные о сборке подставляются в бинарники Клиента и Сервера через ldflags
 BUILD_VERSION ?= v0.0.1
 BUILD_DATE ?= $(shell date +%Y-%m-%d)
@@ -14,6 +9,14 @@ LDFLAGS := \
 	-X main.buildVersion=$(BUILD_VERSION) \
 	-X main.buildDate=$(BUILD_DATE) \
 	-X main.buildCommit=$(BUILD_COMMIT)
+
+BIN_DIR := bin
+
+SERVER := $(BIN_DIR)/server
+CLIENT := $(BIN_DIR)/client
+
+# параметры локального запуска Сервера и Клиента
+ADDRESS ?= localhost:8888
 
 # собрать Сервер и Клиент
 build: build-server build-client
@@ -36,11 +39,11 @@ build-client:
 
 # стартовать Сервер
 run-server: build-server
-	$(SERVER)
+	$(SERVER) -a $(ADDRESS)
 
 # стартовать Клиент
 run-client: build-client
-	$(CLIENT)
+	$(CLIENT) -a $(ADDRESS)
 
 # запустить тесты
 test:
