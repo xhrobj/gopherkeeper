@@ -1,16 +1,24 @@
 .PHONY: \
 	show-coverage \
+	gen-tls-certs \
 	build build-server build-client \
 	db-up db-down db-connect db-erase \
 	run-server run-client build-client-cross \
 	test test-race test-coverage \
 	vet lint ci \
-	clean
+	clean clean-gen
 
 # брать локальные параметры из env-файла (если он есть)
 ENV_FILE ?= .env
 
 -include $(ENV_FILE)
+
+# TLS-сертификаты для локальной разработки
+TLS_CERT_DIR := .certs
+
+#TLS_CA_CERT := $(TLS_CERT_DIR)/ca.pem
+#TLS_SERVER_CERT := $(TLS_CERT_DIR)/server.pem
+#TLS_SERVER_KEY := $(TLS_CERT_DIR)/server-key.pem
 
 # параметры логирования
 LOG_LEVEL ?= info
@@ -44,6 +52,10 @@ ADDRESS ?= localhost:8080
 # обновить профиль покрытия и вывести общий процент
 show-coverage: test-coverage
 	go tool cover -func=coverage.out | tail -n 1
+
+# сгенерировать (при необходимости) локальный CA и TLS-сертификат Сервера
+gen-tls-certs:
+	./scripts/generate-tls-certs.sh
 
 # собрать Сервер и Клиент
 build: build-server build-client
@@ -134,3 +146,7 @@ ci: build test-race vet lint
 # очистить артефакты сборки и coverage
 clean:
 	rm -rf $(BIN_DIR) $(DIST_DIR) coverage.out
+
+# удалить сгенерированные TLS-сертификаты
+clean-gen:
+	rm -rf $(TLS_CERT_DIR)

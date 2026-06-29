@@ -6,7 +6,7 @@
 *.dylib
 
 # Test binaries
-*.test
+# *.test
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
@@ -35,3 +35,6 @@ __MACOSX/
 .env
 .env.*
 !.env.example
+
+# сертификаты и ключи Local TLS
+/.certs/
