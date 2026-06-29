@@ -1,4 +1,13 @@
-.PHONY: build build-server build-client run-server run-client test clean
+.PHONY: \
+	build build-server build-client \
+	run-server run-client \
+	test \
+	clean
+
+# брать локальные параметры из env-файла (если он есть)
+ENV_FILE ?= .env
+
+-include $(ENV_FILE)
 
 # данные о сборке подставляются в бинарники Клиента и Сервера через ldflags
 BUILD_VERSION ?= v0.0.1
@@ -10,6 +19,7 @@ LDFLAGS := \
 	-X main.buildDate=$(BUILD_DATE) \
 	-X main.buildCommit=$(BUILD_COMMIT)
 
+# каталог для артефактов сборки и пути к бинарникам
 BIN_DIR := bin
 
 SERVER := $(BIN_DIR)/server
