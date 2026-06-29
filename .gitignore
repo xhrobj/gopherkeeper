@@ -14,17 +14,24 @@
 
 # Build artifacts
 /bin/
+/dist/
 
 # Local documentation
 /docs/local/
+/docs/adr/
 
 # Dependency directories (remove the comment below to include it)
-vendor/
+# vendor/
 
 # IDEs
 .vscode/
 .idea/
 
-#macOS
+# macOS
 .DS_Store
 __MACOSX/
+
+# Environment files and local secrets
+.env
+.env.*
+!.env.example
