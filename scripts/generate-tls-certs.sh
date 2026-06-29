@@ -3,7 +3,7 @@
 set -euo pipefail
 
 if ! command -v openssl >/dev/null 2>&1; then
-  echo "(+_+) OpenSSL is required to generate local TLS certificates" >&2
+  echo "(+_+) OpenSSL is required to generate Development TLS certificates" >&2
   exit 1
 fi
 
@@ -24,7 +24,7 @@ if [[ -f "${CA_CERT}" &&
 	-f "${CA_KEY}" &&
 	-f "${SERVER_CERT}" &&
 	-f "${SERVER_KEY}" ]]; then
-	echo "(^_^) Local TLS certificates already exist"
+	echo "(^_^) Development TLS certificates already exist"
 	exit 0
 fi
 
@@ -56,7 +56,7 @@ openssl req \
 	-sha256 \
 	-key "${CA_KEY}" \
 	-days "${CERT_DAYS}" \
-	-subj "/CN=GophKeeper Local CA"
+	-subj "/CN=GophKeeper Development CA" \
 	-out "${CA_CERT}"
 
 # создать ключ и запрос на сертификат HTTPS-сервера
@@ -91,4 +91,4 @@ openssl verify \
 	-CAfile "${CA_CERT}" \
 	"${SERVER_CERT}"
 
-echo "(*_*) Local TLS certificates generated in ${CERT_DIR}"
+echo "(*_*) Development TLS certificates generated in ${CERT_DIR}"

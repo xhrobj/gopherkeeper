@@ -17,8 +17,8 @@ ENV_FILE ?= .env
 TLS_CERT_DIR := .certs
 
 #TLS_CA_CERT := $(TLS_CERT_DIR)/ca.pem
-#TLS_SERVER_CERT := $(TLS_CERT_DIR)/server.pem
-#TLS_SERVER_KEY := $(TLS_CERT_DIR)/server-key.pem
+TLS_SERVER_CERT := $(TLS_CERT_DIR)/server.pem
+TLS_SERVER_KEY := $(TLS_CERT_DIR)/server-key.pem
 
 # параметры логирования
 LOG_LEVEL ?= info
@@ -113,8 +113,11 @@ db-erase:
 	$(COMPOSE) down -v
 
 # стартовать Сервер
-run-server: build-server
-	$(SERVER) -a $(ADDRESS)
+run-server: gen-tls-certs build-server
+	$(SERVER) \
+		-a $(ADDRESS) \
+		--tls-cert $(TLS_SERVER_CERT) \
+		--tls-key $(TLS_SERVER_KEY)
 
 # стартовать Клиент
 run-client: build-client
