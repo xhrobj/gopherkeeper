@@ -1,5 +1,6 @@
 .PHONY: \
 	build build-server build-client \
+	db-up db-down db-connect db-erase \
 	run-server run-client \
 	test \
 	clean
@@ -29,6 +30,11 @@ BIN_DIR := bin
 SERVER := $(BIN_DIR)/server
 CLIENT := $(BIN_DIR)/client
 
+# команда Docker Compose с выбранным env-файлом
+# !!!: для целей db-* требуется env-файл; для других команд он опционален
+# NOTE: создать локальный env-файл: cp .env.example .env
+COMPOSE := docker compose --env-file $(ENV_FILE)
+
 # параметры локального запуска Сервера и Клиента
 ADDRESS ?= localhost:8080
 
@@ -50,6 +56,22 @@ build-client:
 		-ldflags "$(LDFLAGS)" \
 		-o $(CLIENT) \
 		./cmd/client
+
+# создать (при необходимости) и запустить локальный PostgreSQL
+db-up:
+	$(COMPOSE) up -d postgres
+
+# остановить и удалить контейнер PostgreSQL без удаления данных
+db-down:
+	$(COMPOSE) down
+
+# подключиться к PostgreSQL через psql
+db-connect:
+	$(COMPOSE) exec postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB)
+
+# удалить контейнер PostgreSQL и локальные данные
+db-erase:
+	$(COMPOSE) down -v
 
 # стартовать Сервер
 run-server: build-server
