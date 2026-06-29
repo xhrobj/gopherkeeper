@@ -6,8 +6,8 @@
 
 GophKeeper представляет собой клиент-серверную систему, позволяющую пользователю надёжно и безопасно хранить логины, пароли, бинарные данные и прочую приватную информацию.
 
-<a href="docs/images/specification/gophkeeper.png">
-  <img src="docs/images/specification/gophkeeper-preview.png" alt="GophKeeper">
+<a href="docs/images/specification/gophkeeper.jpg">
+  <img src="docs/images/specification/gophkeeper-preview.jpg" alt="GophKeeper">
 </a>
 
 Сервер должен реализовывать следующую бизнес-логику:
