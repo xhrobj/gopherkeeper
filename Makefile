@@ -9,6 +9,10 @@ ENV_FILE ?= .env
 
 -include $(ENV_FILE)
 
+# параметры логирования
+LOG_LEVEL ?= info
+export LOG_LEVEL
+
 # данные о сборке подставляются в бинарники Клиента и Сервера через ldflags
 BUILD_VERSION ?= v0.0.1
 BUILD_DATE ?= $(shell date +%Y-%m-%d)
@@ -26,7 +30,7 @@ SERVER := $(BIN_DIR)/server
 CLIENT := $(BIN_DIR)/client
 
 # параметры локального запуска Сервера и Клиента
-ADDRESS ?= localhost:8888
+ADDRESS ?= localhost:8080
 
 # собрать Сервер и Клиент
 build: build-server build-client

@@ -2,10 +2,14 @@ package main
 
 import (
 	"fmt"
+	"io"
+	"log"
 	"os"
 
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
+	"github.com/xhrobj/gopherkeeper/internal/logger"
+	"go.uber.org/zap"
 )
 
 var (
@@ -15,20 +19,43 @@ var (
 )
 
 func main() {
-	cfg, err := config.Parse(os.Args[1:])
+	err := buildinfo.Print(os.Stdout, buildVersion, buildDate, buildCommit)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to parse config: %v\n", err)
-		os.Exit(1)
+		log.Fatal(err)
 	}
 
-	buildinfo.Print(buildVersion, buildDate, buildCommit)
+	if err := printBanner(os.Stdout); err != nil {
+		log.Fatal(err)
+	}
 
-	echoBanner()
-
-	fmt.Printf("Server address: %s\n", cfg.Address)
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
 }
 
-func echoBanner() {
+func run() error {
+	cfg, err := config.Parse(os.Args[1:])
+	if err != nil {
+		return err
+	}
+
+	lg, err := logger.New()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = lg.Sync()
+	}()
+
+	lg.Info(
+		"client is ready",
+		zap.String("server_address", cfg.Address),
+	)
+
+	return nil
+}
+
+func printBanner(output io.Writer) error {
 	const banner = `
   ________              .__     ____  __.
  /  _____/  ____ ______ |  |__ |    |/ _|____   ____ ______   ___________
@@ -39,5 +66,7 @@ func echoBanner() {
          -= Client: Access your secrets securely. =-
 
 `
-	fmt.Print(banner)
+	_, err := fmt.Fprint(output, banner)
+
+	return err
 }

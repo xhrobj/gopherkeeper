@@ -1,18 +1,31 @@
+// Package buildinfo предоставляет вывод информации о сборке приложений.
 package buildinfo
 
 import (
 	"fmt"
+	"io"
 )
 
-func Print(version, date, commit string) {
-	fmt.Printf("Build version: %s\n", value(version))
-	fmt.Printf("Build date: %s\n", value(date))
-	fmt.Printf("Build commit: %s\n", value(commit))
+const notAvailable = "¯\\_(ツ)_/¯"
+
+// Print выводит информацию о сборке в writer.
+func Print(w io.Writer, version, date, commit string) error {
+	if _, err := fmt.Fprintf(w, "Build version: %s\n", value(version)); err != nil {
+		return err
+	}
+
+	if _, err := fmt.Fprintf(w, "Build date: %s\n", value(date)); err != nil {
+		return err
+	}
+
+	if _, err := fmt.Fprintf(w, "Build commit: %s\n", value(commit)); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func value(v string) string {
-	const notAvailable = "¯\\_(ツ)_/¯"
-
 	if v == "" {
 		return notAvailable
 	}
