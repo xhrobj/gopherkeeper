@@ -7,14 +7,17 @@ import (
 	"go.uber.org/zap"
 )
 
-const defaultLevel = "info"
+const (
+	levelEnv     = "LOG_LEVEL"
+	defaultLevel = "info"
+)
 
 // New создаёт production-логгер приложения с уровнем из переменной окружения LOG_LEVEL.
 // Если переменная не задана, используется уровень info.
 func New() (*zap.Logger, error) {
 	cfg := zap.NewProductionConfig()
 
-	levelName := os.Getenv("LOG_LEVEL")
+	levelName := os.Getenv(levelEnv)
 	if levelName == "" {
 		levelName = defaultLevel
 	}

@@ -17,6 +17,7 @@
 
 # Local documentation
 /docs/local/
+/docs/adr/
 
 # Dependency directories (remove the comment below to include it)
 # vendor/

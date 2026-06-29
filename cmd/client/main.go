@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -19,8 +20,11 @@ var (
 )
 
 func main() {
-	err := buildinfo.Print(os.Stdout, buildVersion, buildDate, buildCommit)
-	if err != nil {
+	if err := buildinfo.Print(os.Stdout, buildinfo.Info{
+		Version: buildVersion,
+		Date:    buildDate,
+		Commit:  buildCommit,
+	}); err != nil {
 		log.Fatal(err)
 	}
 
@@ -28,12 +32,14 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if err := run(); err != nil {
+	ctx := context.Background()
+
+	if err := run(ctx); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run() error {
+func run(_ context.Context) error {
 	cfg, err := config.Parse(os.Args[1:])
 	if err != nil {
 		return err
@@ -48,7 +54,7 @@ func run() error {
 	}()
 
 	lg.Info(
-		"client is ready",
+		"client initialized",
 		zap.String("server_address", cfg.Address),
 	)
 

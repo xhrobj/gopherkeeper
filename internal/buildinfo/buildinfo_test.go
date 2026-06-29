@@ -8,15 +8,18 @@ import (
 func TestPrintBuildInfo(t *testing.T) {
 	var buf bytes.Buffer
 
-	err := Print(&buf, "v1.1.2", "2026-06-29", "deadbeaf")
-	if err != nil {
+	if err := Print(&buf, Info{
+		Version: "v1.1.2",
+		Date:    "2026-06-29",
+		Commit:  "deadbeef",
+	}); err != nil {
 		t.Fatalf("Print() error = %v", err)
 	}
 
 	got := buf.String()
 	want := "Build version: v1.1.2\n" +
 		"Build date: 2026-06-29\n" +
-		"Build commit: deadbeaf\n"
+		"Build commit: deadbeef\n"
 
 	if got != want {
 		t.Fatalf("Print() = %q, want %q", got, want)
@@ -26,8 +29,7 @@ func TestPrintBuildInfo(t *testing.T) {
 func TestPrintBuildInfoWithEmptyValues(t *testing.T) {
 	var buf bytes.Buffer
 
-	err := Print(&buf, "", "", "")
-	if err != nil {
+	if err := Print(&buf, Info{}); err != nil {
 		t.Fatalf("Print() error = %v", err)
 	}
 
