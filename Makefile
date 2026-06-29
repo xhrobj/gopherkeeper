@@ -1,8 +1,10 @@
 .PHONY: \
+	show-coverage \
 	build build-server build-client \
 	db-up db-down db-connect db-erase \
-	run-server run-client \
-	test \
+	run-server run-client build-client-cross \
+	test test-race test-coverage \
+	vet lint ci \
 	clean
 
 # брать локальные параметры из env-файла (если он есть)
@@ -24,8 +26,9 @@ LDFLAGS := \
 	-X main.buildDate=$(BUILD_DATE) \
 	-X main.buildCommit=$(BUILD_COMMIT)
 
-# каталог для артефактов сборки и пути к бинарникам
+# каталоги для артефактов сборки и пути к бинарникам
 BIN_DIR := bin
+DIST_DIR := dist
 
 SERVER := $(BIN_DIR)/server
 CLIENT := $(BIN_DIR)/client
@@ -38,10 +41,14 @@ COMPOSE := docker compose --env-file $(ENV_FILE)
 # параметры локального запуска Сервера и Клиента
 ADDRESS ?= localhost:8080
 
+# обновить профиль покрытия и вывести общий процент
+show-coverage: test-coverage
+	go tool cover -func=coverage.out | tail -n 1
+
 # собрать Сервер и Клиент
 build: build-server build-client
 
-# собрать Сервер с информацией о сборке
+# собрать Сервер
 build-server:
 	@mkdir -p $(BIN_DIR)
 	go build \
@@ -49,12 +56,32 @@ build-server:
 		-o $(SERVER) \
 		./cmd/server
 
-# собрать Клиент с информацией о сборке
+# собрать Клиент
 build-client:
 	@mkdir -p $(BIN_DIR)
 	go build \
 		-ldflags "$(LDFLAGS)" \
 		-o $(CLIENT) \
+		./cmd/client
+
+# собрать Клиент для Linux, Windows и macOS
+build-client-cross:
+	@mkdir -p $(DIST_DIR)
+	GOOS=linux GOARCH=amd64 go build \
+		-ldflags "$(LDFLAGS)" \
+		-o $(DIST_DIR)/gopherkeeper-client-linux-amd64 \
+		./cmd/client
+	GOOS=windows GOARCH=amd64 go build \
+		-ldflags "$(LDFLAGS)" \
+		-o $(DIST_DIR)/gopherkeeper-client-windows-amd64.exe \
+		./cmd/client
+	GOOS=darwin GOARCH=amd64 go build \
+		-ldflags "$(LDFLAGS)" \
+		-o $(DIST_DIR)/gopherkeeper-client-darwin-amd64 \
+		./cmd/client
+	GOOS=darwin GOARCH=arm64 go build \
+		-ldflags "$(LDFLAGS)" \
+		-o $(DIST_DIR)/gopherkeeper-client-darwin-arm64 \
 		./cmd/client
 
 # создать (при необходимости) и запустить локальный PostgreSQL
@@ -85,6 +112,25 @@ run-client: build-client
 test:
 	go test ./...
 
-# удалить артефакты сборки
+# запустить тесты с детектором гонок данных
+test-race:
+	go test -race ./...
+
+# запустить тесты и сохранить атомарный профиль покрытия
+test-coverage:
+	go test -covermode=atomic -coverprofile=coverage.out ./...
+
+# выполнить стандартный статический анализ Go-кода
+vet:
+	go vet ./...
+
+# проверить проект набором линтеров golangci-lint
+lint:
+	golangci-lint run ./...
+
+# собрать проект и выполнить полный набор CI-проверок
+ci: build test-race vet lint
+
+# очистить артефакты сборки и coverage
 clean:
-	rm -rf $(BIN_DIR)
+	rm -rf $(BIN_DIR) $(DIST_DIR) coverage.out
