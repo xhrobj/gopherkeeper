@@ -1,3 +1,4 @@
+// Package config предоставляет конфигурацию Сервера GophKeeper.
 package config
 
 import (
@@ -7,10 +8,13 @@ import (
 	"os"
 )
 
+// Config содержит конфигурацию Сервера.
 type Config struct {
 	Address string
 }
 
+// Parse формирует конфигурацию Сервера из переменных окружения
+// и аргументов командной строки.
 func Parse(args []string) (Config, error) {
 	cfg := Config{
 		Address: "localhost:8080",

@@ -1,3 +1,4 @@
+// Package config предоставляет конфигурацию Клиента GophKeeper.
 package config
 
 import (
@@ -7,10 +8,13 @@ import (
 	"os"
 )
 
+// Config содержит конфигурацию Клиента.
 type Config struct {
 	Address string
 }
 
+// Parse формирует конфигурацию Клиента из переменных окружения
+// и аргументов командной строки.
 func Parse(args []string) (Config, error) {
 	cfg := Config{
 		Address: "localhost:8080",
