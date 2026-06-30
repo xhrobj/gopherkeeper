@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net/http"
 	"os"
-	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/logger"
@@ -72,11 +70,10 @@ func run(ctx context.Context) error {
 
 	lg.Info("database migrations completed")
 
-	server := &http.Server{
-		Addr:              cfg.Address,
-		Handler:           httpserver.NewHandler(pool),
-		ReadHeaderTimeout: time.Second * 5,
-	}
+	server := httpserver.NewServer(
+		cfg.Address,
+		httpserver.NewHandler(pool),
+	)
 
 	lg.Info(
 		"https server starting",

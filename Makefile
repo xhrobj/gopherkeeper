@@ -25,7 +25,7 @@ LOG_LEVEL ?= info
 export LOG_LEVEL
 
 # данные о сборке подставляются в бинарники Клиента и Сервера через ldflags
-BUILD_VERSION ?= v0.0.1
+BUILD_VERSION ?= v0.1.0
 BUILD_DATE ?= $(shell date +%Y-%m-%d)
 BUILD_COMMIT ?= $(shell git rev-parse --short HEAD)
 
@@ -42,7 +42,7 @@ SERVER := $(BIN_DIR)/server
 CLIENT := $(BIN_DIR)/client
 
 # команда Docker Compose с выбранным env-файлом
-# !!!: для целей db-*, run-server и и test-integration требуется env-файл с переменными POSTGRES_*
+# !!!: для целей db-*, run-server и test-integration требуется env-файл с переменными POSTGRES_*
 # NOTE: создать локальный env-файл: cp .env.example .env
 COMPOSE := docker compose --env-file $(ENV_FILE)
 
