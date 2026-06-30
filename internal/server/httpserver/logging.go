@@ -36,10 +36,12 @@ func (w *responseWriter) Write(body []byte) (int, error) {
 	return size, err
 }
 
+// Unwrap возвращает исходный ResponseWriter.
 func (w *responseWriter) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }
 
+// WithLogging добавляет логирование HTTP-запросов.
 func WithLogging(handler http.Handler, lg *zap.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		startedAt := time.Now()
