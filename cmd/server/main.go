@@ -70,9 +70,14 @@ func run(ctx context.Context) error {
 
 	lg.Info("database migrations completed")
 
+	handler := httpserver.WithLogging(
+		httpserver.NewHandler(pool),
+		lg,
+	)
+
 	server := httpserver.NewServer(
 		cfg.Address,
-		httpserver.NewHandler(pool),
+		handler,
 	)
 
 	lg.Info(
@@ -80,7 +85,10 @@ func run(ctx context.Context) error {
 		zap.String("server_address", cfg.Address),
 	)
 
-	return server.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
+	return server.ListenAndServeTLS(
+		cfg.TLSCertFile,
+		cfg.TLSKeyFile,
+	)
 }
 
 func printBanner(output io.Writer) error {
