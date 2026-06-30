@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
+	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/logger"
 	"github.com/xhrobj/gopherkeeper/internal/server/config"
+	"github.com/xhrobj/gopherkeeper/internal/server/httpserver"
 	"github.com/xhrobj/gopherkeeper/internal/server/migration"
 	"github.com/xhrobj/gopherkeeper/internal/server/postgres"
 	"go.uber.org/zap"
@@ -69,12 +72,18 @@ func run(ctx context.Context) error {
 
 	lg.Info("database migrations completed")
 
+	server := &http.Server{
+		Addr:              cfg.Address,
+		Handler:           httpserver.NewHandler(pool),
+		ReadHeaderTimeout: time.Second * 5,
+	}
+
 	lg.Info(
-		"server initialized",
+		"https server starting",
 		zap.String("server_address", cfg.Address),
 	)
 
-	return nil
+	return server.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
 }
 
 func printBanner(output io.Writer) error {

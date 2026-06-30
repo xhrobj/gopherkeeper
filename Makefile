@@ -127,9 +127,9 @@ run-server: gen-tls-certs build-server
 run-client: build-client
 	$(CLIENT) -a $(ADDRESS)
 
-# запустить полный набор тестов
-# !!!: для интеграционных тестов - не забыть стартануть docker
-test-all: test test-race test-integration
+# запустить полный набор тестов, в конце показать покрытие
+# !!!: для интеграционных тестов требуется запущенный Docker
+test-all: test-race test-integration show-coverage
 
 # запустить обычные тесты
 test:
@@ -139,7 +139,7 @@ test:
 test-race:
 	go test -race ./...
 
-# запустить интеграционные тесты
+# запустить интеграционные тесты с локальным PostgreSQL
 test-integration:
 	$(COMPOSE) up -d --wait postgres
 	go test -tags=integration -count=1 ./...
