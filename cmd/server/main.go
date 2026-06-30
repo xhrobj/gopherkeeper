@@ -10,6 +10,7 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/logger"
 	"github.com/xhrobj/gopherkeeper/internal/server/config"
+	"github.com/xhrobj/gopherkeeper/internal/server/migration"
 	"github.com/xhrobj/gopherkeeper/internal/server/postgres"
 	"go.uber.org/zap"
 )
@@ -61,6 +62,12 @@ func run(ctx context.Context) error {
 	defer pool.Close()
 
 	lg.Info("postgres connection verified")
+
+	if err := migration.Run(pool); err != nil {
+		return err
+	}
+
+	lg.Info("database migrations completed")
 
 	lg.Info(
 		"server initialized",
