@@ -16,7 +16,7 @@ ENV_FILE ?= .env
 # TLS-сертификаты для локальной разработки
 TLS_CERT_DIR := .certs
 
-#TLS_CA_CERT := $(TLS_CERT_DIR)/ca.pem
+TLS_CA_CERT := $(TLS_CERT_DIR)/ca.pem
 TLS_SERVER_CERT := $(TLS_CERT_DIR)/server.pem
 TLS_SERVER_KEY := $(TLS_CERT_DIR)/server-key.pem
 
@@ -128,8 +128,16 @@ run-server: db-up gen-tls-certs build-server
 		--tls-key $(TLS_SERVER_KEY)
 
 # стартовать Клиент
-run-client: build-client
-	$(CLIENT) -a $(ADDRESS)
+run-client: gen-tls-certs build-client
+	$(CLIENT) \
+		-a $(ADDRESS) \
+		--ca-cert $(TLS_CA_CERT)
+
+# выполнить health-запрос от Клиента к Серверу
+run-client-health: gen-tls-certs build-client
+	$(CLIENT) health \
+		-a $(ADDRESS) \
+		--ca-cert $(TLS_CA_CERT)
 
 # запустить полный набор тестов, в конце показать покрытие
 # !!!: для интеграционных тестов требуется запущенный Docker

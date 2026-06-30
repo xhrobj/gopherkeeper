@@ -9,6 +9,7 @@ import (
 
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
+	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
 	"github.com/xhrobj/gopherkeeper/internal/logger"
 	"go.uber.org/zap"
 )
@@ -34,13 +35,22 @@ func main() {
 
 	ctx := context.Background()
 
-	if err := run(ctx); err != nil {
+	if err := run(ctx, os.Args[1:], os.Stdout); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(_ context.Context) error {
-	cfg, err := config.Parse(os.Args[1:])
+func run(ctx context.Context, args []string, output io.Writer) error {
+	if len(args) == 0 {
+		return fmt.Errorf("command is required")
+	}
+
+	command := args[0]
+	if command != "health" {
+		return fmt.Errorf("unknown command %q", command)
+	}
+
+	cfg, err := config.Parse(args[1:])
 	if err != nil {
 		return err
 	}
@@ -57,6 +67,20 @@ func run(_ context.Context) error {
 		"client initialized",
 		zap.String("server_address", cfg.Address),
 	)
+
+	client, err := httpclient.New(cfg.Address, cfg.CACertFile)
+	if err != nil {
+		return err
+	}
+
+	status, err := client.Health(ctx)
+	if err != nil {
+		return err
+	}
+
+	if _, err := fmt.Fprintf(output, "Server status: %s\n", status); err != nil {
+		return fmt.Errorf("write health status: %w", err)
+	}
 
 	return nil
 }
