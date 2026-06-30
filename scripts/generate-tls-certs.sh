@@ -2,11 +2,6 @@
 
 set -euo pipefail
 
-if ! command -v openssl >/dev/null 2>&1; then
-  echo "(+_+) OpenSSL is required to generate Development TLS certificates" >&2
-  exit 1
-fi
-
 CERT_DIR=".certs"
 CERT_DAYS=3650
 
@@ -26,6 +21,11 @@ if [[ -f "${CA_CERT}" &&
 	-f "${SERVER_KEY}" ]]; then
 	echo "(^_^) Development TLS certificates already exist"
 	exit 0
+fi
+
+if ! command -v openssl >/dev/null 2>&1; then
+  echo "(+_+) OpenSSL is required to generate Development TLS certificates" >&2
+  exit 1
 fi
 
 umask 077
