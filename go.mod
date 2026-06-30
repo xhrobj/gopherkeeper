@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/golang-migrate/migrate/v4 v4.19.1
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/urfave/cli/v3 v3.9.0
 	go.uber.org/zap v1.28.0
 )
 

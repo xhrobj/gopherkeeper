@@ -53,13 +53,19 @@ func WithLogging(handler http.Handler, lg *zap.Logger) http.Handler {
 
 		handler.ServeHTTP(response, r)
 
-		lg.Info(
-			"http request",
+		fields := []zap.Field{
 			zap.String("method", r.Method),
-			zap.String("uri", r.URL.RequestURI()),
+			zap.String("path", r.URL.Path),
 			zap.Int("status", response.status),
 			zap.Int("size", response.size),
 			zap.Duration("duration", time.Since(startedAt)),
-		)
+		}
+
+		if response.status >= http.StatusInternalServerError {
+			lg.Error("http request", fields...)
+			return
+		}
+
+		lg.Debug("http request", fields...)
 	})
 }

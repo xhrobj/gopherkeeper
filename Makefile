@@ -1,9 +1,10 @@
 .PHONY: \
 	show-coverage \
 	gen-tls-certs \
-	build build-server build-client \
+	build build-server build-clien build-client-cross \
 	db-up db-down db-connect db-erase \
-	run-server run-client build-client-cross \
+	run-server run-client \
+	run-client-health  \
 	test-all test test-race test-integration test-coverage \
 	vet lint ci \
 	clean clean-gen
@@ -38,8 +39,11 @@ LDFLAGS := \
 BIN_DIR := bin
 DIST_DIR := dist
 
-SERVER := $(BIN_DIR)/server
-CLIENT := $(BIN_DIR)/client
+SERVER_NAME := gopherkeeper-server
+CLIENT_NAME := gkeep
+
+SERVER := $(BIN_DIR)/$(SERVER_NAME)
+CLIENT := $(BIN_DIR)/$(CLIENT_NAME)
 
 # команда Docker Compose с выбранным env-файлом
 # !!!: для целей db-*, run-server и test-integration требуется env-файл с переменными POSTGRES_*
@@ -127,11 +131,9 @@ run-server: db-up gen-tls-certs build-server
 		--tls-cert $(TLS_SERVER_CERT) \
 		--tls-key $(TLS_SERVER_KEY)
 
-# стартовать Клиент
-run-client: gen-tls-certs build-client
-	$(CLIENT) \
-		-a $(ADDRESS) \
-		--ca-cert $(TLS_CA_CERT)
+# стартовать Клиент с действием флага --help
+run-client: build-client
+	$(CLIENT)
 
 # выполнить health-запрос от Клиента к Серверу
 run-client-health: gen-tls-certs build-client
