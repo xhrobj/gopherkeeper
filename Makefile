@@ -42,7 +42,7 @@ SERVER := $(BIN_DIR)/server
 CLIENT := $(BIN_DIR)/client
 
 # команда Docker Compose с выбранным env-файлом
-# !!!: для целей db-* и run-server требуется env-файл с переменными POSTGRES_*
+# !!!: для целей db-*, run-server и и test-integration требуется env-файл с переменными POSTGRES_*
 # NOTE: создать локальный env-файл: cp .env.example .env
 COMPOSE := docker compose --env-file $(ENV_FILE)
 
@@ -101,8 +101,9 @@ build-client-cross:
 		./cmd/client
 
 # создать (при необходимости) и запустить локальный PostgreSQL
+# и дождаться его готовности
 db-up:
-	$(COMPOSE) up -d postgres
+	$(COMPOSE) up -d --wait postgres
 
 # остановить и удалить контейнер PostgreSQL без удаления данных
 db-down:
@@ -116,8 +117,11 @@ db-connect:
 db-erase:
 	$(COMPOSE) down -v
 
-# стартовать Сервер
-run-server: gen-tls-certs build-server
+# стартовать Сервер с локальным PostgreSQL
+# !!!: требуется:
+# 1. env-файл с переменными POSTGRES_*
+# 2. запущенный Docker
+run-server: db-up gen-tls-certs build-server
 	$(SERVER) \
 		-a $(ADDRESS) \
 		--tls-cert $(TLS_SERVER_CERT) \
@@ -140,8 +144,7 @@ test-race:
 	go test -race ./...
 
 # запустить интеграционные тесты с локальным PostgreSQL
-test-integration:
-	$(COMPOSE) up -d --wait postgres
+test-integration: db-up
 	go test -tags=integration -count=1 ./...
 
 # запустить тесты и сохранить атомарный профиль покрытия
