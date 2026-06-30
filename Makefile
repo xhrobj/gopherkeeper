@@ -4,7 +4,7 @@
 	build build-server build-client \
 	db-up db-down db-connect db-erase \
 	run-server run-client build-client-cross \
-	test test-race test-coverage \
+	test-all test test-race test-integration test-coverage \
 	vet lint ci \
 	clean clean-gen
 
@@ -127,13 +127,22 @@ run-server: gen-tls-certs build-server
 run-client: build-client
 	$(CLIENT) -a $(ADDRESS)
 
-# запустить тесты
+# запустить полный набор тестов
+# !!!: для интеграционных тестов - не забыть стартануть docker
+test-all: test test-race test-integration
+
+# запустить обычные тесты
 test:
 	go test ./...
 
 # запустить тесты с детектором гонок данных
 test-race:
 	go test -race ./...
+
+# запустить интеграционные тесты
+test-integration:
+	$(COMPOSE) up -d --wait postgres
+	go test -tags=integration -count=1 ./...
 
 # запустить тесты и сохранить атомарный профиль покрытия
 test-coverage:

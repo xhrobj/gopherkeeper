@@ -1,3 +1,4 @@
+// Package migration применяет миграции схемы PostgreSQL при запуске Сервера.
 package migration
 
 import (
@@ -12,6 +13,7 @@ import (
 	"github.com/xhrobj/gopherkeeper/migrations"
 )
 
+// Run применяет все ещё не выполненные миграции к PostgreSQL.
 func Run(pool *pgxpool.Pool) error {
 	sourceDriver, err := iofs.New(migrations.Files, ".")
 	if err != nil {
