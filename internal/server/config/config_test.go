@@ -17,11 +17,13 @@ func TestParse(t *testing.T) {
 			env: Config{
 				TLSCertFile: "env-server.pem",
 				TLSKeyFile:  "env-server-key.pem",
+				DatabaseDSN: "postgres://env",
 			},
 			want: Config{
 				Address:     defaultAddress,
 				TLSCertFile: "env-server.pem",
 				TLSKeyFile:  "env-server-key.pem",
+				DatabaseDSN: "postgres://env",
 			},
 		},
 		{
@@ -30,11 +32,13 @@ func TestParse(t *testing.T) {
 				Address:     "localhost:8081",
 				TLSCertFile: "env-server.pem",
 				TLSKeyFile:  "env-server-key.pem",
+				DatabaseDSN: "postgres://env",
 			},
 			want: Config{
 				Address:     "localhost:8081",
 				TLSCertFile: "env-server.pem",
 				TLSKeyFile:  "env-server-key.pem",
+				DatabaseDSN: "postgres://env",
 			},
 		},
 		{
@@ -43,11 +47,13 @@ func TestParse(t *testing.T) {
 				"-a", "localhost:8082",
 				"--tls-cert", "flag-server.pem",
 				"--tls-key", "flag-server-key.pem",
+				"--database-dsn", "postgres://flag",
 			},
 			want: Config{
 				Address:     "localhost:8082",
 				TLSCertFile: "flag-server.pem",
 				TLSKeyFile:  "flag-server-key.pem",
+				DatabaseDSN: "postgres://flag",
 			},
 		},
 		{
@@ -56,16 +62,19 @@ func TestParse(t *testing.T) {
 				Address:     "localhost:8081",
 				TLSCertFile: "env-server.pem",
 				TLSKeyFile:  "env-server-key.pem",
+				DatabaseDSN: "postgres://env",
 			},
 			args: []string{
 				"-a", "localhost:8082",
 				"--tls-cert", "flag-server.pem",
 				"--tls-key", "flag-server-key.pem",
+				"--database-dsn", "postgres://flag",
 			},
 			want: Config{
 				Address:     "localhost:8082",
 				TLSCertFile: "flag-server.pem",
 				TLSKeyFile:  "flag-server-key.pem",
+				DatabaseDSN: "postgres://flag",
 			},
 		},
 	}
@@ -96,6 +105,7 @@ func TestParseReturnsRequiredValueError(t *testing.T) {
 			name: "TLS certificate",
 			args: []string{
 				"--tls-key", "server-key.pem",
+				"--database-dsn", "postgres://test",
 			},
 			wantError: "tls certificate file is required",
 		},
@@ -103,8 +113,17 @@ func TestParseReturnsRequiredValueError(t *testing.T) {
 			name: "TLS private key",
 			args: []string{
 				"--tls-cert", "server.pem",
+				"--database-dsn", "postgres://test",
 			},
 			wantError: "tls private key file is required",
+		},
+		{
+			name: "database DSN",
+			args: []string{
+				"--tls-cert", "server.pem",
+				"--tls-key", "server-key.pem",
+			},
+			wantError: "database DSN is required",
 		},
 	}
 
@@ -139,4 +158,5 @@ func setEnvironment(t *testing.T, cfg Config) {
 	t.Setenv("ADDRESS", cfg.Address)
 	t.Setenv("TLS_CERT_FILE", cfg.TLSCertFile)
 	t.Setenv("TLS_KEY_FILE", cfg.TLSKeyFile)
+	t.Setenv("DATABASE_DSN", cfg.DatabaseDSN)
 }

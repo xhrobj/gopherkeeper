@@ -42,12 +42,16 @@ SERVER := $(BIN_DIR)/server
 CLIENT := $(BIN_DIR)/client
 
 # команда Docker Compose с выбранным env-файлом
-# !!!: для целей db-* требуется env-файл; для других команд он опционален
+# !!!: для целей db-* и run-server требуется env-файл с переменными POSTGRES_*
 # NOTE: создать локальный env-файл: cp .env.example .env
 COMPOSE := docker compose --env-file $(ENV_FILE)
 
 # параметры локального запуска Сервера и Клиента
 ADDRESS ?= localhost:8080
+DATABASE_DSN ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
+
+# !!!: строка подключения к локальному PostgreSQL собирается из POSTGRES_* и передается Серверу через окружение
+export DATABASE_DSN
 
 # обновить профиль покрытия и вывести общий процент
 show-coverage: test-coverage

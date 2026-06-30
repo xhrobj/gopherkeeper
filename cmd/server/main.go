@@ -10,6 +10,7 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/logger"
 	"github.com/xhrobj/gopherkeeper/internal/server/config"
+	"github.com/xhrobj/gopherkeeper/internal/server/postgres"
 	"go.uber.org/zap"
 )
 
@@ -39,7 +40,7 @@ func main() {
 	}
 }
 
-func run(_ context.Context) error {
+func run(ctx context.Context) error {
 	cfg, err := config.Parse(os.Args[1:])
 	if err != nil {
 		return err
@@ -52,6 +53,14 @@ func run(_ context.Context) error {
 	defer func() {
 		_ = lg.Sync()
 	}()
+
+	pool, err := postgres.Open(ctx, cfg.DatabaseDSN)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	lg.Info("postgres connection verified")
 
 	lg.Info(
 		"server initialized",

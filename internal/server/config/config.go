@@ -16,6 +16,7 @@ type Config struct {
 	Address     string
 	TLSCertFile string
 	TLSKeyFile  string
+	DatabaseDSN string
 }
 
 // Parse формирует конфигурацию Сервера из переменных окружения
@@ -25,6 +26,7 @@ func Parse(args []string) (Config, error) {
 		Address:     defaultAddress,
 		TLSCertFile: os.Getenv("TLS_CERT_FILE"),
 		TLSKeyFile:  os.Getenv("TLS_KEY_FILE"),
+		DatabaseDSN: os.Getenv("DATABASE_DSN"),
 	}
 
 	if address := os.Getenv("ADDRESS"); address != "" {
@@ -37,6 +39,7 @@ func Parse(args []string) (Config, error) {
 	flags.StringVar(&cfg.Address, "a", cfg.Address, "server listen address")
 	flags.StringVar(&cfg.TLSCertFile, "tls-cert", cfg.TLSCertFile, "path to TLS certificate file")
 	flags.StringVar(&cfg.TLSKeyFile, "tls-key", cfg.TLSKeyFile, "path to TLS private key file")
+	flags.StringVar(&cfg.DatabaseDSN, "database-dsn", cfg.DatabaseDSN, "PostgreSQL connection string")
 
 	if err := flags.Parse(args); err != nil {
 		return Config{}, fmt.Errorf("parse server flags: %w", err)
@@ -48,6 +51,10 @@ func Parse(args []string) (Config, error) {
 
 	if cfg.TLSKeyFile == "" {
 		return Config{}, errors.New("tls private key file is required")
+	}
+
+	if cfg.DatabaseDSN == "" {
+		return Config{}, errors.New("database DSN is required")
 	}
 
 	return cfg, nil
