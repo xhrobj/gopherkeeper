@@ -57,6 +57,9 @@ openssl req \
 	-key "${CA_KEY}" \
 	-days "${CERT_DAYS}" \
 	-subj "/CN=GophKeeper Development CA" \
+	-addext "basicConstraints = critical, CA:TRUE" \
+	-addext "keyUsage = critical, keyCertSign, cRLSign" \
+	-addext "subjectKeyIdentifier = hash" \
 	-out "${CA_CERT}"
 
 # создать ключ и запрос на сертификат HTTPS-сервера
@@ -88,6 +91,7 @@ chmod 600 "${CA_KEY}" "${SERVER_KEY}"
 chmod 644 "${CA_CERT}" "${SERVER_CERT}"
 
 openssl verify \
+	-x509_strict \
 	-CAfile "${CA_CERT}" \
 	"${SERVER_CERT}"
 
