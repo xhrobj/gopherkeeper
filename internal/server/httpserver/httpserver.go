@@ -1,3 +1,4 @@
+// Package httpserver предоставляет HTTP-интерфейс Сервера GophKeeper.
 package httpserver
 
 import (
@@ -5,33 +6,42 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+const (
+	healthCheckTimeout      = 2 * time.Second
+	healthStatusOK          = "ok"
+	healthStatusUnavailable = "unavailable"
+)
+
+// DatabasePinger проверяет доступность PostgreSQL.
+type DatabasePinger interface {
+	Ping(context.Context) error
+}
 
 type healthResponse struct {
 	Status string `json:"status"`
 }
 
-func NewHandler(database *pgxpool.Pool) http.Handler {
+// NewHandler создаёт основной HTTP-handler Сервера.
+func NewHandler(database DatabasePinger) http.Handler {
 	mux := http.NewServeMux()
-
 	mux.HandleFunc("GET /health", healthHandler(database))
 
 	return mux
 }
 
-func healthHandler(database *pgxpool.Pool) http.HandlerFunc {
+func healthHandler(database DatabasePinger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		statusCode := http.StatusOK
-		status := "ok"
+		status := healthStatusOK
 
-		ctx, cancel := context.WithTimeout(r.Context(), time.Second*2)
+		ctx, cancel := context.WithTimeout(r.Context(), healthCheckTimeout)
 		defer cancel()
 
 		if err := database.Ping(ctx); err != nil {
 			statusCode = http.StatusServiceUnavailable
-			status = "unavailable"
+			status = healthStatusUnavailable
 		}
 
 		w.Header().Set("Content-Type", "application/json")
