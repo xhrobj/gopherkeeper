@@ -1,3 +1,4 @@
+// Package httpclient предоставляет HTTPS-Клиент для взаимодействия с Сервером GophKeeper.
 package httpclient
 
 import (
@@ -12,6 +13,9 @@ import (
 	"time"
 )
 
+const requestTimeout = 10 * time.Second
+
+// Client выполняет HTTPS-запросы к Серверу GophKeeper.
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
@@ -21,6 +25,8 @@ type healthResponse struct {
 	Status string `json:"status"`
 }
 
+// New создаёт HTTPS-Клиент с системными корневыми сертификатами
+// и дополнительным доверенным CA certificate при его наличии.
 func New(address, caCertFile string) (*Client, error) {
 	rootCAs, err := x509.SystemCertPool()
 	if err != nil {
@@ -48,11 +54,12 @@ func New(address, caCertFile string) (*Client, error) {
 		baseURL: "https://" + address,
 		httpClient: &http.Client{
 			Transport: transport,
-			Timeout:   time.Second * 10,
+			Timeout:   requestTimeout,
 		},
 	}, nil
 }
 
+// Health проверяет доступность Сервера и возвращает его технический статус.
 func (c *Client) Health(ctx context.Context) (string, error) {
 	request, err := http.NewRequestWithContext(
 		ctx,
