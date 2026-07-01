@@ -134,3 +134,29 @@ func writeServerCertificate(t *testing.T, server *httptest.Server) string {
 func serverAddress(server *httptest.Server) string {
 	return strings.TrimPrefix(server.URL, "https://")
 }
+
+func TestHealthReturnsDecodeError(t *testing.T) {
+	server := newHealthTLSServer(
+		t,
+		http.StatusOK,
+		`{"status":`,
+	)
+	defer server.Close()
+
+	client, err := New(serverAddress(server), writeServerCertificate(t, server))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, err = client.Health(context.Background())
+	if err == nil {
+		t.Fatal("Health() error = nil, want JSON decoding error")
+	}
+
+	if !strings.Contains(err.Error(), "decode health response") {
+		t.Errorf(
+			"Health() error = %q, want decode health response context",
+			err,
+		)
+	}
+}
