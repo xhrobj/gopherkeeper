@@ -1,23 +1,33 @@
 .PHONY: \
 	show-coverage \
-	build build-server build-client \
+	gen-tls-certs \
+	build build-server build-client build-client-cross \
 	db-up db-down db-connect db-erase \
-	run-server run-client build-client-cross \
-	test test-race test-coverage \
+	run-server run-client \
+	run-client-health \
+	test-all test test-race test-integration \
+	coverage \
 	vet lint ci \
-	clean
+	clean clean-gen
 
 # брать локальные параметры из env-файла (если он есть)
 ENV_FILE ?= .env
 
 -include $(ENV_FILE)
 
+# TLS-сертификаты для локальной разработки
+TLS_CERT_DIR := .certs
+
+TLS_CA_CERT := $(TLS_CERT_DIR)/ca.pem
+TLS_SERVER_CERT := $(TLS_CERT_DIR)/server.pem
+TLS_SERVER_KEY := $(TLS_CERT_DIR)/server-key.pem
+
 # параметры логирования
 LOG_LEVEL ?= info
 export LOG_LEVEL
 
 # данные о сборке подставляются в бинарники Клиента и Сервера через ldflags
-BUILD_VERSION ?= v0.0.1
+BUILD_VERSION ?= v0.1.0
 BUILD_DATE ?= $(shell date +%Y-%m-%d)
 BUILD_COMMIT ?= $(shell git rev-parse --short HEAD)
 
@@ -30,20 +40,32 @@ LDFLAGS := \
 BIN_DIR := bin
 DIST_DIR := dist
 
-SERVER := $(BIN_DIR)/server
-CLIENT := $(BIN_DIR)/client
+SERVER_NAME := gopherkeeper-server
+CLIENT_NAME := gkeep
+
+SERVER := $(BIN_DIR)/$(SERVER_NAME)
+CLIENT := $(BIN_DIR)/$(CLIENT_NAME)
 
 # команда Docker Compose с выбранным env-файлом
-# !!!: для целей db-* требуется env-файл; для других команд он опционален
-# NOTE: создать локальный env-файл: cp .env.example .env
+# !!!: для целей db-*, run-server, test-integration, coverage, test-all и ci
+# требуется env-файл с переменными POSTGRES_*
+# NOTE: создать локальный env-файл: `cp .env.example .env`
 COMPOSE := docker compose --env-file $(ENV_FILE)
 
 # параметры локального запуска Сервера и Клиента
 ADDRESS ?= localhost:8080
+DATABASE_DSN ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
+
+# !!!: строка подключения к локальному PostgreSQL собирается из POSTGRES_* и передается Серверу через окружение
+export DATABASE_DSN
 
 # обновить профиль покрытия и вывести общий процент
-show-coverage: test-coverage
+show-coverage: coverage
 	go tool cover -func=coverage.out | tail -n 1
+
+# сгенерировать (при необходимости) локальный CA и TLS-сертификат Сервера
+gen-tls-certs:
+	./scripts/generate-tls-certs.sh
 
 # собрать Сервер и Клиент
 build: build-server build-client
@@ -85,8 +107,9 @@ build-client-cross:
 		./cmd/client
 
 # создать (при необходимости) и запустить локальный PostgreSQL
+# и дождаться его готовности
 db-up:
-	$(COMPOSE) up -d postgres
+	$(COMPOSE) up -d --wait postgres
 
 # остановить и удалить контейнер PostgreSQL без удаления данных
 db-down:
@@ -100,15 +123,31 @@ db-connect:
 db-erase:
 	$(COMPOSE) down -v
 
-# стартовать Сервер
-run-server: build-server
-	$(SERVER) -a $(ADDRESS)
+# собрать и запустить Сервер с локальным PostgreSQL
+# !!!: требуется:
+# 1. env-файл с переменными POSTGRES_*
+# 2. запущенный Docker
+run-server: db-up gen-tls-certs build-server
+	$(SERVER) \
+		-a $(ADDRESS) \
+		--tls-cert $(TLS_SERVER_CERT) \
+		--tls-key $(TLS_SERVER_KEY)
 
-# стартовать Клиент
+# собрать и запустить Клиент с выводом общей справки
 run-client: build-client
-	$(CLIENT) -a $(ADDRESS)
+	$(CLIENT)
 
-# запустить тесты
+# собрать и запустить Клиент и выполнить health-запрос к Серверу
+run-client-health: gen-tls-certs build-client
+	$(CLIENT) health \
+		-a $(ADDRESS) \
+		--ca-cert $(TLS_CA_CERT)
+
+# запустить полный набор тестов
+# !!!: для интеграционных тестов требуется запущенный Docker
+test-all: test-race test-integration
+
+# запустить обычные тесты
 test:
 	go test ./...
 
@@ -116,9 +155,20 @@ test:
 test-race:
 	go test -race ./...
 
-# запустить тесты и сохранить атомарный профиль покрытия
-test-coverage:
-	go test -covermode=atomic -coverprofile=coverage.out ./...
+# запустить интеграционные тесты с локальным PostgreSQL
+test-integration: db-up
+	go test -tags=integration -count=1 ./...
+
+# запустить обычные и интеграционные тесты
+# и сохранить атомарный профиль покрытия всего проекта
+coverage: db-up
+	go test \
+		-count=1 \
+		-tags=integration \
+		-coverpkg=./... \
+		-covermode=atomic \
+		-coverprofile=coverage.out \
+		./...
 
 # выполнить стандартный статический анализ Go-кода
 vet:
@@ -129,8 +179,12 @@ lint:
 	golangci-lint run ./...
 
 # собрать проект и выполнить полный набор CI-проверок
-ci: build test-race vet lint
+ci: build test-all vet lint
 
 # очистить артефакты сборки и coverage
 clean:
 	rm -rf $(BIN_DIR) $(DIST_DIR) coverage.out
+
+# удалить сгенерированные TLS-сертификаты
+clean-gen:
+	rm -rf $(TLS_CERT_DIR)

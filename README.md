@@ -5,3 +5,10 @@
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=xhrobj_gophkeeper&metric=coverage)](https://sonarcloud.io/summary/new_code?id=xhrobj_gophkeeper)
 
 [Техническое задание](SPECIFICATION.md) · [OpenAPI](api/openapi.yaml)
+
+## Текущее поведение
+
+- `client`, `client -h`, `client --help`, `client help` — баннер и общая справка;
+- `client health --help`, `client help health` — справка команды `health` без баннера;
+- `client -v`, `client --version` — баннер и полная информация о сборке;
+- `client health` — только результат команды.

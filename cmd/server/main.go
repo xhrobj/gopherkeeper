@@ -10,6 +10,9 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/logger"
 	"github.com/xhrobj/gopherkeeper/internal/server/config"
+	"github.com/xhrobj/gopherkeeper/internal/server/httpserver"
+	"github.com/xhrobj/gopherkeeper/internal/server/migration"
+	"github.com/xhrobj/gopherkeeper/internal/server/postgres"
 	"go.uber.org/zap"
 )
 
@@ -39,7 +42,7 @@ func main() {
 	}
 }
 
-func run(_ context.Context) error {
+func run(ctx context.Context) error {
 	cfg, err := config.Parse(os.Args[1:])
 	if err != nil {
 		return err
@@ -53,12 +56,39 @@ func run(_ context.Context) error {
 		_ = lg.Sync()
 	}()
 
+	pool, err := postgres.Open(ctx, cfg.DatabaseDSN)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	lg.Info("postgres connection verified")
+
+	if err := migration.Run(pool); err != nil {
+		return err
+	}
+
+	lg.Info("database migrations completed")
+
+	handler := httpserver.WithLogging(
+		httpserver.NewHandler(pool),
+		lg,
+	)
+
+	server := httpserver.NewServer(
+		cfg.Address,
+		handler,
+	)
+
 	lg.Info(
-		"server initialized",
+		"https server starting",
 		zap.String("server_address", cfg.Address),
 	)
 
-	return nil
+	return server.ListenAndServeTLS(
+		cfg.TLSCertFile,
+		cfg.TLSKeyFile,
+	)
 }
 
 func printBanner(output io.Writer) error {

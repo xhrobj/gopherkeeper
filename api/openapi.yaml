@@ -3,10 +3,47 @@ openapi: 3.0.3
 info:
   title: GophKeeper API
   description: API взаимодействия CLI-клиента и Сервера GophKeeper.
-  version: 0.0.1
+  version: 0.1.0
 
 servers:
   - url: https://localhost:8080
     description: Локальное окружение
 
-paths: {}
+paths:
+  /health:
+    get:
+      summary: Проверить доступность Сервера
+      description: Проверяет доступность PostgreSQL.
+      operationId: health
+      tags:
+        - Technical
+      responses:
+        '200':
+          description: PostgreSQL доступен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+        '503':
+          description: PostgreSQL недоступен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: unavailable
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - unavailable
