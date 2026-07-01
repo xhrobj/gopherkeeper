@@ -151,15 +151,13 @@ func TestVersionContainsBannerAndBuildInfo(t *testing.T) {
 				t.Errorf("version does not contain banner: %q", got)
 			}
 
-			for _, want := range []string{
+			assertContainsAll(
+				t,
+				got,
 				"Build version: v1.2.3",
 				"Build date: 2026-06-30",
 				"Build commit: deadbeef",
-			} {
-				if !strings.Contains(got, want) {
-					t.Errorf("version = %q, want %q", got, want)
-				}
-			}
+			)
 
 			if strings.Contains(got, "COMMANDS:") {
 				t.Errorf("version contains help text: %q", got)
@@ -259,6 +257,16 @@ func TestHealthCommandConfiguration(t *testing.T) {
 				t.Errorf("configuration = %+v, want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func assertContainsAll(t *testing.T, got string, wants ...string) {
+	t.Helper()
+
+	for _, want := range wants {
+		if !strings.Contains(got, want) {
+			t.Errorf("output = %q, want %q", got, want)
+		}
 	}
 }
 

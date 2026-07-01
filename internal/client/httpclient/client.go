@@ -39,7 +39,7 @@ func New(address, caCertFile string) (*Client, error) {
 			return nil, fmt.Errorf("read additional CA certificate: %w", err)
 		}
 
-		if ok := rootCAs.AppendCertsFromPEM(certificate); !ok {
+		if !rootCAs.AppendCertsFromPEM(certificate) {
 			return nil, errors.New("parse additional CA certificate")
 		}
 	}

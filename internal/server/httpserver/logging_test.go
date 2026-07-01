@@ -61,72 +61,61 @@ func TestWithLogging(t *testing.T) {
 
 			handler.ServeHTTP(response, request)
 
-			entries := logs.All()
-			if len(entries) != 1 {
-				t.Fatalf(
-					"log entries = %d, want 1",
-					len(entries),
-				)
-			}
-
-			entry := entries[0]
-
-			if entry.Message != "http request" {
-				t.Errorf(
-					"log message = %q, want %q",
-					entry.Message,
-					"http request",
-				)
-			}
-
-			if entry.Level != tt.wantLevel {
-				t.Errorf(
-					"log level = %s, want %s",
-					entry.Level,
-					tt.wantLevel,
-				)
-			}
-
-			fields := entry.ContextMap()
-
-			if fields["method"] != http.MethodGet {
-				t.Errorf(
-					"method = %v, want %s",
-					fields["method"],
-					http.MethodGet,
-				)
-			}
-
-			if fields["path"] != "/health" {
-				t.Errorf(
-					"path = %v, want /health",
-					fields["path"],
-				)
-			}
-
-			if _, ok := fields["uri"]; ok {
-				t.Error("uri field must not be logged")
-			}
-
-			if fields["status"] != int64(tt.status) {
-				t.Errorf(
-					"status = %v, want %d",
-					fields["status"],
-					tt.status,
-				)
-			}
-
-			if fields["size"] != int64(len(responseBody)) {
-				t.Errorf(
-					"size = %v, want %d",
-					fields["size"],
-					len(responseBody),
-				)
-			}
-
-			if _, ok := fields["duration"]; !ok {
-				t.Error("duration field is missing")
-			}
+			assertHTTPLogEntry(
+				t,
+				logs.All(),
+				tt.wantLevel,
+				tt.status,
+				len(responseBody),
+			)
 		})
+	}
+}
+
+func assertHTTPLogEntry(
+	t *testing.T,
+	entries []observer.LoggedEntry,
+	wantLevel zapcore.Level,
+	wantStatus int,
+	wantSize int,
+) {
+	t.Helper()
+
+	if len(entries) != 1 {
+		t.Fatalf("log entries = %d, want 1", len(entries))
+	}
+
+	entry := entries[0]
+	if entry.Message != "http request" {
+		t.Errorf("log message = %q, want %q", entry.Message, "http request")
+	}
+
+	if entry.Level != wantLevel {
+		t.Errorf("log level = %s, want %s", entry.Level, wantLevel)
+	}
+
+	fields := entry.ContextMap()
+	if fields["method"] != http.MethodGet {
+		t.Errorf("method = %v, want %s", fields["method"], http.MethodGet)
+	}
+
+	if fields["path"] != "/health" {
+		t.Errorf("path = %v, want /health", fields["path"])
+	}
+
+	if _, ok := fields["uri"]; ok {
+		t.Error("uri field must not be logged")
+	}
+
+	if fields["status"] != int64(wantStatus) {
+		t.Errorf("status = %v, want %d", fields["status"], wantStatus)
+	}
+
+	if fields["size"] != int64(wantSize) {
+		t.Errorf("size = %v, want %d", fields["size"], wantSize)
+	}
+
+	if _, ok := fields["duration"]; !ok {
+		t.Error("duration field is missing")
 	}
 }

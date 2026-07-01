@@ -47,29 +47,40 @@ func TestHealthHandler(t *testing.T) {
 
 			handler.ServeHTTP(response, request)
 
-			if response.Code != tt.wantCode {
-				t.Errorf("status code = %d, want %d", response.Code, tt.wantCode)
-			}
-
-			if contentType := response.Header().Get("Content-Type"); contentType != "application/json" {
-				t.Errorf("Content-Type = %q, want application/json", contentType)
-			}
-
-			bodyBytes := response.Body.Bytes()
-
-			var body healthResponse
-			if err := json.Unmarshal(bodyBytes, &body); err != nil {
-				t.Fatalf("decode response body: %v", err)
-			}
-
-			if body.Status != tt.wantStatus {
-				t.Errorf("response status = %q, want %q", body.Status, tt.wantStatus)
-			}
-
-			if strings.Contains(string(bodyBytes), "database connection failed") {
-				t.Error("response body contains internal database error")
-			}
+			assertHealthResponse(t, response, tt.wantCode, tt.wantStatus)
 		})
+	}
+}
+
+func assertHealthResponse(
+	t *testing.T,
+	response *httptest.ResponseRecorder,
+	wantCode int,
+	wantStatus string,
+) {
+	t.Helper()
+
+	if response.Code != wantCode {
+		t.Errorf("status code = %d, want %d", response.Code, wantCode)
+	}
+
+	if contentType := response.Header().Get("Content-Type"); contentType != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", contentType)
+	}
+
+	bodyBytes := response.Body.Bytes()
+
+	var body healthResponse
+	if err := json.Unmarshal(bodyBytes, &body); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+
+	if body.Status != wantStatus {
+		t.Errorf("response status = %q, want %q", body.Status, wantStatus)
+	}
+
+	if strings.Contains(string(bodyBytes), "database connection failed") {
+		t.Error("response body contains internal database error")
 	}
 }
 
