@@ -1,11 +1,12 @@
 .PHONY: \
 	show-coverage \
 	gen-tls-certs \
-	build build-server build-clien build-client-cross \
+	build build-server build-client build-client-cross \
 	db-up db-down db-connect db-erase \
 	run-server run-client \
-	run-client-health  \
-	test-all test test-race test-integration test-coverage \
+	run-client-health \
+	test-all test test-race test-integration \
+	coverage \
 	vet lint ci \
 	clean clean-gen
 
@@ -46,8 +47,9 @@ SERVER := $(BIN_DIR)/$(SERVER_NAME)
 CLIENT := $(BIN_DIR)/$(CLIENT_NAME)
 
 # команда Docker Compose с выбранным env-файлом
-# !!!: для целей db-*, run-server и test-integration требуется env-файл с переменными POSTGRES_*
-# NOTE: создать локальный env-файл: cp .env.example .env
+# !!!: для целей db-*, run-server, test-integration, coverage, test-all и ci
+# требуется env-файл с переменными POSTGRES_*
+# NOTE: создать локальный env-файл: `cp .env.example .env`
 COMPOSE := docker compose --env-file $(ENV_FILE)
 
 # параметры локального запуска Сервера и Клиента
@@ -58,7 +60,7 @@ DATABASE_DSN ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST
 export DATABASE_DSN
 
 # обновить профиль покрытия и вывести общий процент
-show-coverage: test-coverage
+show-coverage: coverage
 	go tool cover -func=coverage.out | tail -n 1
 
 # сгенерировать (при необходимости) локальный CA и TLS-сертификат Сервера
@@ -121,7 +123,7 @@ db-connect:
 db-erase:
 	$(COMPOSE) down -v
 
-# стартовать Сервер с локальным PostgreSQL
+# собрать и запустить Сервер с локальным PostgreSQL
 # !!!: требуется:
 # 1. env-файл с переменными POSTGRES_*
 # 2. запущенный Docker
@@ -131,19 +133,19 @@ run-server: db-up gen-tls-certs build-server
 		--tls-cert $(TLS_SERVER_CERT) \
 		--tls-key $(TLS_SERVER_KEY)
 
-# стартовать Клиент с действием флага --help
+# собрать и запустить Клиент с выводом общей справки
 run-client: build-client
 	$(CLIENT)
 
-# выполнить health-запрос от Клиента к Серверу
+# собрать и запустить Клиент и выполнить health-запрос к Серверу
 run-client-health: gen-tls-certs build-client
 	$(CLIENT) health \
 		-a $(ADDRESS) \
 		--ca-cert $(TLS_CA_CERT)
 
-# запустить полный набор тестов, в конце показать покрытие
+# запустить полный набор тестов
 # !!!: для интеграционных тестов требуется запущенный Docker
-test-all: test-race test-integration show-coverage
+test-all: test-race test-integration
 
 # запустить обычные тесты
 test:
@@ -157,9 +159,16 @@ test-race:
 test-integration: db-up
 	go test -tags=integration -count=1 ./...
 
-# запустить тесты и сохранить атомарный профиль покрытия
-test-coverage:
-	go test -covermode=atomic -coverprofile=coverage.out ./...
+# запустить обычные и интеграционные тесты
+# и сохранить атомарный профиль покрытия всего проекта
+coverage: db-up
+	go test \
+		-count=1 \
+		-tags=integration \
+		-coverpkg=./... \
+		-covermode=atomic \
+		-coverprofile=coverage.out \
+		./...
 
 # выполнить стандартный статический анализ Go-кода
 vet:
@@ -170,7 +179,7 @@ lint:
 	golangci-lint run ./...
 
 # собрать проект и выполнить полный набор CI-проверок
-ci: build test-race vet lint
+ci: build test-all vet lint
 
 # очистить артефакты сборки и coverage
 clean:

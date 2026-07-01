@@ -39,8 +39,11 @@ jobs:
       - name: (^_^) Run tests --race
         run: make test-race
 
+      - name: (o-о) Prepare environment
+        run: cp .env.example .env
+
       - name: (^_^) Run tests with coverage
-        run: make test-coverage
+        run: make coverage
 
       - name: (^_^) Validate OpenAPI
         run: npx --yes @redocly/cli@2.34.0 lint api/openapi.yaml --extends=spec --format=github-actions
