@@ -1,7 +1,6 @@
 package httpserver
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -33,14 +32,6 @@ const (
 	errorMessageInternal             = "internal server error"
 )
 
-type userRegistrar interface {
-	Register(
-		ctx context.Context,
-		login string,
-		password string,
-	) (model.User, error)
-}
-
 type registerRequest struct {
 	Login    string `json:"login"`
 	Password string `json:"password"`
@@ -57,7 +48,7 @@ type errorResponse struct {
 	Message string `json:"message"`
 }
 
-func registerHandler(registrar userRegistrar) http.HandlerFunc {
+func registerHandler(registrar UserRegistrar) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !isJSONContentType(r.Header.Get("Content-Type")) {
 			writeErrorResponse(

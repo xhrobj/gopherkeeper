@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 const (
@@ -18,14 +20,20 @@ type DatabasePinger interface {
 	Ping(context.Context) error
 }
 
+// UserRegistrar регистрирует нового пользователя.
+type UserRegistrar interface {
+	Register(ctx context.Context, login, password string) (model.User, error)
+}
+
 type healthResponse struct {
 	Status string `json:"status"`
 }
 
 // NewHandler создаёт основной HTTP-handler Сервера.
-func NewHandler(database DatabasePinger) http.Handler {
+func NewHandler(database DatabasePinger, registrar UserRegistrar) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(database))
+	mux.HandleFunc("POST /api/v1/auth/register", registerHandler(registrar))
 
 	return mux
 }

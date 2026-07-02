@@ -160,7 +160,7 @@ func TestRegisterHandler_MapsServiceErrors(t *testing.T) {
 				return model.User{}, tt.serviceErr
 			})
 
-			request := newRegistrationRequest(t, registrationRequestBody())
+			request := newRegistrationRequest(t, registrationRequestBody("eve"))
 			response := httptest.NewRecorder()
 
 			registerHandler(registrar).ServeHTTP(response, request)
@@ -190,7 +190,7 @@ func TestRegisterHandler_RejectsInvalidRequest(t *testing.T) {
 	}{
 		{
 			name:        "missing Content-Type",
-			body:        registrationRequestBody(),
+			body:        registrationRequestBody("eve"),
 			wantStatus:  http.StatusUnsupportedMediaType,
 			wantCode:    errorCodeUnsupportedMediaType,
 			wantMessage: errorMessageUnsupportedMediaType,
@@ -198,7 +198,7 @@ func TestRegisterHandler_RejectsInvalidRequest(t *testing.T) {
 		{
 			name:        "unsupported Content-Type",
 			contentType: "text/plain",
-			body:        registrationRequestBody(),
+			body:        registrationRequestBody("eve"),
 			wantStatus:  http.StatusUnsupportedMediaType,
 			wantCode:    errorCodeUnsupportedMediaType,
 			wantMessage: errorMessageUnsupportedMediaType,
@@ -229,7 +229,7 @@ func TestRegisterHandler_RejectsInvalidRequest(t *testing.T) {
 		{
 			name:        "multiple JSON values",
 			contentType: "application/json",
-			body: registrationRequestBody() +
+			body: registrationRequestBody("eve") +
 				`{"login":"eve","password":"` + testRegistrationPassword + `"}`,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
@@ -311,8 +311,8 @@ func newRegistrationRequest(t *testing.T, body string) *http.Request {
 	return request
 }
 
-func registrationRequestBody() string {
-	return `{"login":"eve","password":"` + testRegistrationPassword + `"}`
+func registrationRequestBody(login string) string {
+	return `{"login":"` + login + `","password":"` + testRegistrationPassword + `"}`
 }
 
 func assertErrorResponse(

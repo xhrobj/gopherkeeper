@@ -9,10 +9,12 @@ import (
 
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/logger"
+	"github.com/xhrobj/gopherkeeper/internal/server/auth"
 	"github.com/xhrobj/gopherkeeper/internal/server/config"
 	"github.com/xhrobj/gopherkeeper/internal/server/httpserver"
 	"github.com/xhrobj/gopherkeeper/internal/server/migration"
 	"github.com/xhrobj/gopherkeeper/internal/server/postgres"
+	"github.com/xhrobj/gopherkeeper/internal/server/service"
 	"go.uber.org/zap"
 )
 
@@ -70,8 +72,12 @@ func run(ctx context.Context) error {
 
 	lg.Info("database migrations completed")
 
+	userRepository := postgres.NewUserRepository(pool)
+	passwordManager := auth.NewBcryptPasswordManager()
+	registrationService := service.NewRegistrationService(userRepository, passwordManager)
+
 	handler := httpserver.WithLogging(
-		httpserver.NewHandler(pool),
+		httpserver.NewHandler(pool, registrationService),
 		lg,
 	)
 
