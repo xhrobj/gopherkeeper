@@ -1,4 +1,3 @@
-// Package httpserver предоставляет HTTP-интерфейс Сервера GophKeeper.
 package httpserver
 
 import (
