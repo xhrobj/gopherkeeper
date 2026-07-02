@@ -50,3 +50,20 @@ func TestOpen_ReturnsContextError(t *testing.T) {
 		t.Fatalf("Open() error = %v, want context.Canceled", err)
 	}
 }
+
+func TestOpen_ReturnsErrorForEmptyDSN(t *testing.T) {
+	pool, err := Open(context.Background(), "")
+
+	if err == nil {
+		t.Fatal("Open() error = nil, want empty DSN error")
+	}
+
+	if pool != nil {
+		t.Cleanup(pool.Close)
+		t.Fatal("Open() pool is not nil after error")
+	}
+
+	if !strings.Contains(err.Error(), "database DSN is empty") {
+		t.Fatalf("Open() error = %q, want empty DSN context", err)
+	}
+}
