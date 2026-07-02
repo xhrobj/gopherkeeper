@@ -1,0 +1,1 @@
+DROP TABLE gopherkeeper.users;

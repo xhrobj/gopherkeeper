@@ -7,41 +7,42 @@ import (
 	"testing"
 )
 
-func TestOpenReturnsParseError(t *testing.T) {
+func TestOpen_ReturnsParseError(t *testing.T) {
 	pool, err := Open(context.Background(), "://")
-	if err == nil {
-		if pool != nil {
-			pool.Close()
-		}
+	if pool != nil {
+		t.Cleanup(pool.Close)
+	}
 
+	if err == nil {
 		t.Fatal("Open() error = nil, want DSN parsing error")
 	}
 
 	if pool != nil {
-		pool.Close()
 		t.Fatal("Open() pool is not nil after error")
 	}
 
-	if !strings.Contains(err.Error(), "create postgres pool") {
+	if !strings.Contains(err.Error(), "create PostgreSQL pool") {
 		t.Fatalf("Open() error = %q, want create pool context", err)
 	}
 }
 
-func TestOpenReturnsContextError(t *testing.T) {
+func TestOpen_ReturnsContextError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	pool, err := Open(ctx, "postgres://user:password@localhost:5432/database?sslmode=disable")
-	if err == nil {
-		if pool != nil {
-			pool.Close()
-		}
+	pool, err := Open(
+		ctx,
+		"postgres://user:password@localhost:5432/database?sslmode=disable",
+	)
+	if pool != nil {
+		t.Cleanup(pool.Close)
+	}
 
+	if err == nil {
 		t.Fatal("Open() error = nil, want context cancellation error")
 	}
 
 	if pool != nil {
-		pool.Close()
 		t.Fatal("Open() pool is not nil after error")
 	}
 

@@ -16,10 +16,10 @@ import (
 
 const integrationTestTimeout = 30 * time.Second
 
-func TestRunAppliesEmbeddedMigrationsOnce(t *testing.T) {
+func TestIntegration_MigrationsAppliedOnce(t *testing.T) {
 	dsn := os.Getenv("DATABASE_DSN")
 	if dsn == "" {
-		t.Skip("DATABASE_DSN is not set")
+		t.Fatal("DATABASE_DSN is not set")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), integrationTestTimeout)
@@ -114,8 +114,8 @@ func assertMigrationState(t *testing.T, ctx context.Context, pool *pgxpool.Pool)
 		t.Fatalf("read migration state: %v", err)
 	}
 
-	if version != 1 {
-		t.Errorf("migration version = %d, want 1", version)
+	if version != 2 {
+		t.Errorf("migration version = %d, want 2", version)
 	}
 	if dirty {
 		t.Error("migration state is dirty")
@@ -131,5 +131,23 @@ func assertMigrationState(t *testing.T, ctx context.Context, pool *pgxpool.Pool)
 
 	if migrationTableCount != 1 {
 		t.Errorf("schema_migrations table count = %d, want 1", migrationTableCount)
+	}
+
+	assertUsersTableExists(t, ctx, pool)
+}
+
+func assertUsersTableExists(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+
+	var exists bool
+	if err := pool.QueryRow(
+		ctx,
+		"SELECT to_regclass('gopherkeeper.users') IS NOT NULL",
+	).Scan(&exists); err != nil {
+		t.Fatalf("check users table: %v", err)
+	}
+
+	if !exists {
+		t.Fatal("gopherkeeper.users table does not exist")
 	}
 }
