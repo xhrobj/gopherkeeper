@@ -29,7 +29,7 @@ var (
 	// ErrPasswordTooShort означает, что пароль короче минимально допустимой длины.
 	ErrPasswordTooShort = errors.New("password too short")
 
-	// ErrPasswordTooLong означает, что пароль превышает допустимый для bcrypt размер.
+	// ErrPasswordTooLong означает, что пароль превышает максимально допустимую длину.
 	ErrPasswordTooLong = errors.New("password too long")
 )
 

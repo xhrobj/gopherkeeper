@@ -7,8 +7,6 @@ import (
 )
 
 func TestValidateRegistrationCredentials(t *testing.T) {
-	const validPassword = "valid-password"
-
 	tests := []struct {
 		name      string
 		login     string
@@ -19,26 +17,26 @@ func TestValidateRegistrationCredentials(t *testing.T) {
 		{
 			name:      "canonical login",
 			login:     " Alice ",
-			password:  validPassword,
+			password:  testRegistrationPassword,
 			wantLogin: "alice",
 		},
 		{
 			name:      "allowed login separators",
 			login:     "king.of-andals_1st-men",
-			password:  validPassword,
+			password:  testRegistrationPassword,
 			wantLogin: "king.of-andals_1st-men",
 		},
 		{
 			name:      "minimum login length",
-			login:     "a-1",
-			password:  validPassword,
-			wantLogin: "a-1",
+			login:     "bob",
+			password:  testRegistrationPassword,
+			wantLogin: "bob",
 		},
 		{
 			name:      "maximum login length",
-			login:     strings.Repeat("a", maxLoginLength),
-			password:  validPassword,
-			wantLogin: strings.Repeat("a", maxLoginLength),
+			login:     strings.Repeat("b", maxLoginLength),
+			password:  testRegistrationPassword,
+			wantLogin: strings.Repeat("b", maxLoginLength),
 		},
 		{
 			name:      "minimum password length",
@@ -48,128 +46,128 @@ func TestValidateRegistrationCredentials(t *testing.T) {
 		},
 		{
 			name:      "maximum password length",
-			login:     "alice",
+			login:     "bob",
 			password:  strings.Repeat("z", maxPasswordLength),
-			wantLogin: "alice",
+			wantLogin: "bob",
 		},
 		{
 			name:      "password with boundary printable ASCII symbols",
-			login:     "alice",
+			login:     "bob",
 			password:  "!A0~",
-			wantLogin: "alice",
+			wantLogin: "bob",
 		},
 		{
 			name:     "login too short",
-			login:    "ab",
-			password: validPassword,
+			login:    "ev",
+			password: testRegistrationPassword,
 			wantErr:  ErrInvalidLogin,
 		},
 		{
 			name:     "login too long",
-			login:    strings.Repeat("a", maxLoginLength+1),
-			password: validPassword,
+			login:    strings.Repeat("e", maxLoginLength+1),
+			password: testRegistrationPassword,
 			wantErr:  ErrInvalidLogin,
 		},
 		{
 			name:     "login starts with dot",
-			login:    ".alice",
-			password: validPassword,
+			login:    ".eve",
+			password: testRegistrationPassword,
 			wantErr:  ErrInvalidLogin,
 		},
 		{
 			name:     "login starts with underscore",
-			login:    "_alice",
-			password: validPassword,
+			login:    "_eve",
+			password: testRegistrationPassword,
 			wantErr:  ErrInvalidLogin,
 		},
 		{
 			name:     "login starts with hyphen",
-			login:    "-alice",
-			password: validPassword,
+			login:    "-eve",
+			password: testRegistrationPassword,
 			wantErr:  ErrInvalidLogin,
 		},
 		{
 			name:     "login contains space",
-			login:    "ali ce",
-			password: validPassword,
+			login:    "e ve",
+			password: testRegistrationPassword,
 			wantErr:  ErrInvalidLogin,
 		},
 		{
 			name:     "login contains unsupported character",
-			login:    "alice@example",
-			password: validPassword,
+			login:    "eve@example",
+			password: testRegistrationPassword,
 			wantErr:  ErrInvalidLogin,
 		},
 		{
 			name:     "login contains Cyrillic characters",
-			login:    "алиса",
-			password: validPassword,
+			login:    "ева",
+			password: testRegistrationPassword,
 			wantErr:  ErrInvalidLogin,
 		},
 		{
 			name:     "Cyrillic C disguised as ASCII C",
 			login:    "Сoder",
-			password: validPassword,
+			password: testRegistrationPassword,
 			wantErr:  ErrInvalidLogin,
 		},
 		{
 			name:     "Kelvin sign must not become ASCII K",
 			login:    "Kirill",
-			password: validPassword,
+			password: testRegistrationPassword,
 			wantErr:  ErrInvalidLogin,
 		},
 		{
 			name:     "password too short",
-			login:    "alice",
+			login:    "eve",
 			password: strings.Repeat("a", minPasswordLength-1),
 			wantErr:  ErrPasswordTooShort,
 		},
 		{
 			name:     "password too long",
-			login:    "alice",
+			login:    "eve",
 			password: strings.Repeat("z", maxPasswordLength+1),
 			wantErr:  ErrPasswordTooLong,
 		},
 		{
 			name:     "password contains internal space",
-			login:    "alice",
-			password: "god love sex",
+			login:    "eve",
+			password: "forbidden fruit",
 			wantErr:  ErrInvalidPassword,
 		},
 		{
 			name:     "password contains leading space",
-			login:    "alice",
-			password: " valid-password",
+			login:    "eve",
+			password: " forbidden-fruit",
 			wantErr:  ErrInvalidPassword,
 		},
 		{
 			name:     "password contains trailing space",
-			login:    "alice",
-			password: "valid-password ",
+			login:    "eve",
+			password: "forbidden-fruit ",
 			wantErr:  ErrInvalidPassword,
 		},
 		{
 			name:     "password contains tab",
-			login:    "alice",
-			password: "valid\tpassword",
+			login:    "eve",
+			password: "forbidden\tfruit",
 			wantErr:  ErrInvalidPassword,
 		},
 		{
 			name:     "password contains newline",
-			login:    "alice",
-			password: "valid\npassword",
+			login:    "eve",
+			password: "forbidden\nfruit",
 			wantErr:  ErrInvalidPassword,
 		},
 		{
 			name:     "password contains non ASCII characters",
-			login:    "alice",
-			password: "пароль",
+			login:    "eve",
+			password: "запретный-плод",
 			wantErr:  ErrInvalidPassword,
 		},
 		{
 			name:     "password contains emoji",
-			login:    "alice",
-			password: "valid🔐password",
+			login:    "eve",
+			password: "forbidden🍎fruit",
 			wantErr:  ErrInvalidPassword,
 		},
 	}
@@ -211,17 +209,17 @@ func TestValidateRegistrationCredentials_DoesNotExposePassword(t *testing.T) {
 		},
 		{
 			name:     "password contains space",
-			password: "god love sex",
+			password: "forbidden fruit",
 		},
 		{
 			name:     "password contains Unicode",
-			password: "суперпароль",
+			password: "запретный-плод",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := validateRegistrationCredentials("alice", tt.password)
+			_, err := validateRegistrationCredentials("eve", tt.password)
 			if err == nil {
 				t.Fatal("validateRegistrationCredentials() error = nil")
 			}
