@@ -6,8 +6,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// maxBcryptPasswordLength задаёт максимальную длину пароля в байтах,
-// поддерживаемую bcrypt.
+// maxBcryptPasswordLength задаёт максимальное количество байт,
+// которое принимает bcrypt.
 const maxBcryptPasswordLength = 72
 
 // BcryptPasswordManager хеширует и проверяет пароли с помощью bcrypt.
