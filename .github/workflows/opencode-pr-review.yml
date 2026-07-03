@@ -1,0 +1,69 @@
+name: (@_@) OpenCode PR Review
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: opencode-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: OpenCode review
+    if: ${{ !github.event.pull_request.draft && !endsWith(github.event.pull_request.user.login, '[bot]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Run OpenCode review
+        uses: anomalyco/opencode/github@a3b97d9090ccf4aa9ac32268486283e3131e36b4 # github-v1.2.25
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          model: opencode/big-pickle
+          use_github_token: true
+          share: false
+          prompt: |
+            Проведи предварительное ревью этого pull request.
+
+            Режим работы:
+            - Ты работаешь строго в режиме ревью PR.
+            - Не редактируй файлы.
+            - Не создавай коммиты.
+            - Не пушь изменения.
+            - Не применяй исправления автоматически.
+            - Не меняй рабочую ветку.
+            - Не используй команды, которые изменяют рабочее дерево или историю Git.
+            - Только анализируй diff pull request и оставляй review/comment с замечаниями.
+            - Если нашёл проблему, опиши её и предложи исправление, но не меняй код самостоятельно.
+
+            Контекст проекта:
+            - Это учебный Go-проект GophKeeper — клиент-серверный менеджер приватных данных.
+            - Проект развивается небольшими MVP-инкрементами, поэтому не требуй функциональность будущих этапов.
+            - Описание PR может быть пустым или минимальным. В первую очередь анализируй diff, изменённые файлы и тесты.
+            - Основные проверки: корректность логики, безопасность, тестируемость, читаемость и простота решения.
+            - Не требуй больших архитектурных переписываний без явной необходимости.
+            - Не придирайся к вкусовым вещам, если они не влияют на поддержку кода.
+            - Обращай внимание на обработку ошибок, HTTP-сценарии, работу с PostgreSQL, тесты, edge cases и соответствие затронутым требованиям.
+            - Если поведение неоднозначно по требованиям, не называй его багом. Сформулируй как вопрос или риск.
+
+            Формат ответа:
+            - Сначала короткое резюме.
+            - Затем список найденных проблем, если они есть.
+            - Для каждой проблемы укажи файл/место, почему это важно и как исправить.
+            - Если критичных проблем нет, так и напиши.
+            - Пиши по-русски.
