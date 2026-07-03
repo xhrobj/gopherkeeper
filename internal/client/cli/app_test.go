@@ -17,7 +17,7 @@ var testBuildInfo = buildinfo.Info{
 	Commit:  "deadbeef",
 }
 
-func TestRootHelpContainsBanner(t *testing.T) {
+func TestRun_RootHelpContainsBanner(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
@@ -68,11 +68,15 @@ func TestRootHelpContainsBanner(t *testing.T) {
 			if !strings.Contains(got, "health") {
 				t.Errorf("help does not contain health command: %q", got)
 			}
+
+			if !strings.Contains(got, "register") {
+				t.Errorf("help does not contain register command: %q", got)
+			}
 		})
 	}
 }
 
-func TestHealthHelpDoesNotContainBanner(t *testing.T) {
+func TestRun_HealthHelpDoesNotContainBanner(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
@@ -115,7 +119,7 @@ func TestHealthHelpDoesNotContainBanner(t *testing.T) {
 	}
 }
 
-func TestVersionContainsBannerAndBuildInfo(t *testing.T) {
+func TestRun_VersionContainsBannerAndBuildInfo(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
@@ -166,7 +170,7 @@ func TestVersionContainsBannerAndBuildInfo(t *testing.T) {
 	}
 }
 
-func TestHealthCommandOutputDoesNotContainBanner(t *testing.T) {
+func TestRun_HealthCommandOutputDoesNotContainBanner(t *testing.T) {
 	var output bytes.Buffer
 
 	err := run(
@@ -190,7 +194,7 @@ func TestHealthCommandOutputDoesNotContainBanner(t *testing.T) {
 	}
 }
 
-func TestHealthCommandConfiguration(t *testing.T) {
+func TestRun_HealthCommandConfiguration(t *testing.T) {
 	tests := []struct {
 		name       string
 		envAddress string
