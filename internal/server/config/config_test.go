@@ -224,7 +224,7 @@ func TestParse_ReturnsInvalidJWTSecretError(t *testing.T) {
 	}
 }
 
-func TestParse_ReturnsInvalidJWTTTLError(t *testing.T) {
+func TestParse_ReturnsInvalidJWTTLError(t *testing.T) {
 	tests := []struct {
 		name      string
 		envTTL    string
