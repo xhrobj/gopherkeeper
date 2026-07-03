@@ -1,10 +1,11 @@
-// Package cli предоставляет командный интерфейс Клиента GophKeeper.
 package cli
 
 import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"strings"
 
 	"github.com/urfave/cli/v3"
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
@@ -24,6 +25,11 @@ const banner = `
 
 type healthRunner func(context.Context, config.Config, io.Writer) error
 
+type commandRunners struct {
+	health   healthRunner
+	register registerRunner
+}
+
 // Run запускает командный интерфейс Клиента.
 func Run(
 	ctx context.Context,
@@ -32,7 +38,35 @@ func Run(
 	errorOutput io.Writer,
 	info buildinfo.Info,
 ) error {
-	return run(ctx, args, output, errorOutput, info, runHealth)
+	return runWithInput(
+		ctx,
+		args,
+		os.Stdin,
+		output,
+		errorOutput,
+		info,
+		commandRunners{health: runHealth, register: runRegister},
+	)
+}
+
+// RunWithInput запускает командный интерфейс с заданным стандартным вводом.
+func RunWithInput(
+	ctx context.Context,
+	args []string,
+	input io.Reader,
+	output io.Writer,
+	errorOutput io.Writer,
+	info buildinfo.Info,
+) error {
+	return runWithInput(
+		ctx,
+		args,
+		input,
+		output,
+		errorOutput,
+		info,
+		commandRunners{health: runHealth, register: runRegister},
+	)
 }
 
 func run(
@@ -43,6 +77,26 @@ func run(
 	info buildinfo.Info,
 	health healthRunner,
 ) error {
+	return runWithInput(
+		ctx,
+		args,
+		strings.NewReader(""),
+		output,
+		errorOutput,
+		info,
+		commandRunners{health: health, register: runRegister},
+	)
+}
+
+func runWithInput(
+	ctx context.Context,
+	args []string,
+	input io.Reader,
+	output io.Writer,
+	errorOutput io.Writer,
+	info buildinfo.Info,
+	runners commandRunners,
+) error {
 	previousVersionPrinter := cli.VersionPrinter
 	cli.VersionPrinter = func(command *cli.Command) {
 		_ = printVersion(command.Root().Writer, info)
@@ -51,16 +105,18 @@ func run(
 		cli.VersionPrinter = previousVersionPrinter
 	}()
 
-	command := newCommand(output, errorOutput, info, health)
+	command := newCommand(input, output, errorOutput, info, runners.health, runners.register)
 
 	return command.Run(ctx, args)
 }
 
 func newCommand(
+	input io.Reader,
 	output io.Writer,
 	errorOutput io.Writer,
 	info buildinfo.Info,
 	health healthRunner,
+	register registerRunner,
 ) *cli.Command {
 	defaults := config.Load()
 	version := info.Version
@@ -89,6 +145,7 @@ func newCommand(
 		},
 		Commands: []*cli.Command{
 			newHealthCommand(health),
+			newRegisterCommand(input, register),
 		},
 		Action: func(_ context.Context, command *cli.Command) error {
 			return cli.ShowRootCommandHelp(command)

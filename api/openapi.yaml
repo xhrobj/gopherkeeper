@@ -3,11 +3,17 @@ openapi: 3.0.3
 info:
   title: GophKeeper API
   description: API взаимодействия CLI-клиента и Сервера GophKeeper.
-  version: 0.1.0
+  version: 0.2.0
 
 servers:
   - url: https://localhost:8080
     description: Локальное окружение
+
+tags:
+  - name: Technical
+    description: Технические операции Сервера.
+  - name: Authentication
+    description: Регистрация и аутентификация пользователей.
 
 paths:
   /health:
@@ -35,10 +41,106 @@ paths:
               example:
                 status: unavailable
 
+  /api/v1/auth/register:
+    post:
+      summary: Зарегистрировать пользователя
+      description: >-
+        Создаёт нового пользователя. Перед проверкой login очищается от
+        пробельных символов по краям, а ASCII-буквы A-Z переводятся в нижний
+        регистр. После канонизации login должен содержать от 3 до 32
+        ASCII-символов. Password должен содержать от 3 до 64 печатных
+        ASCII-символов от ! до ~ без пробелов. Password не возвращается в
+        ответе. Максимальный размер тела запроса — 4 MiB.
+      operationId: registerUser
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              login: alice
+              password: correct-horse-battery-staple
+      responses:
+        '201':
+          description: Пользователь зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+              example:
+                id: 42
+                login: alice
+                created_at: '2026-07-01T12:00:00Z'
+        '400':
+          description: Некорректный JSON, login или password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidRequest:
+                  summary: Некорректные регистрационные данные
+                  value:
+                    code: invalid_request
+                    message: invalid registration data
+        '409':
+          description: Login уже зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                loginAlreadyExists:
+                  summary: Конфликт канонического login
+                  value:
+                    code: login_already_exists
+                    message: login is already registered
+        '413':
+          description: Тело запроса превышает допустимый размер
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                payloadTooLarge:
+                  summary: Превышен общий лимит тела запроса
+                  value:
+                    code: payload_too_large
+                    message: request body is too large
+        '415':
+          description: Запрос передан не в формате JSON
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                unsupportedMediaType:
+                  summary: Неподдерживаемый Content-Type
+                  value:
+                    code: unsupported_media_type
+                    message: content type must be application/json
+        '500':
+          description: Внутренняя ошибка Сервера
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                internalError:
+                  summary: Внутренняя ошибка без раскрытия деталей
+                  value:
+                    code: internal_error
+                    message: internal server error
+
 components:
   schemas:
     HealthResponse:
       type: object
+      additionalProperties: false
       required:
         - status
       properties:
@@ -47,3 +149,72 @@ components:
           enum:
             - ok
             - unavailable
+
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - login
+        - password
+      properties:
+        login:
+          type: string
+          description: >-
+            Login пользователя. Сервер удаляет пробельные символы по краям и
+            переводит ASCII-буквы A-Z в нижний регистр. После канонизации
+            значение должно содержать от 3 до 32 ASCII-символов: букв, цифр,
+            точки, подчёркивания и дефиса. Первый символ должен быть буквой или
+            цифрой.
+          example: alice
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 3
+          maxLength: 64
+          pattern: '^[!-~]{3,64}$'
+          description: >-
+            Password длиной от 3 до 64 символов. Разрешены печатные
+            ASCII-символы от ! до ~; пробелы и другие Unicode-символы запрещены.
+          example: correct-horse-battery-staple
+
+    UserResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - login
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+          minimum: 1
+          example: 42
+        login:
+          type: string
+          description: Канонический login пользователя в нижнем регистре.
+          minLength: 3
+          maxLength: 32
+          pattern: '^[a-z0-9][a-z0-9._-]{2,31}$'
+          example: alice
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-07-01T12:00:00Z'
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Стабильный машиночитаемый код ошибки.
+          example: invalid_request
+        message:
+          type: string
+          description: Безопасное сообщение без внутренних деталей и секретов.
+          example: invalid registration data

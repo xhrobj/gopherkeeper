@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestPrintBuildInfo(t *testing.T) {
+func TestPrint(t *testing.T) {
 	var buf bytes.Buffer
 
 	if err := Print(&buf, Info{
@@ -26,7 +26,7 @@ func TestPrintBuildInfo(t *testing.T) {
 	}
 }
 
-func TestPrintBuildInfoWithEmptyValues(t *testing.T) {
+func TestPrint_WithEmptyValues(t *testing.T) {
 	var buf bytes.Buffer
 
 	if err := Print(&buf, Info{}); err != nil {

@@ -95,7 +95,7 @@ func TestParse(t *testing.T) {
 	}
 }
 
-func TestParseReturnsRequiredValueError(t *testing.T) {
+func TestParse_ReturnsRequiredValueError(t *testing.T) {
 	tests := []struct {
 		name      string
 		args      []string
@@ -143,7 +143,7 @@ func TestParseReturnsRequiredValueError(t *testing.T) {
 	}
 }
 
-func TestParseReturnsFlagError(t *testing.T) {
+func TestParse_ReturnsFlagError(t *testing.T) {
 	setEnvironment(t, Config{})
 
 	_, err := Parse([]string{"--unknown-flag"})

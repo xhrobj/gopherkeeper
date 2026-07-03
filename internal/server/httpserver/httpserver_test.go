@@ -8,6 +8,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 type databasePingerFunc func(context.Context) error
@@ -38,9 +41,12 @@ func TestHealthHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := NewHandler(databasePingerFunc(func(context.Context) error {
-				return tt.pingErr
-			}))
+			handler := NewHandler(
+				databasePingerFunc(func(context.Context) error {
+					return tt.pingErr
+				}),
+				unusedUserRegisterer(t),
+			)
 
 			request := httptest.NewRequest(http.MethodGet, "/health", nil)
 			response := httptest.NewRecorder()
@@ -84,10 +90,13 @@ func assertHealthResponse(
 	}
 }
 
-func TestHealthHandlerRejectsUnsupportedMethod(t *testing.T) {
-	handler := NewHandler(databasePingerFunc(func(context.Context) error {
-		return nil
-	}))
+func TestHealthHandler_RejectsUnsupportedMethod(t *testing.T) {
+	handler := NewHandler(
+		databasePingerFunc(func(context.Context) error {
+			return nil
+		}),
+		unusedUserRegisterer(t),
+	)
 
 	request := httptest.NewRequest(http.MethodPost, "/health", nil)
 	response := httptest.NewRecorder()
@@ -97,4 +106,51 @@ func TestHealthHandlerRejectsUnsupportedMethod(t *testing.T) {
 	if response.Code != http.StatusMethodNotAllowed {
 		t.Errorf("status code = %d, want %d", response.Code, http.StatusMethodNotAllowed)
 	}
+}
+
+func TestNewHandler_RoutesRegistration(t *testing.T) {
+	registrarCalled := false
+	handler := NewHandler(
+		databasePingerFunc(func(context.Context) error {
+			return nil
+		}),
+		userRegistererFunc(func(
+			context.Context,
+			string,
+			string,
+		) (model.User, error) {
+			registrarCalled = true
+
+			return model.User{
+				ID:        42,
+				Login:     "alice",
+				CreatedAt: time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC),
+			}, nil
+		}),
+	)
+
+	request := newRegistrationRequest(t, registrationRequestBody(t, "alice"))
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if !registrarCalled {
+		t.Fatal("registration service was not called")
+	}
+	if response.Code != http.StatusCreated {
+		t.Errorf("status code = %d, want %d", response.Code, http.StatusCreated)
+	}
+}
+
+func unusedUserRegisterer(t *testing.T) UserRegisterer {
+	t.Helper()
+
+	return userRegistererFunc(func(
+		context.Context,
+		string,
+		string,
+	) (model.User, error) {
+		t.Fatal("registration service must not be called")
+		return model.User{}, nil
+	})
 }
