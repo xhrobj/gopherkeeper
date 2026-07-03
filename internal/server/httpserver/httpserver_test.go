@@ -129,7 +129,7 @@ func TestNewHandler_RoutesRegistration(t *testing.T) {
 		}),
 	)
 
-	request := newRegistrationRequest(t, registrationRequestBody("alice"))
+	request := newRegistrationRequest(t, registrationRequestBody(t, "alice"))
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, request)

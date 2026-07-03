@@ -160,7 +160,7 @@ func TestRegisterHandler_MapsServiceErrors(t *testing.T) {
 				return model.User{}, tt.serviceErr
 			})
 
-			request := newRegistrationRequest(t, registrationRequestBody("eve"))
+			request := newRegistrationRequest(t, registrationRequestBody(t, "eve"))
 			response := httptest.NewRecorder()
 
 			registerHandler(registrar).ServeHTTP(response, request)
@@ -190,7 +190,7 @@ func TestRegisterHandler_RejectsInvalidRequest(t *testing.T) {
 	}{
 		{
 			name:        "missing Content-Type",
-			body:        registrationRequestBody("eve"),
+			body:        registrationRequestBody(t, "eve"),
 			wantStatus:  http.StatusUnsupportedMediaType,
 			wantCode:    errorCodeUnsupportedMediaType,
 			wantMessage: errorMessageUnsupportedMediaType,
@@ -198,7 +198,7 @@ func TestRegisterHandler_RejectsInvalidRequest(t *testing.T) {
 		{
 			name:        "unsupported Content-Type",
 			contentType: "text/plain",
-			body:        registrationRequestBody("eve"),
+			body:        registrationRequestBody(t, "eve"),
 			wantStatus:  http.StatusUnsupportedMediaType,
 			wantCode:    errorCodeUnsupportedMediaType,
 			wantMessage: errorMessageUnsupportedMediaType,
@@ -229,8 +229,8 @@ func TestRegisterHandler_RejectsInvalidRequest(t *testing.T) {
 		{
 			name:        "multiple JSON values",
 			contentType: "application/json",
-			body: registrationRequestBody("eve") +
-				`{"login":"eve","password":"` + testRegistrationPassword + `"}`,
+			body: registrationRequestBody(t, "eve") +
+				registrationRequestBody(t, "eve"),
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
 			wantMessage: errorMessageInvalidRequest,
@@ -311,8 +311,18 @@ func newRegistrationRequest(t *testing.T, body string) *http.Request {
 	return request
 }
 
-func registrationRequestBody(login string) string {
-	return `{"login":"` + login + `","password":"` + testRegistrationPassword + `"}`
+func registrationRequestBody(t *testing.T, login string) string {
+	t.Helper()
+
+	body, err := json.Marshal(registerRequest{
+		Login:    login,
+		Password: testRegistrationPassword,
+	})
+	if err != nil {
+		t.Fatalf("encode registration request: %v", err)
+	}
+
+	return string(body)
 }
 
 func assertErrorResponse(

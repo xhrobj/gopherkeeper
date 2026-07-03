@@ -5,15 +5,13 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-const (
-	uniqueViolationCode        = "23505"
-	usersLoginUniqueConstraint = "users_login_unique"
-)
+const usersLoginUniqueConstraint = "users_login_unique"
 
 // UserRepository является PostgreSQL-адаптером репозитория пользователей.
 type UserRepository struct {
@@ -44,7 +42,7 @@ func (r *UserRepository) Create(ctx context.Context, login string, passwordHash 
 	var postgresError *pgconn.PgError
 
 	if errors.As(err, &postgresError) &&
-		postgresError.Code == uniqueViolationCode &&
+		postgresError.Code == pgerrcode.UniqueViolation &&
 		postgresError.ConstraintName == usersLoginUniqueConstraint {
 
 		return model.User{}, fmt.Errorf("create user: %w", model.ErrLoginAlreadyExists)
