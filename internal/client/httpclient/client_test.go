@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func TestHealthWithAdditionalCA(t *testing.T) {
+func TestClient_HealthWithAdditionalCA(t *testing.T) {
 	server := newHealthTLSServer(t, http.StatusOK, `{"status":"ok"}`)
 	defer server.Close()
 
@@ -30,7 +30,7 @@ func TestHealthWithAdditionalCA(t *testing.T) {
 	}
 }
 
-func TestHealthRejectsUntrustedCertificate(t *testing.T) {
+func TestClient_HealthRejectsUntrustedCertificate(t *testing.T) {
 	server := newHealthTLSServer(t, http.StatusOK, `{"status":"ok"}`)
 	defer server.Close()
 
@@ -45,7 +45,7 @@ func TestHealthRejectsUntrustedCertificate(t *testing.T) {
 	}
 }
 
-func TestHealthReturnsStatusError(t *testing.T) {
+func TestClient_HealthReturnsStatusError(t *testing.T) {
 	server := newHealthTLSServer(
 		t,
 		http.StatusServiceUnavailable,
@@ -68,7 +68,7 @@ func TestHealthReturnsStatusError(t *testing.T) {
 	}
 }
 
-func TestNewReturnsCertificateErrors(t *testing.T) {
+func TestNew_ReturnsCertificateErrors(t *testing.T) {
 	t.Run("missing file", func(t *testing.T) {
 		_, err := New("localhost:8080", "missing-ca.pem")
 		if err == nil {
@@ -135,7 +135,7 @@ func serverAddress(server *httptest.Server) string {
 	return strings.TrimPrefix(server.URL, "https://")
 }
 
-func TestHealthReturnsDecodeError(t *testing.T) {
+func TestClient_HealthReturnsDecodeError(t *testing.T) {
 	server := newHealthTLSServer(
 		t,
 		http.StatusOK,

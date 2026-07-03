@@ -122,7 +122,7 @@ func TestNewHandler_RoutesRegistration(t *testing.T) {
 			registrarCalled = true
 
 			return model.User{
-				ID:        1,
+				ID:        42,
 				Login:     "alice",
 				CreatedAt: time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC),
 			}, nil

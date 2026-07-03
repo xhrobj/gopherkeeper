@@ -21,6 +21,12 @@ func TestValidateRegistrationCredentials(t *testing.T) {
 			wantLogin: "alice",
 		},
 		{
+			name:      "surrounding whitespace",
+			login:     "\t\u00a0 Alice \n",
+			password:  testRegistrationPassword,
+			wantLogin: "alice",
+		},
+		{
 			name:      "allowed login separators",
 			login:     "king.of-andals_1st-men",
 			password:  testRegistrationPassword,

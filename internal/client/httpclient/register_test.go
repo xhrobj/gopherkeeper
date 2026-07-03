@@ -45,7 +45,7 @@ func TestClient_Register(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		if err := json.NewEncoder(w).Encode(registerResponse{
-			ID:        1,
+			ID:        42,
 			Login:     "alice",
 			CreatedAt: createdAt,
 		}); err != nil {
@@ -64,8 +64,8 @@ func TestClient_Register(t *testing.T) {
 		t.Fatalf("Register() error = %v", err)
 	}
 
-	if user.ID != 1 {
-		t.Errorf("user ID = %d, want 1", user.ID)
+	if user.ID != 42 {
+		t.Errorf("user ID = %d, want 42", user.ID)
 	}
 	if user.Login != "alice" {
 		t.Errorf("user login = %q, want alice", user.Login)
