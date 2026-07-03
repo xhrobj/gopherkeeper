@@ -33,7 +33,7 @@ var (
 	ErrPasswordTooLong = errors.New("password too long")
 )
 
-func validateRegistrationCredentials(login, password string) (string, error) {
+func validateCredentials(login, password string) (string, error) {
 	canonicalLogin := canonicalizeLogin(login)
 	if err := validateLogin(canonicalLogin); err != nil {
 		return "", err

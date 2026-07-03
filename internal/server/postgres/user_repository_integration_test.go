@@ -80,6 +80,62 @@ func TestIntegration_UserRepositoryCreate(t *testing.T) {
 	}
 }
 
+func TestIntegration_UserRepositoryRead(t *testing.T) {
+	dsn := os.Getenv("DATABASE_DSN")
+	if dsn == "" {
+		t.Fatal("DATABASE_DSN is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), repositoryIntegrationTestTimeout)
+	defer cancel()
+
+	pool := openMigratedTestDatabase(t, ctx, dsn)
+	repository := postgres.NewUserRepository(pool)
+	passwordHash := []byte("opaque-password-hash")
+
+	createdUser, err := repository.Create(ctx, "alice", passwordHash)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	foundByLogin, foundPasswordHash, err := repository.FindByLogin(ctx, "alice")
+	if err != nil {
+		t.Fatalf("FindByLogin() error = %v", err)
+	}
+
+	if foundByLogin.ID != createdUser.ID {
+		t.Errorf("FindByLogin() user ID = %d, want %d", foundByLogin.ID, createdUser.ID)
+	}
+	if foundByLogin.Login != createdUser.Login {
+		t.Errorf("FindByLogin() login = %q, want %q", foundByLogin.Login, createdUser.Login)
+	}
+	if !foundByLogin.CreatedAt.Equal(createdUser.CreatedAt) {
+		t.Errorf("FindByLogin() created_at = %v, want %v", foundByLogin.CreatedAt, createdUser.CreatedAt)
+	}
+	if !bytes.Equal(foundPasswordHash, passwordHash) {
+		t.Error("FindByLogin() password hash differs from repository input")
+	}
+
+	foundByID, err := repository.FindByID(ctx, createdUser.ID)
+	if err != nil {
+		t.Fatalf("FindByID() error = %v", err)
+	}
+
+	if foundByID != createdUser {
+		t.Errorf("FindByID() user = %+v, want %+v", foundByID, createdUser)
+	}
+
+	_, _, err = repository.FindByLogin(ctx, "eve")
+	if !errors.Is(err, model.ErrUserNotFound) {
+		t.Fatalf("FindByLogin() missing user error = %v, want ErrUserNotFound", err)
+	}
+
+	_, err = repository.FindByID(ctx, 69)
+	if !errors.Is(err, model.ErrUserNotFound) {
+		t.Fatalf("FindByID() missing user error = %v, want ErrUserNotFound", err)
+	}
+}
+
 func openMigratedTestDatabase(t *testing.T, ctx context.Context, dsn string) *pgxpool.Pool {
 	t.Helper()
 

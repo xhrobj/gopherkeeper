@@ -42,7 +42,7 @@ func (s *RegistrationService) Register(
 	login string,
 	password string,
 ) (model.User, error) {
-	canonicalLogin, err := validateRegistrationCredentials(login, password)
+	canonicalLogin, err := validateCredentials(login, password)
 	if err != nil {
 		return model.User{}, err
 	}
