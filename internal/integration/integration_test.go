@@ -3,6 +3,7 @@
 package integration_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -29,7 +30,10 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
 )
 
-const integrationTestTimeout = 30 * time.Second
+const (
+	integrationTestTimeout   = 30 * time.Second
+	testRegistrationPassword = "correct-horse-battery-staple"
+)
 
 func openPostgres(t *testing.T, ctx context.Context, dsn string) *pgxpool.Pool {
 	t.Helper()
@@ -230,4 +234,36 @@ func newServerHandler(pool *pgxpool.Pool) http.Handler {
 	registrationService := service.NewRegistrationService(userRepository, passwordManager)
 
 	return httpserver.NewHandler(pool, registrationService)
+}
+
+func assertStoredRegistration(
+	t *testing.T,
+	ctx context.Context,
+	pool *pgxpool.Pool,
+) {
+	t.Helper()
+
+	var storedLogin string
+	var passwordHash []byte
+	if err := pool.QueryRow(
+		ctx,
+		`SELECT login, password_hash
+		 FROM gopherkeeper.users
+		 WHERE login = $1`,
+		"alice",
+	).Scan(&storedLogin, &passwordHash); err != nil {
+		t.Fatalf("read stored user: %v", err)
+	}
+
+	if storedLogin != "alice" {
+		t.Errorf("stored login = %q, want alice", storedLogin)
+	}
+	if bytes.Equal(passwordHash, []byte(testRegistrationPassword)) {
+		t.Error("PostgreSQL contains plaintext password")
+	}
+
+	passwordManager := auth.NewBcryptPasswordManager()
+	if err := passwordManager.Check(testRegistrationPassword, passwordHash); err != nil {
+		t.Errorf("stored password hash does not match password: %v", err)
+	}
 }

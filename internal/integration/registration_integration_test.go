@@ -15,12 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/xhrobj/gopherkeeper/internal/server/auth"
 	"github.com/xhrobj/gopherkeeper/internal/server/migration"
 )
-
-const testRegistrationPassword = "correct-horse-battery-staple"
 
 type registrationResponse struct {
 	ID        int64     `json:"id"`
@@ -198,36 +194,4 @@ func registerUser(
 	}
 
 	return response.StatusCode, responseBody
-}
-
-func assertStoredRegistration(
-	t *testing.T,
-	ctx context.Context,
-	pool *pgxpool.Pool,
-) {
-	t.Helper()
-
-	var storedLogin string
-	var passwordHash []byte
-	if err := pool.QueryRow(
-		ctx,
-		`SELECT login, password_hash
-		 FROM gopherkeeper.users
-		 WHERE login = $1`,
-		"alice",
-	).Scan(&storedLogin, &passwordHash); err != nil {
-		t.Fatalf("read stored user: %v", err)
-	}
-
-	if storedLogin != "alice" {
-		t.Errorf("stored login = %q, want alice", storedLogin)
-	}
-	if bytes.Equal(passwordHash, []byte(testRegistrationPassword)) {
-		t.Error("PostgreSQL contains plaintext password")
-	}
-
-	passwordManager := auth.NewBcryptPasswordManager()
-	if err := passwordManager.Check(testRegistrationPassword, passwordHash); err != nil {
-		t.Errorf("stored password hash does not match password: %v", err)
-	}
 }

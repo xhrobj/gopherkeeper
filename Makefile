@@ -5,6 +5,7 @@
 	db-up db-down db-connect db-erase \
 	run-server run-client \
 	run-client-health \
+	run-client-register \
 	test-all test test-race test-integration \
 	coverage \
 	vet lint ci \
@@ -27,7 +28,7 @@ LOG_LEVEL ?= info
 export LOG_LEVEL
 
 # данные о сборке подставляются в бинарники Клиента и Сервера через ldflags
-BUILD_VERSION ?= v0.1.0
+BUILD_VERSION ?= v0.2.0
 BUILD_DATE ?= $(shell date +%Y-%m-%d)
 BUILD_COMMIT ?= $(shell git rev-parse --short HEAD)
 
@@ -140,6 +141,17 @@ run-client: build-client
 # собрать и запустить Клиент и выполнить health-запрос к Серверу
 run-client-health: gen-tls-certs build-client
 	$(CLIENT) health \
+		-a $(ADDRESS) \
+		--ca-cert $(TLS_CA_CERT)
+
+# собрать и запустить Клиент для регистрации пользователя
+# LOGIN нужно передать через окружение или командную строку make
+# примеры:
+# - `LOGIN=bob make run-client-register`
+# - `make run-client-register LOGIN=bob`
+run-client-register: gen-tls-certs build-client
+	$(CLIENT) register \
+		--login $(LOGIN) \
 		-a $(ADDRESS) \
 		--ca-cert $(TLS_CA_CERT)
 
