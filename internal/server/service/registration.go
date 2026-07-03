@@ -7,8 +7,8 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-// UserRepository описывает хранение зарегистрированных пользователей.
-type UserRepository interface {
+// UserCreator создаёт зарегистрированных пользователей.
+type UserCreator interface {
 	// Create сохраняет пользователя с подготовленным хэшем пароля.
 	Create(ctx context.Context, login string, passwordHash []byte) (model.User, error)
 }
@@ -21,13 +21,13 @@ type PasswordHasher interface {
 
 // RegistrationService реализует сценарий регистрации пользователя.
 type RegistrationService struct {
-	users     UserRepository
+	users     UserCreator
 	passwords PasswordHasher
 }
 
 // NewRegistrationService создаёт сервис регистрации пользователя.
 func NewRegistrationService(
-	users UserRepository,
+	users UserCreator,
 	passwords PasswordHasher,
 ) *RegistrationService {
 	return &RegistrationService{

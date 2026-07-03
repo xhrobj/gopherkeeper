@@ -25,6 +25,11 @@ const banner = `
 
 type healthRunner func(context.Context, config.Config, io.Writer) error
 
+type commandRunners struct {
+	health   healthRunner
+	register registerRunner
+}
+
 // Run запускает командный интерфейс Клиента.
 func Run(
 	ctx context.Context,
@@ -33,7 +38,15 @@ func Run(
 	errorOutput io.Writer,
 	info buildinfo.Info,
 ) error {
-	return runWithInput(ctx, args, os.Stdin, output, errorOutput, info, runHealth, runRegister)
+	return runWithInput(
+		ctx,
+		args,
+		os.Stdin,
+		output,
+		errorOutput,
+		info,
+		commandRunners{health: runHealth, register: runRegister},
+	)
 }
 
 // RunWithInput запускает командный интерфейс с заданным стандартным вводом.
@@ -45,7 +58,15 @@ func RunWithInput(
 	errorOutput io.Writer,
 	info buildinfo.Info,
 ) error {
-	return runWithInput(ctx, args, input, output, errorOutput, info, runHealth, runRegister)
+	return runWithInput(
+		ctx,
+		args,
+		input,
+		output,
+		errorOutput,
+		info,
+		commandRunners{health: runHealth, register: runRegister},
+	)
 }
 
 func run(
@@ -63,8 +84,7 @@ func run(
 		output,
 		errorOutput,
 		info,
-		health,
-		runRegister,
+		commandRunners{health: health, register: runRegister},
 	)
 }
 
@@ -75,8 +95,7 @@ func runWithInput(
 	output io.Writer,
 	errorOutput io.Writer,
 	info buildinfo.Info,
-	health healthRunner,
-	register registerRunner,
+	runners commandRunners,
 ) error {
 	previousVersionPrinter := cli.VersionPrinter
 	cli.VersionPrinter = func(command *cli.Command) {
@@ -86,7 +105,7 @@ func runWithInput(
 		cli.VersionPrinter = previousVersionPrinter
 	}()
 
-	command := newCommand(input, output, errorOutput, info, health, register)
+	command := newCommand(input, output, errorOutput, info, runners.health, runners.register)
 
 	return command.Run(ctx, args)
 }

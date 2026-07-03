@@ -35,21 +35,23 @@ func TestRegisterCommand_ConfigurationAndInput(t *testing.T) {
 		&output,
 		io.Discard,
 		testBuildInfo,
-		unexpectedHealthRunner(t),
-		func(
-			_ context.Context,
-			cfg config.Config,
-			commandInput io.Reader,
-			_ io.Writer,
-			_ io.Writer,
-			login string,
-			passwordStdin bool,
-		) error {
-			gotConfig = cfg
-			gotInput = commandInput
-			gotLogin = login
-			gotPasswordStdin = passwordStdin
-			return nil
+		commandRunners{
+			health: unexpectedHealthRunner(t),
+			register: func(
+				_ context.Context,
+				cfg config.Config,
+				commandInput io.Reader,
+				_ io.Writer,
+				_ io.Writer,
+				login string,
+				passwordStdin bool,
+			) error {
+				gotConfig = cfg
+				gotInput = commandInput
+				gotLogin = login
+				gotPasswordStdin = passwordStdin
+				return nil
+			},
 		},
 	)
 	if err != nil {
@@ -82,18 +84,20 @@ func TestRegisterCommand_RequiresLogin(t *testing.T) {
 		io.Discard,
 		io.Discard,
 		testBuildInfo,
-		unexpectedHealthRunner(t),
-		func(
-			context.Context,
-			config.Config,
-			io.Reader,
-			io.Writer,
-			io.Writer,
-			string,
-			bool,
-		) error {
-			t.Fatal("register runner was called without login")
-			return nil
+		commandRunners{
+			health: unexpectedHealthRunner(t),
+			register: func(
+				context.Context,
+				config.Config,
+				io.Reader,
+				io.Writer,
+				io.Writer,
+				string,
+				bool,
+			) error {
+				t.Fatal("register runner was called without login")
+				return nil
+			},
 		},
 	)
 	if err == nil {
@@ -111,18 +115,20 @@ func TestRegisterCommand_HelpDoesNotOfferPasswordFlag(t *testing.T) {
 		&output,
 		io.Discard,
 		testBuildInfo,
-		unexpectedHealthRunner(t),
-		func(
-			context.Context,
-			config.Config,
-			io.Reader,
-			io.Writer,
-			io.Writer,
-			string,
-			bool,
-		) error {
-			t.Fatal("register runner was called for help")
-			return nil
+		commandRunners{
+			health: unexpectedHealthRunner(t),
+			register: func(
+				context.Context,
+				config.Config,
+				io.Reader,
+				io.Writer,
+				io.Writer,
+				string,
+				bool,
+			) error {
+				t.Fatal("register runner was called for help")
+				return nil
+			},
 		},
 	)
 	if err != nil {

@@ -20,8 +20,8 @@ type DatabasePinger interface {
 	Ping(context.Context) error
 }
 
-// UserRegistrar регистрирует нового пользователя.
-type UserRegistrar interface {
+// UserRegisterer регистрирует нового пользователя.
+type UserRegisterer interface {
 	Register(ctx context.Context, login, password string) (model.User, error)
 }
 
@@ -30,10 +30,10 @@ type healthResponse struct {
 }
 
 // NewHandler создаёт основной HTTP-handler Сервера.
-func NewHandler(database DatabasePinger, registrar UserRegistrar) http.Handler {
+func NewHandler(database DatabasePinger, registerer UserRegisterer) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(database))
-	mux.HandleFunc("POST /api/v1/auth/register", registerHandler(registrar))
+	mux.HandleFunc("POST /api/v1/auth/register", registerHandler(registerer))
 
 	return mux
 }

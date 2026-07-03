@@ -17,9 +17,9 @@ import (
 
 const testRegistrationPassword = "correct-horse-battery-staple"
 
-type userRegistrarFunc func(context.Context, string, string) (model.User, error)
+type userRegistererFunc func(context.Context, string, string) (model.User, error)
 
-func (f userRegistrarFunc) Register(
+func (f userRegistererFunc) Register(
 	ctx context.Context,
 	login string,
 	password string,
@@ -34,7 +34,7 @@ func TestRegisterHandler_CreatesUser(t *testing.T) {
 	var gotLogin string
 	var gotPassword string
 
-	registrar := userRegistrarFunc(func(
+	registrar := userRegistererFunc(func(
 		_ context.Context,
 		login string,
 		password string,
@@ -152,7 +152,7 @@ func TestRegisterHandler_MapsServiceErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			registrar := userRegistrarFunc(func(
+			registrar := userRegistererFunc(func(
 				context.Context,
 				string,
 				string,
@@ -239,7 +239,7 @@ func TestRegisterHandler_RejectsInvalidRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			registrar := userRegistrarFunc(func(
+			registrar := userRegistererFunc(func(
 				context.Context,
 				string,
 				string,
@@ -272,7 +272,7 @@ func TestRegisterHandler_RejectsInvalidRequest(t *testing.T) {
 }
 
 func TestRegisterHandler_RejectsOversizedBody(t *testing.T) {
-	registrar := userRegistrarFunc(func(
+	registrar := userRegistererFunc(func(
 		context.Context,
 		string,
 		string,

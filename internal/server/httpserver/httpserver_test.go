@@ -45,7 +45,7 @@ func TestHealthHandler(t *testing.T) {
 				databasePingerFunc(func(context.Context) error {
 					return tt.pingErr
 				}),
-				unusedUserRegistrar(t),
+				unusedUserRegisterer(t),
 			)
 
 			request := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -95,7 +95,7 @@ func TestHealthHandler_RejectsUnsupportedMethod(t *testing.T) {
 		databasePingerFunc(func(context.Context) error {
 			return nil
 		}),
-		unusedUserRegistrar(t),
+		unusedUserRegisterer(t),
 	)
 
 	request := httptest.NewRequest(http.MethodPost, "/health", nil)
@@ -114,7 +114,7 @@ func TestNewHandler_RoutesRegistration(t *testing.T) {
 		databasePingerFunc(func(context.Context) error {
 			return nil
 		}),
-		userRegistrarFunc(func(
+		userRegistererFunc(func(
 			context.Context,
 			string,
 			string,
@@ -142,10 +142,10 @@ func TestNewHandler_RoutesRegistration(t *testing.T) {
 	}
 }
 
-func unusedUserRegistrar(t *testing.T) UserRegistrar {
+func unusedUserRegisterer(t *testing.T) UserRegisterer {
 	t.Helper()
 
-	return userRegistrarFunc(func(
+	return userRegistererFunc(func(
 		context.Context,
 		string,
 		string,

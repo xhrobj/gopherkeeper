@@ -15,9 +15,9 @@ import (
 
 const testRegistrationPassword = "correct-horse-battery-staple"
 
-type userRegistrarFunc func(context.Context, string, string) (model.User, error)
+type userRegistererFunc func(context.Context, string, string) (model.User, error)
 
-func (f userRegistrarFunc) Register(
+func (f userRegistererFunc) Register(
 	ctx context.Context,
 	login string,
 	password string,
@@ -60,7 +60,7 @@ func TestExecuteRegistration_Interactive(t *testing.T) {
 
 	err := executeRegistration(
 		context.Background(),
-		userRegistrarFunc(func(_ context.Context, login, password string) (model.User, error) {
+		userRegistererFunc(func(_ context.Context, login, password string) (model.User, error) {
 			if login != " Alice " {
 				t.Errorf("login = %q, want %q", login, " Alice ")
 			}
@@ -71,9 +71,11 @@ func TestExecuteRegistration_Interactive(t *testing.T) {
 			return model.User{Login: "alice"}, nil
 		}),
 		passwords,
-		strings.NewReader(""),
-		&output,
-		io.Discard,
+		registrationStreams{
+			input:        strings.NewReader(""),
+			output:       &output,
+			promptOutput: io.Discard,
+		},
 		" Alice ",
 		false,
 	)
@@ -100,7 +102,7 @@ func TestExecuteRegistration_PasswordStdin(t *testing.T) {
 
 	err := executeRegistration(
 		context.Background(),
-		userRegistrarFunc(func(_ context.Context, login, password string) (model.User, error) {
+		userRegistererFunc(func(_ context.Context, login, password string) (model.User, error) {
 			if login != "bob" {
 				t.Errorf("login = %q, want bob", login)
 			}
@@ -111,9 +113,11 @@ func TestExecuteRegistration_PasswordStdin(t *testing.T) {
 			return model.User{Login: "bob"}, nil
 		}),
 		passwords,
-		strings.NewReader(testRegistrationPassword+"\n"),
-		io.Discard,
-		io.Discard,
+		registrationStreams{
+			input:        strings.NewReader(testRegistrationPassword + "\n"),
+			output:       io.Discard,
+			promptOutput: io.Discard,
+		},
 		"bob",
 		true,
 	)
@@ -137,14 +141,16 @@ func TestExecuteRegistration_RejectsMismatchedPasswords(t *testing.T) {
 
 	err := executeRegistration(
 		context.Background(),
-		userRegistrarFunc(func(context.Context, string, string) (model.User, error) {
+		userRegistererFunc(func(context.Context, string, string) (model.User, error) {
 			registrarCalled = true
 			return model.User{}, nil
 		}),
 		passwords,
-		strings.NewReader(""),
-		io.Discard,
-		io.Discard,
+		registrationStreams{
+			input:        strings.NewReader(""),
+			output:       io.Discard,
+			promptOutput: io.Discard,
+		},
 		"eve",
 		false,
 	)
@@ -171,13 +177,15 @@ func TestExecuteRegistration_ReturnsReadableDuplicateError(t *testing.T) {
 
 	err := executeRegistration(
 		context.Background(),
-		userRegistrarFunc(func(context.Context, string, string) (model.User, error) {
+		userRegistererFunc(func(context.Context, string, string) (model.User, error) {
 			return model.User{}, apiError
 		}),
 		&passwordReaderStub{lineValue: testRegistrationPassword},
-		strings.NewReader(testRegistrationPassword+"\n"),
-		io.Discard,
-		io.Discard,
+		registrationStreams{
+			input:        strings.NewReader(testRegistrationPassword + "\n"),
+			output:       io.Discard,
+			promptOutput: io.Discard,
+		},
 		"ALICE",
 		true,
 	)
@@ -200,13 +208,15 @@ func TestExecuteRegistration_DoesNotLeakPasswordInNetworkError(t *testing.T) {
 
 	err := executeRegistration(
 		context.Background(),
-		userRegistrarFunc(func(context.Context, string, string) (model.User, error) {
+		userRegistererFunc(func(context.Context, string, string) (model.User, error) {
 			return model.User{}, networkError
 		}),
 		&passwordReaderStub{lineValue: testRegistrationPassword},
-		strings.NewReader(testRegistrationPassword+"\n"),
-		io.Discard,
-		io.Discard,
+		registrationStreams{
+			input:        strings.NewReader(testRegistrationPassword + "\n"),
+			output:       io.Discard,
+			promptOutput: io.Discard,
+		},
 		"eve",
 		true,
 	)

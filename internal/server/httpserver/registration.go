@@ -48,7 +48,7 @@ type errorResponse struct {
 	Message string `json:"message"`
 }
 
-func registerHandler(registrar UserRegistrar) http.HandlerFunc {
+func registerHandler(registerer UserRegisterer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !isJSONContentType(r.Header.Get("Content-Type")) {
 			writeErrorResponse(
@@ -86,7 +86,7 @@ func registerHandler(registrar UserRegistrar) http.HandlerFunc {
 			return
 		}
 
-		user, err := registrar.Register(
+		user, err := registerer.Register(
 			r.Context(),
 			request.Login,
 			request.Password,

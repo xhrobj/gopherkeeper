@@ -56,22 +56,14 @@ func TestRun_RootHelpContainsBanner(t *testing.T) {
 				t.Fatalf("run() error = %v", err)
 			}
 
-			got := output.String()
-			if !strings.Contains(got, banner) {
-				t.Errorf("help does not contain banner: %q", got)
-			}
-
-			if !strings.Contains(got, "COMMANDS:") {
-				t.Errorf("help does not contain commands section: %q", got)
-			}
-
-			if !strings.Contains(got, "health") {
-				t.Errorf("help does not contain health command: %q", got)
-			}
-
-			if !strings.Contains(got, "register") {
-				t.Errorf("help does not contain register command: %q", got)
-			}
+			assertContainsAll(
+				t,
+				output.String(),
+				banner,
+				"COMMANDS:",
+				"health",
+				"register",
+			)
 		})
 	}
 }

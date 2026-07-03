@@ -22,8 +22,14 @@ type registerRunner func(
 	bool,
 ) error
 
-type userRegistrar interface {
+type userRegisterer interface {
 	Register(ctx context.Context, login, password string) (model.User, error)
+}
+
+type registrationStreams struct {
+	input        io.Reader
+	output       io.Writer
+	promptOutput io.Writer
 }
 
 func newRegisterCommand(input io.Reader, register registerRunner) *urfavecli.Command {
@@ -78,9 +84,11 @@ func runRegister(
 		ctx,
 		client,
 		terminalPasswordReader{},
-		input,
-		output,
-		promptOutput,
+		registrationStreams{
+			input:        input,
+			output:       output,
+			promptOutput: promptOutput,
+		},
 		login,
 		passwordStdin,
 	)
@@ -88,25 +96,23 @@ func runRegister(
 
 func executeRegistration(
 	ctx context.Context,
-	registrar userRegistrar,
+	registerer userRegisterer,
 	passwords passwordReader,
-	input io.Reader,
-	output io.Writer,
-	promptOutput io.Writer,
+	streams registrationStreams,
 	login string,
 	passwordStdin bool,
 ) error {
 	password, err := readRegistrationPassword(
 		passwords,
-		input,
-		promptOutput,
+		streams.input,
+		streams.promptOutput,
 		passwordStdin,
 	)
 	if err != nil {
 		return err
 	}
 
-	user, err := registrar.Register(ctx, login, password)
+	user, err := registerer.Register(ctx, login, password)
 	if err != nil {
 		var apiError *httpclient.APIError
 		if errors.As(err, &apiError) && apiError.Code == "login_already_exists" {
@@ -116,7 +122,7 @@ func executeRegistration(
 		return fmt.Errorf("register user: %w", err)
 	}
 
-	if _, err := fmt.Fprintf(output, "User %s registered successfully.\n", user.Login); err != nil {
+	if _, err := fmt.Fprintf(streams.output, "User %s registered successfully.\n", user.Login); err != nil {
 		return fmt.Errorf("write registration result: %w", err)
 	}
 
