@@ -64,6 +64,7 @@ func TestRun_RootHelpContainsBanner(t *testing.T) {
 				"health",
 				"register",
 				"login",
+				"whoami",
 			)
 		})
 	}
@@ -281,6 +282,15 @@ func unexpectedRegisterRunner(t *testing.T) registerRunner {
 
 	return func(context.Context, config.Config, io.Reader, io.Writer, io.Writer, string, bool) error {
 		t.Fatal("register command must not run")
+		return nil
+	}
+}
+
+func unexpectedLoginRunner(t *testing.T) loginRunner {
+	t.Helper()
+
+	return func(context.Context, config.Config, io.Reader, io.Writer, io.Writer, string, bool) error {
+		t.Fatal("login command must not run")
 		return nil
 	}
 }

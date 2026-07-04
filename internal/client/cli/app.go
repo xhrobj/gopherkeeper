@@ -29,6 +29,7 @@ type commandRunners struct {
 	health   healthRunner
 	register registerRunner
 	login    loginRunner
+	whoami   whoamiRunner
 }
 
 // Run запускает командный интерфейс Клиента.
@@ -46,7 +47,7 @@ func Run(
 		output,
 		errorOutput,
 		info,
-		commandRunners{health: runHealth, register: runRegister, login: runLogin},
+		commandRunners{health: runHealth, register: runRegister, login: runLogin, whoami: runWhoami},
 	)
 }
 
@@ -66,7 +67,7 @@ func RunWithInput(
 		output,
 		errorOutput,
 		info,
-		commandRunners{health: runHealth, register: runRegister, login: runLogin},
+		commandRunners{health: runHealth, register: runRegister, login: runLogin, whoami: runWhoami},
 	)
 }
 
@@ -85,7 +86,7 @@ func run(
 		output,
 		errorOutput,
 		info,
-		commandRunners{health: health, register: runRegister, login: runLogin},
+		commandRunners{health: health, register: runRegister, login: runLogin, whoami: runWhoami},
 	)
 }
 
@@ -106,7 +107,7 @@ func runWithInput(
 		cli.VersionPrinter = previousVersionPrinter
 	}()
 
-	command := newCommand(input, output, errorOutput, info, runners.health, runners.register, runners.login)
+	command := newCommand(input, output, errorOutput, info, runners.health, runners.register, runners.login, runners.whoami)
 
 	return command.Run(ctx, args)
 }
@@ -119,6 +120,7 @@ func newCommand(
 	health healthRunner,
 	register registerRunner,
 	login loginRunner,
+	whoami whoamiRunner,
 ) *cli.Command {
 	defaults := config.Load()
 	version := info.Version
@@ -154,6 +156,7 @@ func newCommand(
 			newHealthCommand(health),
 			newRegisterCommand(input, register),
 			newLoginCommand(input, login),
+			newWhoamiCommand(whoami),
 		},
 		Action: func(_ context.Context, command *cli.Command) error {
 			return cli.ShowRootCommandHelp(command)
