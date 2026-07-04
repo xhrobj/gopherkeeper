@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
+	"github.com/xhrobj/gopherkeeper/internal/server/service"
 )
 
 const (
@@ -22,7 +23,14 @@ type DatabasePinger interface {
 
 // UserRegisterer регистрирует нового пользователя.
 type UserRegisterer interface {
+	// Register регистрирует нового пользователя.
 	Register(ctx context.Context, login, password string) (model.User, error)
+}
+
+// UserAuthenticator аутентифицирует пользователя и выпускает bearer token.
+type UserAuthenticator interface {
+	// Authenticate проверяет учётные данные пользователя.
+	Authenticate(ctx context.Context, login, password string) (service.AuthenticationResult, error)
 }
 
 type healthResponse struct {
@@ -30,10 +38,15 @@ type healthResponse struct {
 }
 
 // NewHandler создаёт основной HTTP-handler Сервера.
-func NewHandler(database DatabasePinger, registerer UserRegisterer) http.Handler {
+func NewHandler(
+	database DatabasePinger,
+	registerer UserRegisterer,
+	authenticator UserAuthenticator,
+) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(database))
 	mux.HandleFunc("POST /api/v1/auth/register", registerHandler(registerer))
+	mux.HandleFunc("POST /api/v1/auth/login", loginHandler(authenticator))
 
 	return mux
 }

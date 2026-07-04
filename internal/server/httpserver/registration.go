@@ -18,6 +18,7 @@ var errMultipleJSONValues = errors.New("request body must contain one JSON value
 
 const (
 	errorCodeInvalidRequest       = "invalid_request"
+	errorCodeInvalidCredentials   = "invalid_credentials"
 	errorCodeLoginAlreadyExists   = "login_already_exists"
 	errorCodePayloadTooLarge      = "payload_too_large"
 	errorCodeUnsupportedMediaType = "unsupported_media_type"
@@ -26,6 +27,8 @@ const (
 
 const (
 	errorMessageInvalidRequest       = "invalid registration data"
+	errorMessageInvalidLoginRequest  = "invalid login request"
+	errorMessageInvalidCredentials   = "invalid login or password"
 	errorMessageLoginAlreadyExists   = "login is already registered"
 	errorMessagePayloadTooLarge      = "request body is too large"
 	errorMessageUnsupportedMediaType = "content type must be application/json"

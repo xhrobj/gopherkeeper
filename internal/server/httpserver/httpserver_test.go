@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
+	"github.com/xhrobj/gopherkeeper/internal/server/service"
 )
 
 type databasePingerFunc func(context.Context) error
@@ -46,6 +47,7 @@ func TestHealthHandler(t *testing.T) {
 					return tt.pingErr
 				}),
 				unusedUserRegisterer(t),
+				unusedUserAuthenticator(t),
 			)
 
 			request := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -96,6 +98,7 @@ func TestHealthHandler_RejectsUnsupportedMethod(t *testing.T) {
 			return nil
 		}),
 		unusedUserRegisterer(t),
+		unusedUserAuthenticator(t),
 	)
 
 	request := httptest.NewRequest(http.MethodPost, "/health", nil)
@@ -127,6 +130,7 @@ func TestNewHandler_RoutesRegistration(t *testing.T) {
 				CreatedAt: time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC),
 			}, nil
 		}),
+		unusedUserAuthenticator(t),
 	)
 
 	request := newRegistrationRequest(t, registrationRequestBody(t, "alice"))
@@ -152,5 +156,57 @@ func unusedUserRegisterer(t *testing.T) UserRegisterer {
 	) (model.User, error) {
 		t.Fatal("registration service must not be called")
 		return model.User{}, nil
+	})
+}
+
+func TestNewHandler_RoutesLogin(t *testing.T) {
+	authenticatorCalled := false
+	handler := NewHandler(
+		databasePingerFunc(func(context.Context) error {
+			return nil
+		}),
+		unusedUserRegisterer(t),
+		userAuthenticatorFunc(func(
+			context.Context,
+			string,
+			string,
+		) (service.AuthenticationResult, error) {
+			authenticatorCalled = true
+
+			return service.AuthenticationResult{
+				AccessToken: "access-token",
+				ExpiresAt:   time.Date(2026, time.July, 4, 12, 15, 0, 0, time.UTC),
+				User: model.User{
+					ID:        42,
+					Login:     "alice",
+					CreatedAt: time.Date(2026, time.July, 4, 12, 0, 0, 0, time.UTC),
+				},
+			}, nil
+		}),
+	)
+
+	request := newLoginRequest(t, loginRequestBody(t, "alice"))
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if !authenticatorCalled {
+		t.Fatal("authentication service was not called")
+	}
+	if response.Code != http.StatusOK {
+		t.Errorf("status code = %d, want %d", response.Code, http.StatusOK)
+	}
+}
+
+func unusedUserAuthenticator(t *testing.T) UserAuthenticator {
+	t.Helper()
+
+	return userAuthenticatorFunc(func(
+		context.Context,
+		string,
+		string,
+	) (service.AuthenticationResult, error) {
+		t.Fatal("authentication service must not be called")
+		return service.AuthenticationResult{}, nil
 	})
 }

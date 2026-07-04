@@ -74,10 +74,16 @@ func run(ctx context.Context) error {
 
 	userRepository := postgres.NewUserRepository(pool)
 	passwordManager := auth.NewBcryptPasswordManager()
+	tokenManager := auth.NewJWTTokenManager(cfg.JWTSecret, cfg.JWTTTL)
 	registrationService := service.NewRegistrationService(userRepository, passwordManager)
+	authenticationService := service.NewAuthenticationService(
+		userRepository,
+		passwordManager,
+		tokenManager,
+	)
 
 	handler := httpserver.WithLogging(
-		httpserver.NewHandler(pool, registrationService),
+		httpserver.NewHandler(pool, registrationService, authenticationService),
 		lg,
 	)
 

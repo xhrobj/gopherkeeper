@@ -233,7 +233,33 @@ func newServerHandler(pool *pgxpool.Pool) http.Handler {
 	passwordManager := auth.NewBcryptPasswordManager()
 	registrationService := service.NewRegistrationService(userRepository, passwordManager)
 
-	return httpserver.NewHandler(pool, registrationService)
+	return httpserver.NewHandler(
+		pool,
+		registrationService,
+		unusedIntegrationAuthenticator,
+	)
+}
+
+var unusedIntegrationAuthenticator = integrationAuthenticatorFunc(func(
+	context.Context,
+	string,
+	string,
+) (service.AuthenticationResult, error) {
+	return service.AuthenticationResult{}, errors.New("unexpected authentication call")
+})
+
+type integrationAuthenticatorFunc func(
+	ctx context.Context,
+	login string,
+	password string,
+) (service.AuthenticationResult, error)
+
+func (f integrationAuthenticatorFunc) Authenticate(
+	ctx context.Context,
+	login string,
+	password string,
+) (service.AuthenticationResult, error) {
+	return f(ctx, login, password)
 }
 
 func assertStoredRegistration(
