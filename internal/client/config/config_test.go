@@ -7,6 +7,7 @@ func TestLoad(t *testing.T) {
 		name       string
 		envAddress string
 		envCACert  string
+		envSession string
 		want       Config
 	}{
 		{
@@ -19,9 +20,11 @@ func TestLoad(t *testing.T) {
 			name:       "environment",
 			envAddress: "localhost:8081",
 			envCACert:  "env-ca.pem",
+			envSession: "env-session.json",
 			want: Config{
-				Address:    "localhost:8081",
-				CACertFile: "env-ca.pem",
+				Address:     "localhost:8081",
+				CACertFile:  "env-ca.pem",
+				SessionFile: "env-session.json",
 			},
 		},
 	}
@@ -30,6 +33,7 @@ func TestLoad(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("ADDRESS", tt.envAddress)
 			t.Setenv("CA_CERT_FILE", tt.envCACert)
+			t.Setenv("SESSION_FILE", tt.envSession)
 
 			if got := Load(); got != tt.want {
 				t.Errorf("Load() = %+v, want %+v", got, tt.want)
