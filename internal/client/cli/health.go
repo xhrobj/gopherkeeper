@@ -15,12 +15,7 @@ func newHealthCommand(health healthRunner) *cli.Command {
 		Name:  "health",
 		Usage: "check Server availability",
 		Action: func(ctx context.Context, command *cli.Command) error {
-			cfg := config.Config{
-				Address:    command.String("address"),
-				CACertFile: command.String("ca-cert"),
-			}
-
-			return health(ctx, cfg, command.Root().Writer)
+			return health(ctx, configFromCommand(command), command.Root().Writer)
 		},
 	}
 }

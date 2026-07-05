@@ -5,14 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 
 	urfavecli "github.com/urfave/cli/v3"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
 	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
-	"github.com/xhrobj/gopherkeeper/internal/model"
+	"github.com/xhrobj/gopherkeeper/internal/client/session"
 )
 
-type registerRunner func(
+type loginRunner func(
 	context.Context,
 	config.Config,
 	io.Reader,
@@ -22,20 +23,24 @@ type registerRunner func(
 	bool,
 ) error
 
-type userRegisterer interface {
-	Register(ctx context.Context, login, password string) (model.User, error)
+type userLogger interface {
+	Login(ctx context.Context, login, password string) (httpclient.LoginResult, error)
 }
 
-type registrationStreams struct {
+type sessionSaver interface {
+	Save(stored session.Session) error
+}
+
+type loginStreams struct {
 	input        io.Reader
 	output       io.Writer
 	promptOutput io.Writer
 }
 
-func newRegisterCommand(input io.Reader, register registerRunner) *urfavecli.Command {
+func newLoginCommand(input io.Reader, login loginRunner) *urfavecli.Command {
 	return &urfavecli.Command{
-		Name:  "register",
-		Usage: "register a new user",
+		Name:  "login",
+		Usage: "authenticate user and save online session",
 		Flags: []urfavecli.Flag{
 			&urfavecli.StringFlag{
 				Name:     "login",
@@ -48,7 +53,7 @@ func newRegisterCommand(input io.Reader, register registerRunner) *urfavecli.Com
 			},
 		},
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			return register(
+			return login(
 				ctx,
 				configFromCommand(command),
 				input,
@@ -61,7 +66,7 @@ func newRegisterCommand(input io.Reader, register registerRunner) *urfavecli.Com
 	}
 }
 
-func runRegister(
+func runLogin(
 	ctx context.Context,
 	cfg config.Config,
 	input io.Reader,
@@ -75,29 +80,38 @@ func runRegister(
 		return err
 	}
 
-	return executeRegistration(
+	storage, err := session.NewFileStorage(cfg.SessionFile)
+	if err != nil {
+		return err
+	}
+
+	return executeLogin(
 		ctx,
 		client,
+		storage,
 		terminalPasswordReader{},
-		registrationStreams{
+		loginStreams{
 			input:        input,
 			output:       output,
 			promptOutput: promptOutput,
 		},
+		cfg.Address,
 		login,
 		passwordStdin,
 	)
 }
 
-func executeRegistration(
+func executeLogin(
 	ctx context.Context,
-	registerer userRegisterer,
+	logger userLogger,
+	sessions sessionSaver,
 	passwords passwordReader,
-	streams registrationStreams,
+	streams loginStreams,
+	serverAddress string,
 	login string,
 	passwordStdin bool,
 ) error {
-	password, err := readRegistrationPassword(
+	password, err := readLoginPassword(
 		passwords,
 		streams.input,
 		streams.promptOutput,
@@ -107,24 +121,34 @@ func executeRegistration(
 		return err
 	}
 
-	user, err := registerer.Register(ctx, login, password)
+	result, err := logger.Login(ctx, login, password)
 	if err != nil {
 		var apiError *httpclient.APIError
-		if errors.As(err, &apiError) && apiError.Code == "login_already_exists" {
-			return fmt.Errorf("login %q is already registered: %w", login, err)
+		if errors.As(err, &apiError) && apiError.StatusCode == http.StatusUnauthorized && apiError.Code == "invalid_credentials" {
+			return fmt.Errorf("invalid login or password: %w", err)
 		}
 
-		return fmt.Errorf("register user: %w", err)
+		return fmt.Errorf("login user: %w", err)
 	}
 
-	if _, err := fmt.Fprintf(streams.output, "User %s registered successfully.\n", user.Login); err != nil {
-		return fmt.Errorf("write registration result: %w", err)
+	if err := sessions.Save(session.Session{
+		ServerAddress: serverAddress,
+		AccessToken:   result.AccessToken,
+		TokenType:     result.TokenType,
+		ExpiresAt:     result.ExpiresAt,
+		User:          result.User,
+	}); err != nil {
+		return fmt.Errorf("save online session: %w", err)
+	}
+
+	if _, err := fmt.Fprintf(streams.output, "User %s logged in successfully.\n", result.User.Login); err != nil {
+		return fmt.Errorf("write login result: %w", err)
 	}
 
 	return nil
 }
 
-func readRegistrationPassword(
+func readLoginPassword(
 	passwords passwordReader,
 	input io.Reader,
 	promptOutput io.Writer,
@@ -134,19 +158,5 @@ func readRegistrationPassword(
 		return passwords.ReadLine(input)
 	}
 
-	password, err := passwords.ReadHidden(input, promptOutput, "Password: ")
-	if err != nil {
-		return "", err
-	}
-
-	repeatedPassword, err := passwords.ReadHidden(input, promptOutput, "Repeat password: ")
-	if err != nil {
-		return "", err
-	}
-
-	if password != repeatedPassword {
-		return "", errors.New("passwords do not match")
-	}
-
-	return password, nil
+	return passwords.ReadHidden(input, promptOutput, "Password: ")
 }

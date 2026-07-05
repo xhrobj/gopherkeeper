@@ -28,6 +28,7 @@ type healthRunner func(context.Context, config.Config, io.Writer) error
 type commandRunners struct {
 	health   healthRunner
 	register registerRunner
+	login    loginRunner
 }
 
 // Run запускает командный интерфейс Клиента.
@@ -45,7 +46,7 @@ func Run(
 		output,
 		errorOutput,
 		info,
-		commandRunners{health: runHealth, register: runRegister},
+		commandRunners{health: runHealth, register: runRegister, login: runLogin},
 	)
 }
 
@@ -65,7 +66,7 @@ func RunWithInput(
 		output,
 		errorOutput,
 		info,
-		commandRunners{health: runHealth, register: runRegister},
+		commandRunners{health: runHealth, register: runRegister, login: runLogin},
 	)
 }
 
@@ -84,7 +85,7 @@ func run(
 		output,
 		errorOutput,
 		info,
-		commandRunners{health: health, register: runRegister},
+		commandRunners{health: health, register: runRegister, login: runLogin},
 	)
 }
 
@@ -105,7 +106,7 @@ func runWithInput(
 		cli.VersionPrinter = previousVersionPrinter
 	}()
 
-	command := newCommand(input, output, errorOutput, info, runners.health, runners.register)
+	command := newCommand(input, output, errorOutput, info, runners.health, runners.register, runners.login)
 
 	return command.Run(ctx, args)
 }
@@ -117,6 +118,7 @@ func newCommand(
 	info buildinfo.Info,
 	health healthRunner,
 	register registerRunner,
+	login loginRunner,
 ) *cli.Command {
 	defaults := config.Load()
 	version := info.Version
@@ -142,14 +144,28 @@ func newCommand(
 				Usage: "path to an additional trusted CA certificate",
 				Value: defaults.CACertFile,
 			},
+			&cli.StringFlag{
+				Name:  "session-file",
+				Usage: "path to online session file",
+				Value: defaults.SessionFile,
+			},
 		},
 		Commands: []*cli.Command{
 			newHealthCommand(health),
 			newRegisterCommand(input, register),
+			newLoginCommand(input, login),
 		},
 		Action: func(_ context.Context, command *cli.Command) error {
 			return cli.ShowRootCommandHelp(command)
 		},
+	}
+}
+
+func configFromCommand(command *cli.Command) config.Config {
+	return config.Config{
+		Address:     command.String("address"),
+		CACertFile:  command.String("ca-cert"),
+		SessionFile: command.String("session-file"),
 	}
 }
 
