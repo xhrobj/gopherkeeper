@@ -33,6 +33,12 @@ type UserAuthenticator interface {
 	Authenticate(ctx context.Context, login, password string) (service.AuthenticationResult, error)
 }
 
+// CurrentUserReader возвращает публичные данные текущего пользователя.
+type CurrentUserReader interface {
+	// FindByID возвращает публичные данные пользователя по идентификатору.
+	FindByID(ctx context.Context, id int64) (model.User, error)
+}
+
 type healthResponse struct {
 	Status string `json:"status"`
 }
@@ -42,11 +48,17 @@ func NewHandler(
 	database DatabasePinger,
 	registerer UserRegisterer,
 	authenticator UserAuthenticator,
+	tokenValidator TokenValidator,
+	currentUserReader CurrentUserReader,
 ) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(database))
 	mux.HandleFunc("POST /api/v1/auth/register", registerHandler(registerer))
 	mux.HandleFunc("POST /api/v1/auth/login", loginHandler(authenticator))
+	mux.Handle(
+		"GET /api/v1/users/me",
+		WithAuthentication(currentUserHandler(currentUserReader), tokenValidator),
+	)
 
 	return mux
 }

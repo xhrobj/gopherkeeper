@@ -48,6 +48,8 @@ func TestHealthHandler(t *testing.T) {
 				}),
 				unusedUserRegisterer(t),
 				unusedUserAuthenticator(t),
+				unusedTokenValidator(t),
+				unusedCurrentUserReader(t),
 			)
 
 			request := httptest.NewRequest(http.MethodGet, "/health", nil)
@@ -99,6 +101,8 @@ func TestHealthHandler_RejectsUnsupportedMethod(t *testing.T) {
 		}),
 		unusedUserRegisterer(t),
 		unusedUserAuthenticator(t),
+		unusedTokenValidator(t),
+		unusedCurrentUserReader(t),
 	)
 
 	request := httptest.NewRequest(http.MethodPost, "/health", nil)
@@ -131,6 +135,8 @@ func TestNewHandler_RoutesRegistration(t *testing.T) {
 			}, nil
 		}),
 		unusedUserAuthenticator(t),
+		unusedTokenValidator(t),
+		unusedCurrentUserReader(t),
 	)
 
 	request := newRegistrationRequest(t, registrationRequestBody(t, "alice"))
@@ -144,19 +150,6 @@ func TestNewHandler_RoutesRegistration(t *testing.T) {
 	if response.Code != http.StatusCreated {
 		t.Errorf("status code = %d, want %d", response.Code, http.StatusCreated)
 	}
-}
-
-func unusedUserRegisterer(t *testing.T) UserRegisterer {
-	t.Helper()
-
-	return userRegistererFunc(func(
-		context.Context,
-		string,
-		string,
-	) (model.User, error) {
-		t.Fatal("registration service must not be called")
-		return model.User{}, nil
-	})
 }
 
 func TestNewHandler_RoutesLogin(t *testing.T) {
@@ -183,6 +176,8 @@ func TestNewHandler_RoutesLogin(t *testing.T) {
 				},
 			}, nil
 		}),
+		unusedTokenValidator(t),
+		unusedCurrentUserReader(t),
 	)
 
 	request := newLoginRequest(t, loginRequestBody(t, "alice"))
@@ -198,6 +193,68 @@ func TestNewHandler_RoutesLogin(t *testing.T) {
 	}
 }
 
+func TestNewHandler_RoutesCurrentUser(t *testing.T) {
+	validatorCalled := false
+	readerCalled := false
+
+	handler := NewHandler(
+		databasePingerFunc(func(context.Context) error {
+			return nil
+		}),
+		unusedUserRegisterer(t),
+		unusedUserAuthenticator(t),
+		tokenValidatorFunc(func(_ context.Context, token string) (int64, error) {
+			validatorCalled = true
+			if token != "valid-token" {
+				t.Fatalf("Validate() token = %q, want valid-token", token)
+			}
+
+			return 42, nil
+		}),
+		currentUserReaderFunc(func(_ context.Context, id int64) (model.User, error) {
+			readerCalled = true
+			if id != 42 {
+				t.Fatalf("FindByID() id = %d, want 42", id)
+			}
+
+			return model.User{
+				ID:        42,
+				Login:     "alice",
+				CreatedAt: time.Date(2026, time.July, 4, 12, 0, 0, 0, time.UTC),
+			}, nil
+		}),
+	)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/users/me", nil)
+	request.Header.Set("Authorization", authorizationSchemeBearer+" valid-token")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if !validatorCalled {
+		t.Fatal("token validator was not called")
+	}
+	if !readerCalled {
+		t.Fatal("current user reader was not called")
+	}
+	if response.Code != http.StatusOK {
+		t.Errorf("status code = %d, want %d", response.Code, http.StatusOK)
+	}
+}
+
+func unusedUserRegisterer(t *testing.T) UserRegisterer {
+	t.Helper()
+
+	return userRegistererFunc(func(
+		context.Context,
+		string,
+		string,
+	) (model.User, error) {
+		t.Fatal("registration service must not be called")
+		return model.User{}, nil
+	})
+}
+
 func unusedUserAuthenticator(t *testing.T) UserAuthenticator {
 	t.Helper()
 
@@ -208,5 +265,23 @@ func unusedUserAuthenticator(t *testing.T) UserAuthenticator {
 	) (service.AuthenticationResult, error) {
 		t.Fatal("authentication service must not be called")
 		return service.AuthenticationResult{}, nil
+	})
+}
+
+func unusedTokenValidator(t *testing.T) TokenValidator {
+	t.Helper()
+
+	return tokenValidatorFunc(func(context.Context, string) (int64, error) {
+		t.Fatal("token validator must not be called")
+		return 0, nil
+	})
+}
+
+func unusedCurrentUserReader(t *testing.T) CurrentUserReader {
+	t.Helper()
+
+	return currentUserReaderFunc(func(context.Context, int64) (model.User, error) {
+		t.Fatal("current user reader must not be called")
+		return model.User{}, nil
 	})
 }

@@ -24,6 +24,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/xhrobj/gopherkeeper/internal/model"
 	"github.com/xhrobj/gopherkeeper/internal/server/auth"
 	"github.com/xhrobj/gopherkeeper/internal/server/httpserver"
 	"github.com/xhrobj/gopherkeeper/internal/server/postgres"
@@ -237,6 +238,8 @@ func newServerHandler(pool *pgxpool.Pool) http.Handler {
 		pool,
 		registrationService,
 		unusedIntegrationAuthenticator,
+		unusedIntegrationTokenValidator,
+		unusedIntegrationCurrentUserReader,
 	)
 }
 
@@ -260,6 +263,32 @@ func (f integrationAuthenticatorFunc) Authenticate(
 	password string,
 ) (service.AuthenticationResult, error) {
 	return f(ctx, login, password)
+}
+
+var unusedIntegrationTokenValidator = integrationTokenValidatorFunc(func(
+	context.Context,
+	string,
+) (int64, error) {
+	return 0, errors.New("unexpected token validation call")
+})
+
+type integrationTokenValidatorFunc func(context.Context, string) (int64, error)
+
+func (f integrationTokenValidatorFunc) Validate(ctx context.Context, token string) (int64, error) {
+	return f(ctx, token)
+}
+
+var unusedIntegrationCurrentUserReader = integrationCurrentUserReaderFunc(func(
+	context.Context,
+	int64,
+) (model.User, error) {
+	return model.User{}, errors.New("unexpected current user read call")
+})
+
+type integrationCurrentUserReaderFunc func(context.Context, int64) (model.User, error)
+
+func (f integrationCurrentUserReaderFunc) FindByID(ctx context.Context, id int64) (model.User, error) {
+	return f(ctx, id)
 }
 
 func assertStoredRegistration(

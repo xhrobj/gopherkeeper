@@ -83,7 +83,13 @@ func run(ctx context.Context) error {
 	)
 
 	handler := httpserver.WithLogging(
-		httpserver.NewHandler(pool, registrationService, authenticationService),
+		httpserver.NewHandler(
+			pool,
+			registrationService,
+			authenticationService,
+			tokenManager,
+			userRepository,
+		),
 		lg,
 	)
 
