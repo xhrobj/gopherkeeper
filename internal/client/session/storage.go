@@ -27,10 +27,7 @@ var (
 	ErrInvalid        = errors.New("invalid session")
 )
 
-// Clock возвращает текущее время и позволяет фиксировать его в тестах.
-type Clock interface {
-	Now() time.Time
-}
+type nowFunc func() time.Time
 
 // Session содержит данные online-сессии Клиента.
 type Session struct {
@@ -43,14 +40,8 @@ type Session struct {
 
 // FileStorage хранит online-сессию Клиента в JSON-файле.
 type FileStorage struct {
-	path  string
-	clock Clock
-}
-
-type realClock struct{}
-
-func (realClock) Now() time.Time {
-	return time.Now()
+	path string
+	now  nowFunc
 }
 
 // NewFileStorage создаёт файловое хранилище online-сессии.
@@ -58,11 +49,11 @@ func (realClock) Now() time.Time {
 // Если path пустой, используется путь по умолчанию внутри os.UserCacheDir():
 // gkeep/session.json.
 func NewFileStorage(path string) (*FileStorage, error) {
-	return newFileStorage(path, realClock{})
+	return newFileStorage(path, time.Now)
 }
 
-func newFileStorage(path string, clock Clock) (*FileStorage, error) {
-	if clock == nil {
+func newFileStorage(path string, now nowFunc) (*FileStorage, error) {
+	if now == nil {
 		return nil, errors.New("session clock is required")
 	}
 
@@ -71,7 +62,7 @@ func newFileStorage(path string, clock Clock) (*FileStorage, error) {
 		return nil, err
 	}
 
-	return &FileStorage{path: resolvedPath, clock: clock}, nil
+	return &FileStorage{path: resolvedPath, now: now}, nil
 }
 
 // Path возвращает фактический путь к session-файлу.
@@ -193,7 +184,7 @@ func (s *FileStorage) validate(session Session) error {
 	if session.ExpiresAt.IsZero() {
 		return fmt.Errorf("%w: expiration time is required", ErrInvalid)
 	}
-	if !session.ExpiresAt.After(s.clock.Now()) {
+	if !session.ExpiresAt.After(s.now()) {
 		return ErrExpired
 	}
 	if session.User.ID <= 0 {

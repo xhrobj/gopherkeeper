@@ -35,92 +35,50 @@ type userResponse struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-func (c *Client) doJSON(
-	ctx context.Context,
-	operation string,
-	method string,
-	path string,
-	requestBody any,
-	expectedStatus int,
-	responseBody any,
-) error {
-	return c.doJSONWithAuthorization(
-		ctx,
-		operation,
-		method,
-		path,
-		"",
-		requestBody,
-		expectedStatus,
-		responseBody,
-	)
+type jsonRequest struct {
+	operation      string
+	method         string
+	path           string
+	accessToken    string
+	requestBody    any
+	expectedStatus int
+	responseBody   any
 }
 
-func (c *Client) doBearerJSON(
-	ctx context.Context,
-	operation string,
-	method string,
-	path string,
-	accessToken string,
-	requestBody any,
-	expectedStatus int,
-	responseBody any,
-) error {
-	return c.doJSONWithAuthorization(
-		ctx,
-		operation,
-		method,
-		path,
-		accessToken,
-		requestBody,
-		expectedStatus,
-		responseBody,
-	)
-}
-
-func (c *Client) doJSONWithAuthorization(
-	ctx context.Context,
-	operation string,
-	method string,
-	path string,
-	accessToken string,
-	requestBody any,
-	expectedStatus int,
-	responseBody any,
-) error {
-	body, err := encodeRequestBody(operation, requestBody)
+func (c *Client) doJSON(ctx context.Context, request jsonRequest) error {
+	body, err := encodeRequestBody(request.operation, request.requestBody)
 	if err != nil {
 		return err
 	}
 
-	request, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
+	httpRequest, err := http.NewRequestWithContext(ctx, request.method, c.baseURL+request.path, body)
 	if err != nil {
-		return fmt.Errorf("create %s request: %w", operation, err)
+		return fmt.Errorf("create %s request: %w", request.operation, err)
 	}
-	if requestBody != nil {
-		request.Header.Set("Content-Type", "application/json")
+	if request.requestBody != nil {
+		httpRequest.Header.Set("Content-Type", "application/json")
 	}
-	if accessToken != "" {
-		request.Header.Set("Authorization", "Bearer "+accessToken)
+	if request.accessToken != "" {
+		httpRequest.Header.Set("Authorization", "Bearer "+request.accessToken)
 	}
 
-	response, err := c.httpClient.Do(request)
+	response, err := c.httpClient.Do(httpRequest)
 	if err != nil {
-		return fmt.Errorf("send %s request: %w", operation, err)
+		return fmt.Errorf("send %s request: %w", request.operation, err)
 	}
 	defer func() {
 		_ = response.Body.Close()
 	}()
 
-	if response.StatusCode != expectedStatus {
+	if response.StatusCode != request.expectedStatus {
 		return decodeAPIError(response)
 	}
 
-	if responseBody == nil {
+	if request.responseBody == nil {
 		return nil
 	}
-	if err := json.NewDecoder(response.Body).Decode(responseBody); err != nil {
-		return fmt.Errorf("decode %s response: %w", operation, err)
+	if err := json.NewDecoder(response.Body).Decode(request.responseBody); err != nil {
+		return fmt.Errorf("decode %s response: %w", request.operation, err)
 	}
 
 	return nil

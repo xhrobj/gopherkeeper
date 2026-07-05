@@ -9,14 +9,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-type fixedClock struct {
-	now time.Time
-}
-
-func (c fixedClock) Now() time.Time {
-	return c.now
-}
-
 var (
 	testNow      = time.Date(2026, time.July, 3, 12, 0, 0, 0, time.UTC)
 	testSecret   = []byte("0123456789abcdef0123456789abcdef")
@@ -175,7 +167,7 @@ func TestJWTTokenManager_ValidateReturnsContextError(t *testing.T) {
 }
 
 func newTestJWTTokenManager(secret []byte) *JWTTokenManager {
-	return newJWTTokenManager(secret, testTokenTTL, fixedClock{now: testNow})
+	return newJWTTokenManager(secret, testTokenTTL, func() time.Time { return testNow })
 }
 
 func signValidTestToken(t *testing.T, secret []byte) string {

@@ -107,7 +107,7 @@ func runWithInput(
 		cli.VersionPrinter = previousVersionPrinter
 	}()
 
-	command := newCommand(input, output, errorOutput, info, runners.health, runners.register, runners.login, runners.whoami)
+	command := newCommand(input, output, errorOutput, info, runners)
 
 	return command.Run(ctx, args)
 }
@@ -117,10 +117,7 @@ func newCommand(
 	output io.Writer,
 	errorOutput io.Writer,
 	info buildinfo.Info,
-	health healthRunner,
-	register registerRunner,
-	login loginRunner,
-	whoami whoamiRunner,
+	runners commandRunners,
 ) *cli.Command {
 	defaults := config.Load()
 	version := info.Version
@@ -153,10 +150,10 @@ func newCommand(
 			},
 		},
 		Commands: []*cli.Command{
-			newHealthCommand(health),
-			newRegisterCommand(input, register),
-			newLoginCommand(input, login),
-			newWhoamiCommand(whoami),
+			newHealthCommand(runners.health),
+			newRegisterCommand(input, runners.register),
+			newLoginCommand(input, runners.login),
+			newWhoamiCommand(runners.whoami),
 		},
 		Action: func(_ context.Context, command *cli.Command) error {
 			return cli.ShowRootCommandHelp(command)

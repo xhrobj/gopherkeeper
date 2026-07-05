@@ -19,15 +19,7 @@ const (
 // просрочен или не подходит для GophKeeper API.
 var ErrInvalidToken = errors.New("invalid token")
 
-type clock interface {
-	Now() time.Time
-}
-
-type systemClock struct{}
-
-func (systemClock) Now() time.Time {
-	return time.Now()
-}
+type nowFunc func() time.Time
 
 type jwtClaims struct {
 	jwt.RegisteredClaims
@@ -37,19 +29,23 @@ type jwtClaims struct {
 type JWTTokenManager struct {
 	secret []byte
 	ttl    time.Duration
-	clock  clock
+	now    nowFunc
 }
 
 // NewJWTTokenManager создаёт JWTTokenManager с переданным секретом и TTL.
 func NewJWTTokenManager(secret []byte, ttl time.Duration) *JWTTokenManager {
-	return newJWTTokenManager(secret, ttl, systemClock{})
+	return newJWTTokenManager(secret, ttl, time.Now)
 }
 
-func newJWTTokenManager(secret []byte, ttl time.Duration, clock clock) *JWTTokenManager {
+func newJWTTokenManager(secret []byte, ttl time.Duration, now nowFunc) *JWTTokenManager {
+	if now == nil {
+		now = time.Now
+	}
+
 	return &JWTTokenManager{
 		secret: append([]byte(nil), secret...),
 		ttl:    ttl,
-		clock:  clock,
+		now:    now,
 	}
 }
 
@@ -64,7 +60,7 @@ func (m *JWTTokenManager) Issue(ctx context.Context, userID int64) (string, time
 		return "", time.Time{}, errors.New("user ID must be positive")
 	}
 
-	now := m.clock.Now().UTC()
+	now := m.now().UTC()
 	expiresAt := now.Add(m.ttl)
 	claims := jwtClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -102,7 +98,7 @@ func (m *JWTTokenManager) Validate(ctx context.Context, tokenString string) (int
 		jwt.WithIssuer(jwtIssuer),
 		jwt.WithAudience(jwtAudience),
 		jwt.WithIssuedAt(),
-		jwt.WithTimeFunc(m.clock.Now),
+		jwt.WithTimeFunc(m.now),
 	)
 	if err != nil || !token.Valid {
 		return 0, ErrInvalidToken

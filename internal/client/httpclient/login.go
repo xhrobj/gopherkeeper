@@ -33,18 +33,14 @@ type loginResponse struct {
 // Login аутентифицирует пользователя на Сервере и возвращает bearer token.
 func (c *Client) Login(ctx context.Context, login, password string) (LoginResult, error) {
 	var loggedIn loginResponse
-	if err := c.doJSON(
-		ctx,
-		"login",
-		http.MethodPost,
-		loginPath,
-		loginRequest{
-			Login:    login,
-			Password: password,
-		},
-		http.StatusOK,
-		&loggedIn,
-	); err != nil {
+	if err := c.doJSON(ctx, jsonRequest{
+		operation:      "login",
+		method:         http.MethodPost,
+		path:           loginPath,
+		requestBody:    loginRequest{Login: login, Password: password},
+		expectedStatus: http.StatusOK,
+		responseBody:   &loggedIn,
+	}); err != nil {
 		return LoginResult{}, err
 	}
 

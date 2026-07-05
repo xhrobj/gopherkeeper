@@ -19,18 +19,14 @@ type registerResponse = userResponse
 // Register регистрирует нового пользователя на Сервере.
 func (c *Client) Register(ctx context.Context, login, password string) (model.User, error) {
 	var registered registerResponse
-	if err := c.doJSON(
-		ctx,
-		"registration",
-		http.MethodPost,
-		registerPath,
-		registerRequest{
-			Login:    login,
-			Password: password,
-		},
-		http.StatusCreated,
-		&registered,
-	); err != nil {
+	if err := c.doJSON(ctx, jsonRequest{
+		operation:      "registration",
+		method:         http.MethodPost,
+		path:           registerPath,
+		requestBody:    registerRequest{Login: login, Password: password},
+		expectedStatus: http.StatusCreated,
+		responseBody:   &registered,
+	}); err != nil {
 		return model.User{}, err
 	}
 

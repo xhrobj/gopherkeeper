@@ -12,16 +12,14 @@ const currentUserPath = "/api/v1/users/me"
 // CurrentUser возвращает пользователя, связанного с текущим bearer token'ом.
 func (c *Client) CurrentUser(ctx context.Context, accessToken string) (model.User, error) {
 	var current userResponse
-	if err := c.doBearerJSON(
-		ctx,
-		"current user",
-		http.MethodGet,
-		currentUserPath,
-		accessToken,
-		nil,
-		http.StatusOK,
-		&current,
-	); err != nil {
+	if err := c.doJSON(ctx, jsonRequest{
+		operation:      "current user",
+		method:         http.MethodGet,
+		path:           currentUserPath,
+		accessToken:    accessToken,
+		expectedStatus: http.StatusOK,
+		responseBody:   &current,
+	}); err != nil {
 		return model.User{}, err
 	}
 

@@ -13,14 +13,6 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-type fixedClock struct {
-	now time.Time
-}
-
-func (c fixedClock) Now() time.Time {
-	return c.now
-}
-
 func TestFileStorage_SaveAndLoad(t *testing.T) {
 	storage := newTestStorage(t, "session.json")
 	want := testSession()
@@ -225,7 +217,7 @@ func newTestStorage(t *testing.T, name string) *FileStorage {
 
 	storage, err := newFileStorage(
 		filepath.Join(t.TempDir(), name),
-		fixedClock{now: testNow()},
+		testNow,
 	)
 	if err != nil {
 		t.Fatalf("newFileStorage() error = %v", err)
