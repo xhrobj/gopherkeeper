@@ -36,6 +36,8 @@ const (
 	testRegistrationPassword = "correct-horse-battery-staple"
 )
 
+var integrationJWTSecret = []byte("0123456789abcdef0123456789abcdef")
+
 func openPostgres(t *testing.T, ctx context.Context, dsn string) *pgxpool.Pool {
 	t.Helper()
 
@@ -240,6 +242,26 @@ func newServerHandler(pool *pgxpool.Pool) http.Handler {
 		unusedIntegrationAuthenticator,
 		unusedIntegrationTokenValidator,
 		unusedIntegrationCurrentUserReader,
+	)
+}
+
+func newAuthenticatedServerHandler(pool *pgxpool.Pool) http.Handler {
+	userRepository := postgres.NewUserRepository(pool)
+	passwordManager := auth.NewBcryptPasswordManager()
+	registrationService := service.NewRegistrationService(userRepository, passwordManager)
+	tokenManager := auth.NewJWTTokenManager(integrationJWTSecret, 15*time.Minute)
+	authenticationService := service.NewAuthenticationService(
+		userRepository,
+		passwordManager,
+		tokenManager,
+	)
+
+	return httpserver.NewHandler(
+		pool,
+		registrationService,
+		authenticationService,
+		tokenManager,
+		userRepository,
 	)
 }
 

@@ -6,7 +6,7 @@
 	db-up db-down db-connect db-erase \
 	run-server run-client \
 	run-client-health \
-	run-client-register \
+	run-client-register run-client-login run-client-whoami \
 	test-all test test-race test-integration \
 	coverage \
 	vet lint ci \
@@ -29,12 +29,15 @@ TLS_SERVER_KEY := $(TLS_CERT_DIR)/server-key.pem
 export JWT_SECRET
 export JWT_TTL
 
+# путь к локальному файлу online-сессии Клиента можно задать через env-файл.
+export SESSION_FILE
+
 # параметры логирования
 LOG_LEVEL ?= info
 export LOG_LEVEL
 
 # данные о сборке подставляются в бинарники Клиента и Сервера через ldflags
-BUILD_VERSION ?= v0.2.0
+BUILD_VERSION ?= v0.3.0
 BUILD_DATE ?= $(shell date +%Y-%m-%d)
 BUILD_COMMIT ?= $(shell git rev-parse --short HEAD)
 
@@ -171,6 +174,20 @@ run-client-health: check-client-ca
 run-client-register: check-client-ca
 	$(CLIENT) register \
 		--login $(LOGIN) \
+		-a $(ADDRESS) \
+		--ca-cert $(TLS_CA_CERT)
+
+# запустить Клиент для входа пользователя
+# LOGIN нужно передать через окружение или командную строку make
+run-client-login: check-client-ca
+	$(CLIENT) login \
+		--login $(LOGIN) \
+		-a $(ADDRESS) \
+		--ca-cert $(TLS_CA_CERT)
+
+# запустить Клиент и вывести текущего пользователя online-сессии
+run-client-whoami: check-client-ca
+	$(CLIENT) whoami \
 		-a $(ADDRESS) \
 		--ca-cert $(TLS_CA_CERT)
 
