@@ -1,9 +1,7 @@
 package httpserver
 
 import (
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"time"
 
@@ -36,12 +34,7 @@ func loginHandler(authenticator UserAuthenticator) http.HandlerFunc {
 			return
 		}
 
-		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
-		defer func() {
-			_ = r.Body.Close()
-		}()
-
-		request, err := decodeLoginRequest(r)
+		request, err := decodeLoginRequest(w, r)
 		if err != nil {
 			if isRequestBodyTooLarge(err) {
 				writeErrorResponse(
@@ -86,21 +79,9 @@ func loginHandler(authenticator UserAuthenticator) http.HandlerFunc {
 	}
 }
 
-func decodeLoginRequest(r *http.Request) (loginRequest, error) {
+func decodeLoginRequest(w http.ResponseWriter, r *http.Request) (loginRequest, error) {
 	var request loginRequest
-
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-
-	if err := decoder.Decode(&request); err != nil {
-		return loginRequest{}, err
-	}
-
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return loginRequest{}, errMultipleJSONValues
-		}
-
+	if err := decodeJSONRequest(w, r, &request); err != nil {
 		return loginRequest{}, err
 	}
 
