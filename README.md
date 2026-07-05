@@ -11,7 +11,10 @@
 - `client`, `client -h`, `client --help`, `client help` — баннер и общая справка;
 - `client health --help`, `client help health` — справка команды `health` без баннера;
 - `client -v`, `client --version` — баннер и полная информация о сборке;
-- `client health` — только результат команды.
+- `client health` — только результат команды;
+- `client register` — регистрация пользователя;
+- `client login` — вход пользователя и сохранение локальной online-сессии;
+- `client whoami` — проверка текущего пользователя по сохранённой online-сессии.
 
 ## Требования к учётным данным
 
@@ -60,3 +63,41 @@ make run-client-register LOGIN=alice
 ```bash
 printf '%s\n' "$GKEEP_PASSWORD" | ./bin/gkeep register --login alice --password-stdin --address localhost:8080 --ca-cert .certs/ca.pem
 ```
+
+## Вход пользователя и online-сессия
+
+После регистрации пользователь выполняет вход. Сервер проверяет login и password, возвращает JWT bearer token, а Клиент сохраняет token в локальный session-файл. Token не выводится в stdout или stderr.
+
+Интерактивный вход:
+
+```bash
+./bin/gkeep login --login alice --address localhost:8080 --ca-cert .certs/ca.pem
+```
+
+То же самое через Makefile:
+
+```bash
+make run-client-login LOGIN=alice
+```
+
+Для CI и скриптов password можно передать через stdin:
+
+```bash
+printf '%s\n' "$GKEEP_PASSWORD" | ./bin/gkeep login --login alice --password-stdin --address localhost:8080 --ca-cert .certs/ca.pem
+```
+
+Путь к session-файлу можно переопределить флагом `--session-file` или переменной окружения `SESSION_FILE`. По умолчанию используется файл `gkeep/session.json` внутри системного каталога пользовательского кеша. Файл создаётся с правами `0600`, а родительский каталог — с правами `0700`.
+
+Проверить текущую online-сессию можно командой:
+
+```bash
+./bin/gkeep whoami --address localhost:8080 --ca-cert .certs/ca.pem
+```
+
+То же самое через Makefile:
+
+```bash
+make run-client-whoami
+```
+
+Команда `whoami` читает сохранённую session, проверяет срок действия token'а и обращается к защищённому endpoint `GET /api/v1/users/me`. При отсутствующей, устаревшей или неподходящей к текущему адресу Сервера session нужно снова выполнить `gkeep login`.
