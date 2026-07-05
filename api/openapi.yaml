@@ -3,7 +3,7 @@ openapi: 3.0.3
 info:
   title: GophKeeper API
   description: API взаимодействия CLI-клиента и Сервера GophKeeper.
-  version: 0.2.0
+  version: 0.3.0
 
 servers:
   - url: https://localhost:8080
@@ -14,6 +14,8 @@ tags:
     description: Технические операции Сервера.
   - name: Authentication
     description: Регистрация и аутентификация пользователей.
+  - name: Users
+    description: Операции с текущим пользователем.
 
 paths:
   /health:
@@ -45,12 +47,10 @@ paths:
     post:
       summary: Зарегистрировать пользователя
       description: >-
-        Создаёт нового пользователя. Перед проверкой login очищается от
-        пробельных символов по краям, а ASCII-буквы A-Z переводятся в нижний
-        регистр. После канонизации login должен содержать от 3 до 32
-        ASCII-символов. Password должен содержать от 3 до 64 печатных
-        ASCII-символов от ! до ~ без пробелов. Password не возвращается в
-        ответе. Максимальный размер тела запроса — 4 MiB.
+        Создаёт нового пользователя. Перед проверкой login очищается от пробельных символов по краям,
+        ASCII-буквы A-Z переводятся в нижний регистр. После канонизации login должен содержать от 3 до 32
+        ASCII-символов. Password должен содержать от 3 до 64 печатных ASCII-символов от ! до ~ без пробелов.
+        Password не возвращается в ответе. Максимальный размер тела запроса — 4 MiB.
       operationId: registerUser
       tags:
         - Authentication
@@ -100,43 +100,180 @@ paths:
                     code: login_already_exists
                     message: login is already registered
         '413':
-          description: Тело запроса превышает допустимый размер
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                payloadTooLarge:
-                  summary: Превышен общий лимит тела запроса
-                  value:
-                    code: payload_too_large
-                    message: request body is too large
+          $ref: '#/components/responses/PayloadTooLarge'
         '415':
-          description: Запрос передан не в формате JSON
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              examples:
-                unsupportedMediaType:
-                  summary: Неподдерживаемый Content-Type
-                  value:
-                    code: unsupported_media_type
-                    message: content type must be application/json
+          $ref: '#/components/responses/UnsupportedMediaType'
         '500':
-          description: Внутренняя ошибка Сервера
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/auth/login:
+    post:
+      summary: Войти в online-сессию
+      description: >-
+        Проверяет login и password зарегистрированного пользователя и возвращает bearer token. Login
+        канонизируется по тем же правилам, что и при регистрации. Неверный login, неизвестный пользователь
+        и неверный password возвращают единый ответ invalid_credentials. Password не возвращается в ответе.
+        Максимальный размер тела запроса — 4 MiB.
+      operationId: loginUser
+      tags:
+        - Authentication
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              login: alice
+              password: correct-horse-battery-staple
+      responses:
+        '200':
+          description: Пользователь аутентифицирован
+          headers:
+            Cache-Control:
+              description: Ответ с token не должен сохраняться в HTTP-кэшах.
+              schema:
+                type: string
+                example: no-store
+            Pragma:
+              description: HTTP/1.0-совместимый запрет кэширования ответа с token.
+              schema:
+                type: string
+                example: no-cache
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              example:
+                access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature
+                token_type: Bearer
+                expires_at: '2026-07-01T12:15:00Z'
+                user:
+                  id: 42
+                  login: alice
+                  created_at: '2026-07-01T12:00:00Z'
+        '400':
+          description: Некорректный JSON login-запроса
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
-                internalError:
-                  summary: Внутренняя ошибка без раскрытия деталей
+                invalidRequest:
+                  summary: Некорректный login-запрос
                   value:
-                    code: internal_error
-                    message: internal server error
+                    code: invalid_request
+                    message: invalid login request
+        '401':
+          description: Login или password не прошли проверку
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidCredentials:
+                  summary: Неверные учётные данные
+                  value:
+                    code: invalid_credentials
+                    message: invalid login or password
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/users/me:
+    get:
+      summary: Получить текущего пользователя
+      description: >-
+        Возвращает публичные данные пользователя, соответствующего bearer token из заголовка Authorization.
+        Если token отсутствует, некорректен, просрочен или пользователь больше не найден, Сервер возвращает
+        unauthorized.
+      operationId: getCurrentUser
+      tags:
+        - Users
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Текущий пользователь найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+              example:
+                id: 42
+                login: alice
+                created_at: '2026-07-01T12:00:00Z'
+        '401':
+          description: Bearer token отсутствует или не прошёл проверку
+          headers:
+            WWW-Authenticate:
+              description: Ожидаемая Сервером схема аутентификации.
+              schema:
+                type: string
+                example: Bearer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                unauthorized:
+                  summary: Отсутствующий или некорректный token
+                  value:
+                    code: unauthorized
+                    message: missing or invalid bearer token
+        '500':
+          $ref: '#/components/responses/InternalError'
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT bearer token из ответа `POST /api/v1/auth/login`.
+
+  responses:
+    PayloadTooLarge:
+      description: Тело запроса превышает допустимый размер
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            payloadTooLarge:
+              summary: Превышен общий лимит тела запроса
+              value:
+                code: payload_too_large
+                message: request body is too large
+    UnsupportedMediaType:
+      description: Запрос передан не в формате JSON
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            unsupportedMediaType:
+              summary: Неподдерживаемый Content-Type
+              value:
+                code: unsupported_media_type
+                message: content type must be application/json
+    InternalError:
+      description: Внутренняя ошибка Сервера
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            internalError:
+              summary: Внутренняя ошибка без раскрытия деталей
+              value:
+                code: internal_error
+                message: internal server error
+
   schemas:
     HealthResponse:
       type: object
@@ -158,25 +295,48 @@ components:
         - password
       properties:
         login:
-          type: string
-          description: >-
-            Login пользователя. Сервер удаляет пробельные символы по краям и
-            переводит ASCII-буквы A-Z в нижний регистр. После канонизации
-            значение должно содержать от 3 до 32 ASCII-символов: букв, цифр,
-            точки, подчёркивания и дефиса. Первый символ должен быть буквой или
-            цифрой.
-          example: alice
+          $ref: '#/components/schemas/LoginField'
         password:
+          $ref: '#/components/schemas/PasswordField'
+
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - login
+        - password
+      properties:
+        login:
+          $ref: '#/components/schemas/LoginField'
+        password:
+          $ref: '#/components/schemas/PasswordField'
+
+    LoginResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - access_token
+        - token_type
+        - expires_at
+        - user
+      properties:
+        access_token:
           type: string
-          format: password
-          writeOnly: true
-          minLength: 3
-          maxLength: 64
-          pattern: '^[!-~]{3,64}$'
-          description: >-
-            Password длиной от 3 до 64 символов. Разрешены печатные
-            ASCII-символы от ! до ~; пробелы и другие Unicode-символы запрещены.
-          example: correct-horse-battery-staple
+          description: JWT access token для заголовка Authorization со схемой Bearer.
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature
+        token_type:
+          type: string
+          enum:
+            - Bearer
+          description: Тип token. В MVP всегда равен Bearer.
+          example: Bearer
+        expires_at:
+          type: string
+          format: date-time
+          description: Момент истечения access token в UTC.
+          example: '2026-07-01T12:15:00Z'
+        user:
+          $ref: '#/components/schemas/UserResponse'
 
     UserResponse:
       type: object
@@ -193,7 +353,7 @@ components:
           example: 42
         login:
           type: string
-          description: Канонический login пользователя в нижнем регистре.
+          description: Канонический login пользователя.
           minLength: 3
           maxLength: 32
           pattern: '^[a-z0-9][a-z0-9._-]{2,31}$'
@@ -202,6 +362,29 @@ components:
           type: string
           format: date-time
           example: '2026-07-01T12:00:00Z'
+
+    LoginField:
+      type: string
+      description: >-
+        Login пользователя. Сервер удаляет пробельные символы по краям и переводит ASCII-буквы A-Z
+        в нижний регистр. После канонизации значение должно содержать от 3 до 32 ASCII-символов: букв,
+        цифр, точки, подчёркивания и дефиса. Первый символ должен быть буквой или цифрой.
+      minLength: 3
+      maxLength: 32
+      pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{2,31}$'
+      example: alice
+
+    PasswordField:
+      type: string
+      format: password
+      writeOnly: true
+      minLength: 3
+      maxLength: 64
+      pattern: '^[!-~]{3,64}$'
+      description: >-
+        Password длиной от 3 до 64 символов. Разрешены печатные ASCII-символы от ! до ~; пробелы
+        и другие Unicode-символы запрещены.
+      example: correct-horse-battery-staple
 
     ErrorResponse:
       type: object
