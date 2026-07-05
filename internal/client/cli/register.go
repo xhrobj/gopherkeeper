@@ -7,8 +7,8 @@ import (
 	"io"
 
 	urfavecli "github.com/urfave/cli/v3"
+	clientapp "github.com/xhrobj/gopherkeeper/internal/client/app"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
-	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
@@ -70,14 +70,14 @@ func runRegister(
 	login string,
 	passwordStdin bool,
 ) error {
-	client, err := httpclient.New(cfg.Address, cfg.CACertFile)
+	application, err := clientapp.New(cfg)
 	if err != nil {
 		return err
 	}
 
 	return executeRegistration(
 		ctx,
-		client,
+		application,
 		terminalPasswordReader{},
 		registrationStreams{
 			input:        input,
@@ -109,12 +109,7 @@ func executeRegistration(
 
 	user, err := registerer.Register(ctx, login, password)
 	if err != nil {
-		var apiError *httpclient.APIError
-		if errors.As(err, &apiError) && apiError.Code == "login_already_exists" {
-			return fmt.Errorf("login %q is already registered: %w", login, err)
-		}
-
-		return fmt.Errorf("register user: %w", err)
+		return err
 	}
 
 	if _, err := fmt.Fprintf(streams.output, "User %s registered successfully.\n", user.Login); err != nil {

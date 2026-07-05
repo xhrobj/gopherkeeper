@@ -2,15 +2,13 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
-	"net/http"
 
 	urfavecli "github.com/urfave/cli/v3"
+	clientapp "github.com/xhrobj/gopherkeeper/internal/client/app"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
-	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
-	"github.com/xhrobj/gopherkeeper/internal/client/session"
+	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 type loginRunner func(
@@ -24,11 +22,7 @@ type loginRunner func(
 ) error
 
 type userLogger interface {
-	Login(ctx context.Context, login, password string) (httpclient.LoginResult, error)
-}
-
-type sessionSaver interface {
-	Save(stored session.Session) error
+	Login(ctx context.Context, login, password string) (model.User, error)
 }
 
 type loginStreams struct {
@@ -75,27 +69,20 @@ func runLogin(
 	login string,
 	passwordStdin bool,
 ) error {
-	client, err := httpclient.New(cfg.Address, cfg.CACertFile)
-	if err != nil {
-		return err
-	}
-
-	storage, err := session.NewFileStorage(cfg.SessionFile)
+	application, err := clientapp.New(cfg)
 	if err != nil {
 		return err
 	}
 
 	return executeLogin(
 		ctx,
-		client,
-		storage,
+		application,
 		terminalPasswordReader{},
 		loginStreams{
 			input:        input,
 			output:       output,
 			promptOutput: promptOutput,
 		},
-		cfg.Address,
 		login,
 		passwordStdin,
 	)
@@ -104,10 +91,8 @@ func runLogin(
 func executeLogin(
 	ctx context.Context,
 	logger userLogger,
-	sessions sessionSaver,
 	passwords passwordReader,
 	streams loginStreams,
-	serverAddress string,
 	login string,
 	passwordStdin bool,
 ) error {
@@ -121,27 +106,12 @@ func executeLogin(
 		return err
 	}
 
-	result, err := logger.Login(ctx, login, password)
+	user, err := logger.Login(ctx, login, password)
 	if err != nil {
-		var apiError *httpclient.APIError
-		if errors.As(err, &apiError) && apiError.StatusCode == http.StatusUnauthorized && apiError.Code == "invalid_credentials" {
-			return fmt.Errorf("invalid login or password: %w", err)
-		}
-
-		return fmt.Errorf("login user: %w", err)
+		return err
 	}
 
-	if err := sessions.Save(session.Session{
-		ServerAddress: serverAddress,
-		AccessToken:   result.AccessToken,
-		TokenType:     result.TokenType,
-		ExpiresAt:     result.ExpiresAt,
-		User:          result.User,
-	}); err != nil {
-		return fmt.Errorf("save online session: %w", err)
-	}
-
-	if _, err := fmt.Fprintf(streams.output, "User %s logged in successfully.\n", result.User.Login); err != nil {
+	if _, err := fmt.Fprintf(streams.output, "User %s logged in successfully.\n", user.Login); err != nil {
 		return fmt.Errorf("write login result: %w", err)
 	}
 
