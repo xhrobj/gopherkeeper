@@ -129,6 +129,60 @@ func TestApplication_Register_DoesNotLeakPasswordInNetworkError(t *testing.T) {
 	}
 }
 
+func TestApplication_Register_DoesNotCreateSessionStorage(t *testing.T) {
+	application := newApplicationWithSessionFactory(
+		userClientStub{
+			register: func(context.Context, string, string) (model.User, error) {
+				return model.User{Login: "alice"}, nil
+			},
+		},
+		func() (sessionStorage, error) {
+			t.Fatal("session storage must not be created for registration")
+			return nil, nil
+		},
+		"localhost:8080",
+	)
+
+	user, err := application.Register(context.Background(), "alice", testPassword)
+	if err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	if user.Login != "alice" {
+		t.Errorf("registered login = %q, want alice", user.Login)
+	}
+}
+
+func TestApplication_Login_ReturnsSessionStorageCreationError(t *testing.T) {
+	storageError := errors.New("cache directory is unavailable")
+	loginCalled := false
+	application := newApplicationWithSessionFactory(
+		userClientStub{
+			login: func(context.Context, string, string) (httpclient.LoginResult, error) {
+				loginCalled = true
+				return httpclient.LoginResult{}, nil
+			},
+		},
+		func() (sessionStorage, error) {
+			return nil, storageError
+		},
+		"localhost:8080",
+	)
+
+	_, err := application.Login(context.Background(), "alice", testPassword)
+	if err == nil {
+		t.Fatal("Login() error = nil, want session storage error")
+	}
+	if !errors.Is(err, storageError) {
+		t.Error("login error does not preserve session storage error")
+	}
+	if loginCalled {
+		t.Error("login client was called after session storage creation error")
+	}
+	if strings.Contains(err.Error(), testPassword) {
+		t.Error("session storage error contains password")
+	}
+}
+
 func TestApplication_Login_SavesSession(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 5, 12, 0, 0, 0, time.UTC)
 	expiresAt := time.Date(2026, time.July, 5, 12, 15, 0, 0, time.UTC)

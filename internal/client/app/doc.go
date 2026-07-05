@@ -1,2 +1,2 @@
-// Package app содержит клиентские application-сценарии GophKeeper.
+// Package app реализует прикладные сценарии Клиента GophKeeper.
 package app

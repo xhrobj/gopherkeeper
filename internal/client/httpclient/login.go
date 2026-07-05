@@ -1,10 +1,7 @@
 package httpclient
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -33,58 +30,28 @@ type loginResponse struct {
 	User        userResponse `json:"user"`
 }
 
-type userResponse struct {
-	ID        int64     `json:"id"`
-	Login     string    `json:"login"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
 // Login аутентифицирует пользователя на Сервере и возвращает bearer token.
 func (c *Client) Login(ctx context.Context, login, password string) (LoginResult, error) {
-	requestBody, err := json.Marshal(loginRequest{
-		Login:    login,
-		Password: password,
-	})
-	if err != nil {
-		return LoginResult{}, fmt.Errorf("encode login request: %w", err)
-	}
-
-	request, err := http.NewRequestWithContext(
-		ctx,
-		http.MethodPost,
-		c.baseURL+loginPath,
-		bytes.NewReader(requestBody),
-	)
-	if err != nil {
-		return LoginResult{}, fmt.Errorf("create login request: %w", err)
-	}
-	request.Header.Set("Content-Type", "application/json")
-
-	response, err := c.httpClient.Do(request)
-	if err != nil {
-		return LoginResult{}, fmt.Errorf("send login request: %w", err)
-	}
-	defer func() {
-		_ = response.Body.Close()
-	}()
-
-	if response.StatusCode != http.StatusOK {
-		return LoginResult{}, decodeAPIError(response)
-	}
-
 	var loggedIn loginResponse
-	if err := json.NewDecoder(response.Body).Decode(&loggedIn); err != nil {
-		return LoginResult{}, fmt.Errorf("decode login response: %w", err)
+	if err := c.doJSON(
+		ctx,
+		"login",
+		http.MethodPost,
+		loginPath,
+		loginRequest{
+			Login:    login,
+			Password: password,
+		},
+		http.StatusOK,
+		&loggedIn,
+	); err != nil {
+		return LoginResult{}, err
 	}
 
 	return LoginResult{
 		AccessToken: loggedIn.AccessToken,
 		TokenType:   loggedIn.TokenType,
 		ExpiresAt:   loggedIn.ExpiresAt,
-		User: model.User{
-			ID:        loggedIn.User.ID,
-			Login:     loggedIn.User.Login,
-			CreatedAt: loggedIn.User.CreatedAt,
-		},
+		User:        userFromResponse(loggedIn.User),
 	}, nil
 }

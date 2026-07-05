@@ -16,6 +16,7 @@ import (
 type Application struct {
 	users         userClient
 	sessions      sessionStorage
+	newSessions   sessionStorageFactory
 	serverAddress string
 }
 
@@ -30,6 +31,8 @@ type sessionStorage interface {
 	Load(expectedServerAddress string) (session.Session, error)
 }
 
+type sessionStorageFactory func() (sessionStorage, error)
+
 // New создаёт клиентское application-приложение из конфигурации CLI.
 func New(cfg config.Config) (*Application, error) {
 	users, err := httpclient.New(cfg.Address, cfg.CACertFile)
@@ -37,18 +40,31 @@ func New(cfg config.Config) (*Application, error) {
 		return nil, err
 	}
 
-	sessions, err := session.NewFileStorage(cfg.SessionFile)
-	if err != nil {
-		return nil, err
-	}
-
-	return newApplication(users, sessions, cfg.Address), nil
+	return newApplicationWithSessionFactory(
+		users,
+		func() (sessionStorage, error) {
+			return session.NewFileStorage(cfg.SessionFile)
+		},
+		cfg.Address,
+	), nil
 }
 
 func newApplication(users userClient, sessions sessionStorage, serverAddress string) *Application {
 	return &Application{
 		users:         users,
 		sessions:      sessions,
+		serverAddress: serverAddress,
+	}
+}
+
+func newApplicationWithSessionFactory(
+	users userClient,
+	newSessions sessionStorageFactory,
+	serverAddress string,
+) *Application {
+	return &Application{
+		users:         users,
+		newSessions:   newSessions,
 		serverAddress: serverAddress,
 	}
 }
@@ -70,6 +86,11 @@ func (a *Application) Register(ctx context.Context, login, password string) (mod
 
 // Login аутентифицирует пользователя и сохраняет online-сессию локально.
 func (a *Application) Login(ctx context.Context, login, password string) (model.User, error) {
+	sessions, err := a.sessionStorage()
+	if err != nil {
+		return model.User{}, fmt.Errorf("create online session storage: %w", err)
+	}
+
 	result, err := a.users.Login(ctx, login, password)
 	if err != nil {
 		var apiError *httpclient.APIError
@@ -80,7 +101,7 @@ func (a *Application) Login(ctx context.Context, login, password string) (model.
 		return model.User{}, fmt.Errorf("login user: %w", err)
 	}
 
-	if err := a.sessions.Save(session.Session{
+	if err := sessions.Save(session.Session{
 		ServerAddress: a.serverAddress,
 		AccessToken:   result.AccessToken,
 		TokenType:     result.TokenType,
@@ -95,7 +116,12 @@ func (a *Application) Login(ctx context.Context, login, password string) (model.
 
 // Whoami возвращает пользователя из текущей online-сессии.
 func (a *Application) Whoami(ctx context.Context) (model.User, error) {
-	storedSession, err := a.sessions.Load(a.serverAddress)
+	sessions, err := a.sessionStorage()
+	if err != nil {
+		return model.User{}, fmt.Errorf("create online session storage: %w", err)
+	}
+
+	storedSession, err := sessions.Load(a.serverAddress)
 	if err != nil {
 		return model.User{}, mapSessionLoadError(err)
 	}
@@ -106,6 +132,26 @@ func (a *Application) Whoami(ctx context.Context) (model.User, error) {
 	}
 
 	return user, nil
+}
+
+func (a *Application) sessionStorage() (sessionStorage, error) {
+	if a.sessions != nil {
+		return a.sessions, nil
+	}
+	if a.newSessions == nil {
+		return nil, errors.New("session storage factory is not configured")
+	}
+
+	sessions, err := a.newSessions()
+	if err != nil {
+		return nil, err
+	}
+	if sessions == nil {
+		return nil, errors.New("session storage factory returned nil")
+	}
+	a.sessions = sessions
+
+	return sessions, nil
 }
 
 func mapSessionLoadError(err error) error {

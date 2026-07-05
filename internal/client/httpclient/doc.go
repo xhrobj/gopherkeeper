@@ -1,2 +1,2 @@
-// Package httpclient предоставляет HTTPS-Клиент для взаимодействия с Сервером GophKeeper.
+// Package httpclient выполняет HTTPS-запросы к Серверу GophKeeper.
 package httpclient

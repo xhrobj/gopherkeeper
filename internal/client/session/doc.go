@@ -1,2 +1,2 @@
-// Package session хранит online-сессию CLI-Клиента между отдельными запусками.
+// Package session хранит online-сессию Клиента между отдельными запусками.
 package session
