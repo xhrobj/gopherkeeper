@@ -86,11 +86,8 @@ func (s *FileStorage) Save(session Session) error {
 	}
 
 	dir := filepath.Dir(s.path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("create session directory: %w", err)
-	}
-	if err := os.Chmod(dir, 0o700); err != nil {
-		return fmt.Errorf("set session directory permissions: %w", err)
+	if err := ensureSessionDirectory(dir); err != nil {
+		return err
 	}
 
 	data, err := json.MarshalIndent(session, "", "  ")
@@ -170,6 +167,19 @@ func (s *FileStorage) Load(expectedServerAddress string) (Session, error) {
 	return session, nil
 }
 
+func resolvePath(path string) (string, error) {
+	if path != "" {
+		return path, nil
+	}
+
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve user cache directory: %w", err)
+	}
+
+	return filepath.Join(cacheDir, sessionDirName, sessionFileName), nil
+}
+
 func (s *FileStorage) validate(session Session) error {
 	if session.ServerAddress == "" {
 		return fmt.Errorf("%w: server address is required", ErrInvalid)
@@ -199,15 +209,25 @@ func (s *FileStorage) validate(session Session) error {
 	return nil
 }
 
-func resolvePath(path string) (string, error) {
-	if path != "" {
-		return path, nil
+func ensureSessionDirectory(dir string) error {
+	info, err := os.Stat(dir)
+	if err == nil {
+		if !info.IsDir() {
+			return fmt.Errorf("session directory path is not a directory: %s", dir)
+		}
+
+		return nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect session directory: %w", err)
 	}
 
-	cacheDir, err := os.UserCacheDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve user cache directory: %w", err)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create session directory: %w", err)
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return fmt.Errorf("set session directory permissions: %w", err)
 	}
 
-	return filepath.Join(cacheDir, sessionDirName, sessionFileName), nil
+	return nil
 }
