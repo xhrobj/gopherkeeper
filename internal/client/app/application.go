@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
 	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
@@ -94,7 +93,7 @@ func (a *Application) Login(ctx context.Context, login, password string) (model.
 	result, err := a.users.Login(ctx, login, password)
 	if err != nil {
 		var apiError *httpclient.APIError
-		if errors.As(err, &apiError) && apiError.StatusCode == http.StatusUnauthorized && apiError.Code == "invalid_credentials" {
+		if errors.As(err, &apiError) && apiError.Code == "invalid_credentials" {
 			return model.User{}, fmt.Errorf("invalid login or password: %w", err)
 		}
 
@@ -171,7 +170,7 @@ func mapSessionLoadError(err error) error {
 
 func mapCurrentUserError(err error) error {
 	var apiError *httpclient.APIError
-	if errors.As(err, &apiError) && apiError.StatusCode == http.StatusUnauthorized && apiError.Code == "unauthorized" {
+	if errors.As(err, &apiError) && apiError.Code == "unauthorized" {
 		return fmt.Errorf("online session is invalid or expired: run gkeep login: %w", err)
 	}
 

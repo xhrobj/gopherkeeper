@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	serverauth "github.com/xhrobj/gopherkeeper/internal/server/auth"
+	"github.com/xhrobj/gopherkeeper/internal/server/httperror"
 )
 
 type tokenValidatorFunc func(context.Context, string) (int64, error)
@@ -194,7 +195,7 @@ func assertErrorResponse(
 		t.Errorf("status code = %d, want %d", response.Code, wantStatus)
 	}
 
-	var body errorResponse
+	var body httperror.Response
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode error response: %v", err)
 	}

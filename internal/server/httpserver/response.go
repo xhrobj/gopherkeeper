@@ -3,23 +3,12 @@ package httpserver
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/xhrobj/gopherkeeper/internal/server/httperror"
 )
 
-type errorResponse struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
-
-func writeErrorResponse(
-	w http.ResponseWriter,
-	statusCode int,
-	code string,
-	message string,
-) {
-	writeJSONResponse(w, statusCode, errorResponse{
-		Code:    code,
-		Message: message,
-	})
+func writeErrorResponse(w http.ResponseWriter, statusCode int, code string, message string) {
+	httperror.Write(w, statusCode, code, message)
 }
 
 func writeJSONResponse(w http.ResponseWriter, statusCode int, body any) {

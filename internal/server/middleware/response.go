@@ -1,8 +1,9 @@
 package middleware
 
 import (
-	"encoding/json"
 	"net/http"
+
+	"github.com/xhrobj/gopherkeeper/internal/server/httperror"
 )
 
 const (
@@ -10,24 +11,6 @@ const (
 	errorMessageUnauthorized = "missing or invalid bearer token"
 )
 
-type errorResponse struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
-
-func writeErrorResponse(
-	w http.ResponseWriter,
-	statusCode int,
-	code string,
-	message string,
-) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-
-	if err := json.NewEncoder(w).Encode(errorResponse{
-		Code:    code,
-		Message: message,
-	}); err != nil {
-		return
-	}
+func writeErrorResponse(w http.ResponseWriter, statusCode int, code string, message string) {
+	httperror.Write(w, statusCode, code, message)
 }
