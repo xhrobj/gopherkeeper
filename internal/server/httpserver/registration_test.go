@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
+	"github.com/xhrobj/gopherkeeper/internal/server/httperror"
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
 )
 
@@ -341,7 +342,7 @@ func assertErrorResponse(
 		t.Errorf("Content-Type = %q, want application/json", contentType)
 	}
 
-	var body errorResponse
+	var body httperror.Response
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode error response: %v", err)
 	}

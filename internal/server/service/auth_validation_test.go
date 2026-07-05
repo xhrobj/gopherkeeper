@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestValidateRegistrationCredentials(t *testing.T) {
+func TestValidateCredentials(t *testing.T) {
 	tests := []struct {
 		name      string
 		login     string
@@ -180,10 +180,10 @@ func TestValidateRegistrationCredentials(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotLogin, err := validateRegistrationCredentials(tt.login, tt.password)
+			gotLogin, err := validateCredentials(tt.login, tt.password)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf(
-					"validateRegistrationCredentials() error = %v, want %v",
+					"validateCredentials() error = %v, want %v",
 					err,
 					tt.wantErr,
 				)
@@ -191,7 +191,7 @@ func TestValidateRegistrationCredentials(t *testing.T) {
 
 			if gotLogin != tt.wantLogin {
 				t.Errorf(
-					"validateRegistrationCredentials() login = %q, want %q",
+					"validateCredentials() login = %q, want %q",
 					gotLogin,
 					tt.wantLogin,
 				)
@@ -200,7 +200,7 @@ func TestValidateRegistrationCredentials(t *testing.T) {
 	}
 }
 
-func TestValidateRegistrationCredentials_DoesNotExposePassword(t *testing.T) {
+func TestValidateCredentials_DoesNotExposePassword(t *testing.T) {
 	tests := []struct {
 		name     string
 		password string
@@ -225,9 +225,9 @@ func TestValidateRegistrationCredentials_DoesNotExposePassword(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := validateRegistrationCredentials("eve", tt.password)
+			_, err := validateCredentials("eve", tt.password)
 			if err == nil {
-				t.Fatal("validateRegistrationCredentials() error = nil")
+				t.Fatal("validateCredentials() error = nil")
 			}
 
 			if strings.Contains(err.Error(), tt.password) {

@@ -5,11 +5,9 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net/http"
 	"strings"
 	"testing"
 
-	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
@@ -168,17 +166,13 @@ func TestExecuteRegistration_RejectsMismatchedPasswords(t *testing.T) {
 	}
 }
 
-func TestExecuteRegistration_ReturnsReadableDuplicateError(t *testing.T) {
-	apiError := &httpclient.APIError{
-		StatusCode: http.StatusConflict,
-		Code:       "login_already_exists",
-		Message:    "login is already registered",
-	}
+func TestExecuteRegistration_ReturnsApplicationError(t *testing.T) {
+	applicationError := errors.New(`login "ALICE" is already registered`)
 
 	err := executeRegistration(
 		context.Background(),
 		userRegistererFunc(func(context.Context, string, string) (model.User, error) {
-			return model.User{}, apiError
+			return model.User{}, applicationError
 		}),
 		&passwordReaderStub{lineValue: testRegistrationPassword},
 		registrationStreams{
@@ -190,44 +184,13 @@ func TestExecuteRegistration_ReturnsReadableDuplicateError(t *testing.T) {
 		true,
 	)
 	if err == nil {
-		t.Fatal("executeRegistration() error = nil, want duplicate error")
+		t.Fatal("executeRegistration() error = nil, want application error")
 	}
-	if !strings.Contains(err.Error(), `login "ALICE" is already registered`) {
-		t.Errorf("error = %q, want readable duplicate message", err)
-	}
-	if !errors.Is(err, apiError) {
-		t.Error("duplicate error does not preserve API error")
+	if !errors.Is(err, applicationError) {
+		t.Error("registration error does not preserve application error")
 	}
 	if strings.Contains(err.Error(), testRegistrationPassword) {
-		t.Error("duplicate error contains password")
-	}
-}
-
-func TestExecuteRegistration_DoesNotLeakPasswordInNetworkError(t *testing.T) {
-	networkError := errors.New("connection refused")
-
-	err := executeRegistration(
-		context.Background(),
-		userRegistererFunc(func(context.Context, string, string) (model.User, error) {
-			return model.User{}, networkError
-		}),
-		&passwordReaderStub{lineValue: testRegistrationPassword},
-		registrationStreams{
-			input:        strings.NewReader(testRegistrationPassword + "\n"),
-			output:       io.Discard,
-			promptOutput: io.Discard,
-		},
-		"eve",
-		true,
-	)
-	if err == nil {
-		t.Fatal("executeRegistration() error = nil, want network error")
-	}
-	if !errors.Is(err, networkError) {
-		t.Error("registration error does not preserve network error")
-	}
-	if strings.Contains(err.Error(), testRegistrationPassword) {
-		t.Error("network error contains password")
+		t.Error("application error contains password")
 	}
 }
 

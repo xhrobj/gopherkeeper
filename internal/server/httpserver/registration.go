@@ -1,10 +1,7 @@
 package httpserver
 
 import (
-	"encoding/json"
 	"errors"
-	"io"
-	"mime"
 	"net/http"
 	"time"
 
@@ -12,12 +9,9 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
 )
 
-const maxRequestBodySize int64 = 4 * 1024 * 1024
-
-var errMultipleJSONValues = errors.New("request body must contain one JSON value")
-
 const (
 	errorCodeInvalidRequest       = "invalid_request"
+	errorCodeInvalidCredentials   = "invalid_credentials"
 	errorCodeLoginAlreadyExists   = "login_already_exists"
 	errorCodePayloadTooLarge      = "payload_too_large"
 	errorCodeUnsupportedMediaType = "unsupported_media_type"
@@ -26,6 +20,8 @@ const (
 
 const (
 	errorMessageInvalidRequest       = "invalid registration data"
+	errorMessageInvalidLoginRequest  = "invalid login request"
+	errorMessageInvalidCredentials   = "invalid login or password"
 	errorMessageLoginAlreadyExists   = "login is already registered"
 	errorMessagePayloadTooLarge      = "request body is too large"
 	errorMessageUnsupportedMediaType = "content type must be application/json"
@@ -43,11 +39,6 @@ type userResponse struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-type errorResponse struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
-
 func registerHandler(registerer UserRegisterer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !isJSONContentType(r.Header.Get("Content-Type")) {
@@ -60,12 +51,7 @@ func registerHandler(registerer UserRegisterer) http.HandlerFunc {
 			return
 		}
 
-		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
-		defer func() {
-			_ = r.Body.Close()
-		}()
-
-		request, err := decodeRegisterRequest(r)
+		request, err := decodeRegisterRequest(w, r)
 		if err != nil {
 			if isRequestBodyTooLarge(err) {
 				writeErrorResponse(
@@ -104,35 +90,13 @@ func registerHandler(registerer UserRegisterer) http.HandlerFunc {
 	}
 }
 
-func decodeRegisterRequest(r *http.Request) (registerRequest, error) {
+func decodeRegisterRequest(w http.ResponseWriter, r *http.Request) (registerRequest, error) {
 	var request registerRequest
-
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-
-	if err := decoder.Decode(&request); err != nil {
-		return registerRequest{}, err
-	}
-
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return registerRequest{}, errMultipleJSONValues
-		}
-
+	if err := decodeJSONRequest(w, r, &request); err != nil {
 		return registerRequest{}, err
 	}
 
 	return request, nil
-}
-
-func isJSONContentType(value string) bool {
-	mediaType, _, err := mime.ParseMediaType(value)
-	return err == nil && mediaType == "application/json"
-}
-
-func isRequestBodyTooLarge(err error) bool {
-	var maxBytesError *http.MaxBytesError
-	return errors.As(err, &maxBytesError)
 }
 
 func writeRegistrationError(w http.ResponseWriter, err error) {
@@ -163,26 +127,5 @@ func writeRegistrationError(w http.ResponseWriter, err error) {
 			errorCodeInternal,
 			errorMessageInternal,
 		)
-	}
-}
-
-func writeErrorResponse(
-	w http.ResponseWriter,
-	statusCode int,
-	code string,
-	message string,
-) {
-	writeJSONResponse(w, statusCode, errorResponse{
-		Code:    code,
-		Message: message,
-	})
-}
-
-func writeJSONResponse(w http.ResponseWriter, statusCode int, body any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-
-	if err := json.NewEncoder(w).Encode(body); err != nil {
-		return
 	}
 }

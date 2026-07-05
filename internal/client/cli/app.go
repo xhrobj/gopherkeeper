@@ -28,6 +28,8 @@ type healthRunner func(context.Context, config.Config, io.Writer) error
 type commandRunners struct {
 	health   healthRunner
 	register registerRunner
+	login    loginRunner
+	whoami   whoamiRunner
 }
 
 // Run запускает командный интерфейс Клиента.
@@ -45,7 +47,7 @@ func Run(
 		output,
 		errorOutput,
 		info,
-		commandRunners{health: runHealth, register: runRegister},
+		commandRunners{health: runHealth, register: runRegister, login: runLogin, whoami: runWhoami},
 	)
 }
 
@@ -65,7 +67,7 @@ func RunWithInput(
 		output,
 		errorOutput,
 		info,
-		commandRunners{health: runHealth, register: runRegister},
+		commandRunners{health: runHealth, register: runRegister, login: runLogin, whoami: runWhoami},
 	)
 }
 
@@ -84,7 +86,7 @@ func run(
 		output,
 		errorOutput,
 		info,
-		commandRunners{health: health, register: runRegister},
+		commandRunners{health: health, register: runRegister, login: runLogin, whoami: runWhoami},
 	)
 }
 
@@ -105,7 +107,7 @@ func runWithInput(
 		cli.VersionPrinter = previousVersionPrinter
 	}()
 
-	command := newCommand(input, output, errorOutput, info, runners.health, runners.register)
+	command := newCommand(input, output, errorOutput, info, runners)
 
 	return command.Run(ctx, args)
 }
@@ -115,8 +117,7 @@ func newCommand(
 	output io.Writer,
 	errorOutput io.Writer,
 	info buildinfo.Info,
-	health healthRunner,
-	register registerRunner,
+	runners commandRunners,
 ) *cli.Command {
 	defaults := config.Load()
 	version := info.Version
@@ -142,14 +143,29 @@ func newCommand(
 				Usage: "path to an additional trusted CA certificate",
 				Value: defaults.CACertFile,
 			},
+			&cli.StringFlag{
+				Name:  "session-file",
+				Usage: "path to online session file",
+				Value: defaults.SessionFile,
+			},
 		},
 		Commands: []*cli.Command{
-			newHealthCommand(health),
-			newRegisterCommand(input, register),
+			newHealthCommand(runners.health),
+			newRegisterCommand(input, runners.register),
+			newLoginCommand(input, runners.login),
+			newWhoamiCommand(runners.whoami),
 		},
 		Action: func(_ context.Context, command *cli.Command) error {
 			return cli.ShowRootCommandHelp(command)
 		},
+	}
+}
+
+func configFromCommand(command *cli.Command) config.Config {
+	return config.Config{
+		Address:     command.String("address"),
+		CACertFile:  command.String("ca-cert"),
+		SessionFile: command.String("session-file"),
 	}
 }
 

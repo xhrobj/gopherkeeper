@@ -1,11 +1,12 @@
 .PHONY: \
 	show-coverage \
-	gen-tls-certs \
+	gen-tls-certs gen-jwt-secret \
+	check-client-ca \
 	build build-server build-client build-client-cross \
 	db-up db-down db-connect db-erase \
 	run-server run-client \
 	run-client-health \
-	run-client-register \
+	run-client-register run-client-login run-client-whoami \
 	test-all test test-race test-integration \
 	coverage \
 	vet lint ci \
@@ -23,12 +24,20 @@ TLS_CA_CERT := $(TLS_CERT_DIR)/ca.pem
 TLS_SERVER_CERT := $(TLS_CERT_DIR)/server.pem
 TLS_SERVER_KEY := $(TLS_CERT_DIR)/server-key.pem
 
+# JWT-параметры локального запуска Сервера читаются из env-файла
+# и передаются Серверу через окружение.
+export JWT_SECRET
+export JWT_TTL
+
+# путь к локальному файлу online-сессии Клиента можно задать через env-файл.
+export SESSION_FILE
+
 # параметры логирования
 LOG_LEVEL ?= info
 export LOG_LEVEL
 
 # данные о сборке подставляются в бинарники Клиента и Сервера через ldflags
-BUILD_VERSION ?= v0.2.0
+BUILD_VERSION ?= v0.3.0
 BUILD_DATE ?= $(shell date +%Y-%m-%d)
 BUILD_COMMIT ?= $(shell git rev-parse --short HEAD)
 
@@ -67,6 +76,19 @@ show-coverage: coverage
 # сгенерировать (при необходимости) локальный CA и TLS-сертификат Сервера
 gen-tls-certs:
 	./scripts/generate-tls-certs.sh
+
+# сгенерировать случайный JWT secret для локальной разработки
+# значение нужно скопировать в JWT_SECRET локального .env-файла
+gen-jwt-secret:
+	@openssl rand -base64 32
+
+check-client-ca:
+	@if [ ! -f "$(TLS_CA_CERT)" ]; then \
+		echo "(+_+) CA certificate not found: $(TLS_CA_CERT)"; \
+		echo "1. start the local Server first with 'make run-server'"; \
+		echo "2. or copy the Server CA certificate and set TLS_CA_CERT"; \
+		exit 1; \
+	fi
 
 # собрать Сервер и Клиент
 build: build-server build-client
@@ -138,20 +160,34 @@ run-server: db-up gen-tls-certs build-server
 run-client: build-client
 	$(CLIENT)
 
-# собрать и запустить Клиент и выполнить health-запрос к Серверу
-run-client-health: gen-tls-certs build-client
+# запустить Клиент и выполнить health-запрос к Серверу
+run-client-health: check-client-ca
 	$(CLIENT) health \
 		-a $(ADDRESS) \
 		--ca-cert $(TLS_CA_CERT)
 
-# собрать и запустить Клиент для регистрации пользователя
+# запустить Клиент для регистрации пользователя
 # LOGIN нужно передать через окружение или командную строку make
 # примеры:
 # - `LOGIN=bob make run-client-register`
 # - `make run-client-register LOGIN=bob`
-run-client-register: gen-tls-certs build-client
+run-client-register: check-client-ca
 	$(CLIENT) register \
 		--login $(LOGIN) \
+		-a $(ADDRESS) \
+		--ca-cert $(TLS_CA_CERT)
+
+# запустить Клиент для входа пользователя
+# LOGIN нужно передать через окружение или командную строку make
+run-client-login: check-client-ca
+	$(CLIENT) login \
+		--login $(LOGIN) \
+		-a $(ADDRESS) \
+		--ca-cert $(TLS_CA_CERT)
+
+# запустить Клиент и вывести текущего пользователя online-сессии
+run-client-whoami: check-client-ca
+	$(CLIENT) whoami \
 		-a $(ADDRESS) \
 		--ca-cert $(TLS_CA_CERT)
 

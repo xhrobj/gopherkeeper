@@ -24,6 +24,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/xhrobj/gopherkeeper/internal/model"
 	"github.com/xhrobj/gopherkeeper/internal/server/auth"
 	"github.com/xhrobj/gopherkeeper/internal/server/httpserver"
 	"github.com/xhrobj/gopherkeeper/internal/server/postgres"
@@ -34,6 +35,8 @@ const (
 	integrationTestTimeout   = 30 * time.Second
 	testRegistrationPassword = "correct-horse-battery-staple"
 )
+
+var integrationJWTSecret = []byte("0123456789abcdef0123456789abcdef")
 
 func openPostgres(t *testing.T, ctx context.Context, dsn string) *pgxpool.Pool {
 	t.Helper()
@@ -233,7 +236,81 @@ func newServerHandler(pool *pgxpool.Pool) http.Handler {
 	passwordManager := auth.NewBcryptPasswordManager()
 	registrationService := service.NewRegistrationService(userRepository, passwordManager)
 
-	return httpserver.NewHandler(pool, registrationService)
+	return httpserver.NewHandler(
+		pool,
+		registrationService,
+		unusedIntegrationAuthenticator,
+		unusedIntegrationTokenValidator,
+		unusedIntegrationCurrentUserReader,
+	)
+}
+
+func newAuthenticatedServerHandler(pool *pgxpool.Pool) http.Handler {
+	userRepository := postgres.NewUserRepository(pool)
+	passwordManager := auth.NewBcryptPasswordManager()
+	registrationService := service.NewRegistrationService(userRepository, passwordManager)
+	tokenManager := auth.NewJWTTokenManager(integrationJWTSecret, 15*time.Minute)
+	authenticationService := service.NewAuthenticationService(
+		userRepository,
+		passwordManager,
+		tokenManager,
+	)
+
+	return httpserver.NewHandler(
+		pool,
+		registrationService,
+		authenticationService,
+		tokenManager,
+		userRepository,
+	)
+}
+
+var unusedIntegrationAuthenticator = integrationAuthenticatorFunc(func(
+	context.Context,
+	string,
+	string,
+) (service.AuthenticationResult, error) {
+	return service.AuthenticationResult{}, errors.New("unexpected authentication call")
+})
+
+type integrationAuthenticatorFunc func(
+	ctx context.Context,
+	login string,
+	password string,
+) (service.AuthenticationResult, error)
+
+func (f integrationAuthenticatorFunc) Authenticate(
+	ctx context.Context,
+	login string,
+	password string,
+) (service.AuthenticationResult, error) {
+	return f(ctx, login, password)
+}
+
+var unusedIntegrationTokenValidator = integrationTokenValidatorFunc(func(
+	context.Context,
+	string,
+) (int64, error) {
+	return 0, errors.New("unexpected token validation call")
+})
+
+type integrationTokenValidatorFunc func(context.Context, string) (int64, error)
+
+func (f integrationTokenValidatorFunc) Validate(ctx context.Context, token string) (int64, error) {
+	return f(ctx, token)
+}
+
+var unusedIntegrationCurrentUserReader = integrationCurrentUserReaderFunc(func(
+	context.Context,
+	int64,
+) (model.User, error) {
+	return model.User{}, errors.New("unexpected current user read call")
+})
+
+type integrationCurrentUserReaderFunc func(context.Context, int64) (model.User, error)
+
+func (f integrationCurrentUserReaderFunc) FindByID(ctx context.Context, id int64) (model.User, error) {
+	return f(ctx, id)
 }
 
 func assertStoredRegistration(
