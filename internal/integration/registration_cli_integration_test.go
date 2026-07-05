@@ -16,7 +16,7 @@ import (
 
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	clientcli "github.com/xhrobj/gopherkeeper/internal/client/cli"
-	"github.com/xhrobj/gopherkeeper/internal/server/httpserver"
+	"github.com/xhrobj/gopherkeeper/internal/server/middleware"
 	"github.com/xhrobj/gopherkeeper/internal/server/migration"
 )
 
@@ -56,7 +56,7 @@ func TestIntegration_CLIRegistrationFlow(t *testing.T) {
 	caCertFile, serverCertFile, serverKeyFile := generateTLSFiles(t)
 	serverAddress, stopServer := startHTTPSServer(
 		t,
-		httpserver.WithLogging(newServerHandler(testPool), logger),
+		middleware.WithLogging(newServerHandler(testPool), logger),
 		serverCertFile,
 		serverKeyFile,
 	)
@@ -155,7 +155,7 @@ func TestIntegration_CLILoginFlow(t *testing.T) {
 	caCertFile, serverCertFile, serverKeyFile := generateTLSFiles(t)
 	serverAddress, stopServer := startHTTPSServer(
 		t,
-		httpserver.WithLogging(newAuthenticatedServerHandler(testPool), logger),
+		middleware.WithLogging(newAuthenticatedServerHandler(testPool), logger),
 		serverCertFile,
 		serverKeyFile,
 	)

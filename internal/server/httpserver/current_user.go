@@ -5,13 +5,14 @@ import (
 	"net/http"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
+	"github.com/xhrobj/gopherkeeper/internal/server/middleware"
 )
 
 func currentUserHandler(users CurrentUserReader) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userID, ok := UserIDFromContext(r.Context())
+		userID, ok := middleware.UserIDFromContext(r.Context())
 		if !ok {
-			writeUnauthorizedResponse(w)
+			middleware.WriteUnauthorizedResponse(w)
 			return
 		}
 
@@ -31,7 +32,7 @@ func currentUserHandler(users CurrentUserReader) http.Handler {
 
 func writeCurrentUserError(w http.ResponseWriter, err error) {
 	if errors.Is(err, model.ErrUserNotFound) {
-		writeUnauthorizedResponse(w)
+		middleware.WriteUnauthorizedResponse(w)
 		return
 	}
 

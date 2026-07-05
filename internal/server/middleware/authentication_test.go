@@ -1,7 +1,8 @@
-package httpserver
+package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -175,4 +176,32 @@ func assertUnauthorizedResponse(t *testing.T, response *httptest.ResponseRecorde
 		errorCodeUnauthorized,
 		errorMessageUnauthorized,
 	)
+}
+
+func assertErrorResponse(
+	t *testing.T,
+	response *httptest.ResponseRecorder,
+	wantStatus int,
+	wantCode string,
+	wantMessage string,
+) {
+	t.Helper()
+
+	if contentType := response.Header().Get("Content-Type"); contentType != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", contentType)
+	}
+	if response.Code != wantStatus {
+		t.Errorf("status code = %d, want %d", response.Code, wantStatus)
+	}
+
+	var body errorResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if body.Code != wantCode {
+		t.Errorf("error code = %q, want %q", body.Code, wantCode)
+	}
+	if body.Message != wantMessage {
+		t.Errorf("error message = %q, want %q", body.Message, wantMessage)
+	}
 }

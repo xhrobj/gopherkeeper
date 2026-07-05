@@ -1,4 +1,4 @@
-package httpserver
+package middleware
 
 import (
 	"context"
@@ -21,13 +21,13 @@ func WithAuthentication(handler http.Handler, validator TokenValidator) http.Han
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, ok := bearerToken(r.Header.Get("Authorization"))
 		if !ok {
-			writeUnauthorizedResponse(w)
+			WriteUnauthorizedResponse(w)
 			return
 		}
 
 		userID, err := validator.Validate(r.Context(), token)
 		if err != nil {
-			writeUnauthorizedResponse(w)
+			WriteUnauthorizedResponse(w)
 			return
 		}
 
@@ -51,7 +51,8 @@ func bearerToken(headerValue string) (string, bool) {
 	return fields[1], true
 }
 
-func writeUnauthorizedResponse(w http.ResponseWriter) {
+// WriteUnauthorizedResponse записывает стандартный ответ для неаутентифицированного HTTP-запроса.
+func WriteUnauthorizedResponse(w http.ResponseWriter) {
 	w.Header().Set("WWW-Authenticate", authorizationSchemeBearer)
 	writeErrorResponse(
 		w,

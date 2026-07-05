@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
+	"github.com/xhrobj/gopherkeeper/internal/server/middleware"
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
 )
 
@@ -48,7 +49,7 @@ func NewHandler(
 	database DatabasePinger,
 	registerer UserRegisterer,
 	authenticator UserAuthenticator,
-	tokenValidator TokenValidator,
+	tokenValidator middleware.TokenValidator,
 	currentUserReader CurrentUserReader,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -57,7 +58,7 @@ func NewHandler(
 	mux.HandleFunc("POST /api/v1/auth/login", loginHandler(authenticator))
 	mux.Handle(
 		"GET /api/v1/users/me",
-		WithAuthentication(currentUserHandler(currentUserReader), tokenValidator),
+		middleware.WithAuthentication(currentUserHandler(currentUserReader), tokenValidator),
 	)
 
 	return mux

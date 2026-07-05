@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
+	"github.com/xhrobj/gopherkeeper/internal/server/middleware"
 )
 
 type currentUserReaderFunc func(context.Context, int64) (model.User, error)
@@ -32,10 +33,9 @@ func TestCurrentUserHandler_ReturnsCurrentUser(t *testing.T) {
 		}, nil
 	})
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/users/me", nil)
-	request = request.WithContext(context.WithValue(request.Context(), userIDContextKey{}, int64(42)))
 	response := httptest.NewRecorder()
 
-	currentUserHandler(reader).ServeHTTP(response, request)
+	serveAuthenticatedCurrentUserHandler(t, reader, response, request)
 
 	if gotID != 42 {
 		t.Errorf("FindByID() id = %d, want 42", gotID)
@@ -76,8 +76,8 @@ func TestCurrentUserHandler_MapsReaderErrors(t *testing.T) {
 			name:        "user not found",
 			readerErr:   model.ErrUserNotFound,
 			wantStatus:  http.StatusUnauthorized,
-			wantCode:    errorCodeUnauthorized,
-			wantMessage: errorMessageUnauthorized,
+			wantCode:    "unauthorized",
+			wantMessage: "missing or invalid bearer token",
 		},
 		{
 			name:        "internal error",
@@ -94,10 +94,9 @@ func TestCurrentUserHandler_MapsReaderErrors(t *testing.T) {
 				return model.User{}, tt.readerErr
 			})
 			request := httptest.NewRequest(http.MethodGet, "/api/v1/users/me", nil)
-			request = request.WithContext(context.WithValue(request.Context(), userIDContextKey{}, int64(42)))
 			response := httptest.NewRecorder()
 
-			currentUserHandler(reader).ServeHTTP(response, request)
+			serveAuthenticatedCurrentUserHandler(t, reader, response, request)
 
 			assertErrorResponse(t, response, tt.wantStatus, tt.wantCode, tt.wantMessage)
 			if strings.Contains(response.Body.String(), internalError.Error()) {
@@ -105,6 +104,41 @@ func TestCurrentUserHandler_MapsReaderErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func serveAuthenticatedCurrentUserHandler(
+	t *testing.T,
+	reader CurrentUserReader,
+	response *httptest.ResponseRecorder,
+	request *http.Request,
+) {
+	t.Helper()
+
+	validator := tokenValidatorFunc(func(_ context.Context, token string) (int64, error) {
+		if token != "valid-token" {
+			t.Fatalf("Validate() token = %q, want valid-token", token)
+		}
+
+		return 42, nil
+	})
+	request.Header.Set("Authorization", "Bearer valid-token")
+
+	middleware.WithAuthentication(currentUserHandler(reader), validator).ServeHTTP(response, request)
+}
+
+func assertUnauthorizedResponse(t *testing.T, response *httptest.ResponseRecorder) {
+	t.Helper()
+
+	if authenticate := response.Header().Get("WWW-Authenticate"); authenticate != "Bearer" {
+		t.Errorf("WWW-Authenticate = %q, want Bearer", authenticate)
+	}
+	assertErrorResponse(
+		t,
+		response,
+		http.StatusUnauthorized,
+		"unauthorized",
+		"missing or invalid bearer token",
+	)
 }
 
 func assertUserResponse(t *testing.T, response *httptest.ResponseRecorder, want userResponse) {

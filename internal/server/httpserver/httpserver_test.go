@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
+	"github.com/xhrobj/gopherkeeper/internal/server/middleware"
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
 )
 
@@ -18,6 +19,12 @@ type databasePingerFunc func(context.Context) error
 
 func (f databasePingerFunc) Ping(ctx context.Context) error {
 	return f(ctx)
+}
+
+type tokenValidatorFunc func(context.Context, string) (int64, error)
+
+func (f tokenValidatorFunc) Validate(ctx context.Context, token string) (int64, error) {
+	return f(ctx, token)
 }
 
 func TestHealthHandler(t *testing.T) {
@@ -226,7 +233,7 @@ func TestNewHandler_RoutesCurrentUser(t *testing.T) {
 	)
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/users/me", nil)
-	request.Header.Set("Authorization", authorizationSchemeBearer+" valid-token")
+	request.Header.Set("Authorization", "Bearer valid-token")
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, request)
@@ -268,7 +275,7 @@ func unusedUserAuthenticator(t *testing.T) UserAuthenticator {
 	})
 }
 
-func unusedTokenValidator(t *testing.T) TokenValidator {
+func unusedTokenValidator(t *testing.T) middleware.TokenValidator {
 	t.Helper()
 
 	return tokenValidatorFunc(func(context.Context, string) (int64, error) {

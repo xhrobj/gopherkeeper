@@ -12,6 +12,7 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/server/auth"
 	"github.com/xhrobj/gopherkeeper/internal/server/config"
 	"github.com/xhrobj/gopherkeeper/internal/server/httpserver"
+	"github.com/xhrobj/gopherkeeper/internal/server/middleware"
 	"github.com/xhrobj/gopherkeeper/internal/server/migration"
 	"github.com/xhrobj/gopherkeeper/internal/server/postgres"
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
@@ -82,7 +83,7 @@ func run(ctx context.Context) error {
 		tokenManager,
 	)
 
-	handler := httpserver.WithLogging(
+	handler := middleware.WithLogging(
 		httpserver.NewHandler(
 			pool,
 			registrationService,
