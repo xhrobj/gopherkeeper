@@ -112,28 +112,28 @@ func TestRegisterHandler_MapsServiceErrors(t *testing.T) {
 			serviceErr:  service.ErrInvalidLogin,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRequest,
+			wantMessage: errorMessageInvalidRegistrationRequest,
 		},
 		{
 			name:        "invalid password",
 			serviceErr:  service.ErrInvalidPassword,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRequest,
+			wantMessage: errorMessageInvalidRegistrationRequest,
 		},
 		{
 			name:        "password too short",
 			serviceErr:  service.ErrPasswordTooShort,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRequest,
+			wantMessage: errorMessageInvalidRegistrationRequest,
 		},
 		{
 			name:        "password too long",
 			serviceErr:  service.ErrPasswordTooLong,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRequest,
+			wantMessage: errorMessageInvalidRegistrationRequest,
 		},
 		{
 			name:        "login already exists",
@@ -209,7 +209,7 @@ func TestRegisterHandler_RejectsInvalidRequest(t *testing.T) {
 			contentType: "application/json",
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRequest,
+			wantMessage: errorMessageInvalidRegistrationRequest,
 		},
 		{
 			name:        "malformed JSON",
@@ -217,7 +217,7 @@ func TestRegisterHandler_RejectsInvalidRequest(t *testing.T) {
 			body:        `{"login":"eve"`,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRequest,
+			wantMessage: errorMessageInvalidRegistrationRequest,
 		},
 		{
 			name:        "unknown field",
@@ -225,7 +225,7 @@ func TestRegisterHandler_RejectsInvalidRequest(t *testing.T) {
 			body:        `{"login":"eve","password":"` + testRegistrationPassword + `","role":"admin"}`,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRequest,
+			wantMessage: errorMessageInvalidRegistrationRequest,
 		},
 		{
 			name:        "multiple JSON values",
@@ -234,7 +234,7 @@ func TestRegisterHandler_RejectsInvalidRequest(t *testing.T) {
 				registrationRequestBody(t, "eve"),
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRequest,
+			wantMessage: errorMessageInvalidRegistrationRequest,
 		},
 	}
 

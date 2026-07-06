@@ -8,7 +8,10 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
 )
 
-const tokenTypeBearer = "Bearer"
+const (
+	tokenTypeBearer                 = "Bearer"
+	errorMessageInvalidLoginRequest = "invalid login request"
+)
 
 type loginRequest struct {
 	Login    string `json:"login"`
