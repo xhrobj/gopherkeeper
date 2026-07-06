@@ -46,6 +46,20 @@ func (s sessionStorageStub) Load(expectedServerAddress string) (session.Session,
 	return s.load(expectedServerAddress)
 }
 
+func testOnlineSession() session.Session {
+	return session.Session{
+		ServerAddress: "localhost:8080",
+		AccessToken:   "test.jwt.token",
+		TokenType:     "Bearer",
+		ExpiresAt:     time.Date(2026, time.July, 6, 12, 15, 0, 0, time.UTC),
+		User: model.User{
+			ID:        42,
+			Login:     "alice",
+			CreatedAt: time.Date(2026, time.July, 6, 12, 0, 0, 0, time.UTC),
+		},
+	}
+}
+
 func TestApplication_Register(t *testing.T) {
 	application := newApplication(
 		userClientStub{
@@ -343,8 +357,7 @@ func TestApplication_Login_DoesNotLeakTokenInSaveError(t *testing.T) {
 }
 
 func TestApplication_Whoami(t *testing.T) {
-	createdAt := time.Date(2026, time.July, 5, 12, 0, 0, 0, time.UTC)
-	expiresAt := time.Date(2026, time.July, 5, 12, 15, 0, 0, time.UTC)
+	currentUser := testOnlineSession().User
 	application := newApplication(
 		userClientStub{
 			whoami: func(_ context.Context, accessToken string) (model.User, error) {
@@ -352,11 +365,7 @@ func TestApplication_Whoami(t *testing.T) {
 					t.Errorf("access token = %q, want test.jwt.token", accessToken)
 				}
 
-				return model.User{
-					ID:        42,
-					Login:     "alice",
-					CreatedAt: createdAt,
-				}, nil
+				return currentUser, nil
 			},
 		},
 		sessionStorageStub{
@@ -365,17 +374,7 @@ func TestApplication_Whoami(t *testing.T) {
 					t.Errorf("expected server address = %q, want localhost:8080", expectedServerAddress)
 				}
 
-				return session.Session{
-					ServerAddress: "localhost:8080",
-					AccessToken:   "test.jwt.token",
-					TokenType:     "Bearer",
-					ExpiresAt:     expiresAt,
-					User: model.User{
-						ID:        42,
-						Login:     "alice",
-						CreatedAt: createdAt,
-					},
-				}, nil
+				return testOnlineSession(), nil
 			},
 		},
 		"localhost:8080",
@@ -472,17 +471,7 @@ func TestApplication_Whoami_MapsUnauthorizedAPIError(t *testing.T) {
 		},
 		sessionStorageStub{
 			load: func(string) (session.Session, error) {
-				return session.Session{
-					ServerAddress: "localhost:8080",
-					AccessToken:   "test.jwt.token",
-					TokenType:     "Bearer",
-					ExpiresAt:     time.Date(2026, time.July, 5, 12, 15, 0, 0, time.UTC),
-					User: model.User{
-						ID:        42,
-						Login:     "alice",
-						CreatedAt: time.Date(2026, time.July, 5, 12, 0, 0, 0, time.UTC),
-					},
-				}, nil
+				return testOnlineSession(), nil
 			},
 		},
 		"localhost:8080",
@@ -513,17 +502,7 @@ func TestApplication_Whoami_DoesNotLeakTokenInNetworkError(t *testing.T) {
 		},
 		sessionStorageStub{
 			load: func(string) (session.Session, error) {
-				return session.Session{
-					ServerAddress: "localhost:8080",
-					AccessToken:   "test.jwt.token",
-					TokenType:     "Bearer",
-					ExpiresAt:     time.Date(2026, time.July, 5, 12, 15, 0, 0, time.UTC),
-					User: model.User{
-						ID:        42,
-						Login:     "alice",
-						CreatedAt: time.Date(2026, time.July, 5, 12, 0, 0, 0, time.UTC),
-					},
-				}, nil
+				return testOnlineSession(), nil
 			},
 		},
 		"localhost:8080",

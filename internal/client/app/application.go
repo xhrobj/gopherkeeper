@@ -115,14 +115,9 @@ func (a *Application) Login(ctx context.Context, login, password string) (model.
 
 // Whoami возвращает пользователя из текущей online-сессии.
 func (a *Application) Whoami(ctx context.Context) (model.User, error) {
-	sessions, err := a.sessionStorage()
+	storedSession, err := a.loadSession()
 	if err != nil {
-		return model.User{}, fmt.Errorf("create online session storage: %w", err)
-	}
-
-	storedSession, err := sessions.Load(a.serverAddress)
-	if err != nil {
-		return model.User{}, mapSessionLoadError(err)
+		return model.User{}, err
 	}
 
 	user, err := a.users.CurrentUser(ctx, storedSession.AccessToken)
@@ -131,6 +126,20 @@ func (a *Application) Whoami(ctx context.Context) (model.User, error) {
 	}
 
 	return user, nil
+}
+
+func (a *Application) loadSession() (session.Session, error) {
+	sessions, err := a.sessionStorage()
+	if err != nil {
+		return session.Session{}, fmt.Errorf("create online session storage: %w", err)
+	}
+
+	storedSession, err := sessions.Load(a.serverAddress)
+	if err != nil {
+		return session.Session{}, mapSessionLoadError(err)
+	}
+
+	return storedSession, nil
 }
 
 func (a *Application) sessionStorage() (sessionStorage, error) {
