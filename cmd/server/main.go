@@ -6,6 +6,8 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/logger"
@@ -38,7 +40,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	if err := run(ctx); err != nil {
 		log.Fatal(err)
@@ -104,10 +107,18 @@ func run(ctx context.Context) error {
 		zap.String("server_address", cfg.Address),
 	)
 
-	return server.ListenAndServeTLS(
+	if err := httpserver.ServeTLS(
+		ctx,
+		server,
 		cfg.TLSCertFile,
 		cfg.TLSKeyFile,
-	)
+	); err != nil {
+		return err
+	}
+
+	lg.Info("https server stopped")
+
+	return nil
 }
 
 func printBanner(output io.Writer) error {
