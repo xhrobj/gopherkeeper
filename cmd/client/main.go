@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
-	clientcli "github.com/xhrobj/gopherkeeper/internal/client/cli"
+	"github.com/xhrobj/gopherkeeper/internal/client/cli"
 )
 
 var (
@@ -16,8 +18,11 @@ var (
 )
 
 func main() {
-	if err := clientcli.Run(
-		context.Background(),
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := cli.Run(
+		ctx,
 		os.Args,
 		os.Stdout,
 		os.Stderr,
