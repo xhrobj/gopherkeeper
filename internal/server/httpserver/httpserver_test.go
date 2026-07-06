@@ -49,15 +49,11 @@ func TestHealthHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := NewHandler(
-				databasePingerFunc(func(context.Context) error {
-					return tt.pingErr
-				}),
-				unusedUserRegisterer(t),
-				unusedUserAuthenticator(t),
-				unusedTokenValidator(t),
-				unusedCurrentUserReader(t),
-			)
+			deps := newTestDependencies(t)
+			deps.Database = databasePingerFunc(func(context.Context) error {
+				return tt.pingErr
+			})
+			handler := NewHandler(deps)
 
 			request := httptest.NewRequest(http.MethodGet, "/health", nil)
 			response := httptest.NewRecorder()
@@ -102,15 +98,7 @@ func assertHealthResponse(
 }
 
 func TestHealthHandler_RejectsUnsupportedMethod(t *testing.T) {
-	handler := NewHandler(
-		databasePingerFunc(func(context.Context) error {
-			return nil
-		}),
-		unusedUserRegisterer(t),
-		unusedUserAuthenticator(t),
-		unusedTokenValidator(t),
-		unusedCurrentUserReader(t),
-	)
+	handler := NewHandler(newTestDependencies(t))
 
 	request := httptest.NewRequest(http.MethodPost, "/health", nil)
 	response := httptest.NewRecorder()
@@ -124,27 +112,21 @@ func TestHealthHandler_RejectsUnsupportedMethod(t *testing.T) {
 
 func TestNewHandler_RoutesRegistration(t *testing.T) {
 	registrarCalled := false
-	handler := NewHandler(
-		databasePingerFunc(func(context.Context) error {
-			return nil
-		}),
-		userRegistererFunc(func(
-			context.Context,
-			string,
-			string,
-		) (model.User, error) {
-			registrarCalled = true
+	deps := newTestDependencies(t)
+	deps.Registerer = userRegistererFunc(func(
+		context.Context,
+		string,
+		string,
+	) (model.User, error) {
+		registrarCalled = true
 
-			return model.User{
-				ID:        42,
-				Login:     "alice",
-				CreatedAt: time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC),
-			}, nil
-		}),
-		unusedUserAuthenticator(t),
-		unusedTokenValidator(t),
-		unusedCurrentUserReader(t),
-	)
+		return model.User{
+			ID:        42,
+			Login:     "alice",
+			CreatedAt: time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC),
+		}, nil
+	})
+	handler := NewHandler(deps)
 
 	request := newRegistrationRequest(t, registrationRequestBody(t, "alice"))
 	response := httptest.NewRecorder()
@@ -161,31 +143,25 @@ func TestNewHandler_RoutesRegistration(t *testing.T) {
 
 func TestNewHandler_RoutesLogin(t *testing.T) {
 	authenticatorCalled := false
-	handler := NewHandler(
-		databasePingerFunc(func(context.Context) error {
-			return nil
-		}),
-		unusedUserRegisterer(t),
-		userAuthenticatorFunc(func(
-			context.Context,
-			string,
-			string,
-		) (service.AuthenticationResult, error) {
-			authenticatorCalled = true
+	deps := newTestDependencies(t)
+	deps.Authenticator = userAuthenticatorFunc(func(
+		context.Context,
+		string,
+		string,
+	) (service.AuthenticationResult, error) {
+		authenticatorCalled = true
 
-			return service.AuthenticationResult{
-				AccessToken: "access-token",
-				ExpiresAt:   time.Date(2026, time.July, 4, 12, 15, 0, 0, time.UTC),
-				User: model.User{
-					ID:        42,
-					Login:     "alice",
-					CreatedAt: time.Date(2026, time.July, 4, 12, 0, 0, 0, time.UTC),
-				},
-			}, nil
-		}),
-		unusedTokenValidator(t),
-		unusedCurrentUserReader(t),
-	)
+		return service.AuthenticationResult{
+			AccessToken: "access-token",
+			ExpiresAt:   time.Date(2026, time.July, 4, 12, 15, 0, 0, time.UTC),
+			User: model.User{
+				ID:        42,
+				Login:     "alice",
+				CreatedAt: time.Date(2026, time.July, 4, 12, 0, 0, 0, time.UTC),
+			},
+		}, nil
+	})
+	handler := NewHandler(deps)
 
 	request := newLoginRequest(t, loginRequestBody(t, "alice"))
 	response := httptest.NewRecorder()
@@ -203,34 +179,28 @@ func TestNewHandler_RoutesLogin(t *testing.T) {
 func TestNewHandler_RoutesCurrentUser(t *testing.T) {
 	validatorCalled := false
 	readerCalled := false
+	deps := newTestDependencies(t)
+	deps.TokenValidator = tokenValidatorFunc(func(_ context.Context, token string) (int64, error) {
+		validatorCalled = true
+		if token != "valid-token" {
+			t.Fatalf("Validate() token = %q, want valid-token", token)
+		}
 
-	handler := NewHandler(
-		databasePingerFunc(func(context.Context) error {
-			return nil
-		}),
-		unusedUserRegisterer(t),
-		unusedUserAuthenticator(t),
-		tokenValidatorFunc(func(_ context.Context, token string) (int64, error) {
-			validatorCalled = true
-			if token != "valid-token" {
-				t.Fatalf("Validate() token = %q, want valid-token", token)
-			}
+		return 42, nil
+	})
+	deps.CurrentUserReader = currentUserReaderFunc(func(_ context.Context, id int64) (model.User, error) {
+		readerCalled = true
+		if id != 42 {
+			t.Fatalf("FindByID() id = %d, want 42", id)
+		}
 
-			return 42, nil
-		}),
-		currentUserReaderFunc(func(_ context.Context, id int64) (model.User, error) {
-			readerCalled = true
-			if id != 42 {
-				t.Fatalf("FindByID() id = %d, want 42", id)
-			}
-
-			return model.User{
-				ID:        42,
-				Login:     "alice",
-				CreatedAt: time.Date(2026, time.July, 4, 12, 0, 0, 0, time.UTC),
-			}, nil
-		}),
-	)
+		return model.User{
+			ID:        42,
+			Login:     "alice",
+			CreatedAt: time.Date(2026, time.July, 4, 12, 0, 0, 0, time.UTC),
+		}, nil
+	})
+	handler := NewHandler(deps)
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/users/me", nil)
 	request.Header.Set("Authorization", "Bearer valid-token")
@@ -246,6 +216,20 @@ func TestNewHandler_RoutesCurrentUser(t *testing.T) {
 	}
 	if response.Code != http.StatusOK {
 		t.Errorf("status code = %d, want %d", response.Code, http.StatusOK)
+	}
+}
+
+func newTestDependencies(t *testing.T) Dependencies {
+	t.Helper()
+
+	return Dependencies{
+		Database: databasePingerFunc(func(context.Context) error {
+			return nil
+		}),
+		Registerer:        unusedUserRegisterer(t),
+		Authenticator:     unusedUserAuthenticator(t),
+		TokenValidator:    unusedTokenValidator(t),
+		CurrentUserReader: unusedCurrentUserReader(t),
 	}
 }
 

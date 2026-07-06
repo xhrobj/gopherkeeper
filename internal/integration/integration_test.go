@@ -236,13 +236,13 @@ func newServerHandler(pool *pgxpool.Pool) http.Handler {
 	passwordManager := auth.NewBcryptPasswordManager()
 	registrationService := service.NewRegistrationService(userRepository, passwordManager)
 
-	return httpserver.NewHandler(
-		pool,
-		registrationService,
-		unusedIntegrationAuthenticator,
-		unusedIntegrationTokenValidator,
-		unusedIntegrationCurrentUserReader,
-	)
+	return httpserver.NewHandler(httpserver.Dependencies{
+		Database:          pool,
+		Registerer:        registrationService,
+		Authenticator:     unusedIntegrationAuthenticator,
+		TokenValidator:    unusedIntegrationTokenValidator,
+		CurrentUserReader: unusedIntegrationCurrentUserReader,
+	})
 }
 
 func newAuthenticatedServerHandler(pool *pgxpool.Pool) http.Handler {
@@ -256,13 +256,13 @@ func newAuthenticatedServerHandler(pool *pgxpool.Pool) http.Handler {
 		tokenManager,
 	)
 
-	return httpserver.NewHandler(
-		pool,
-		registrationService,
-		authenticationService,
-		tokenManager,
-		userRepository,
-	)
+	return httpserver.NewHandler(httpserver.Dependencies{
+		Database:          pool,
+		Registerer:        registrationService,
+		Authenticator:     authenticationService,
+		TokenValidator:    tokenManager,
+		CurrentUserReader: userRepository,
+	})
 }
 
 var unusedIntegrationAuthenticator = integrationAuthenticatorFunc(func(

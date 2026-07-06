@@ -44,21 +44,24 @@ type healthResponse struct {
 	Status string `json:"status"`
 }
 
+// Dependencies содержит зависимости HTTP-handler'а Сервера.
+type Dependencies struct {
+	Database          DatabasePinger
+	Registerer        UserRegisterer
+	Authenticator     UserAuthenticator
+	TokenValidator    middleware.TokenValidator
+	CurrentUserReader CurrentUserReader
+}
+
 // NewHandler создаёт основной HTTP-handler Сервера.
-func NewHandler(
-	database DatabasePinger,
-	registerer UserRegisterer,
-	authenticator UserAuthenticator,
-	tokenValidator middleware.TokenValidator,
-	currentUserReader CurrentUserReader,
-) http.Handler {
+func NewHandler(deps Dependencies) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", healthHandler(database))
-	mux.HandleFunc("POST /api/v1/auth/register", registerHandler(registerer))
-	mux.HandleFunc("POST /api/v1/auth/login", loginHandler(authenticator))
+	mux.HandleFunc("GET /health", healthHandler(deps.Database))
+	mux.HandleFunc("POST /api/v1/auth/register", registerHandler(deps.Registerer))
+	mux.HandleFunc("POST /api/v1/auth/login", loginHandler(deps.Authenticator))
 	mux.Handle(
 		"GET /api/v1/users/me",
-		middleware.WithAuthentication(currentUserHandler(currentUserReader), tokenValidator),
+		middleware.WithAuthentication(currentUserHandler(deps.CurrentUserReader), deps.TokenValidator),
 	)
 
 	return mux

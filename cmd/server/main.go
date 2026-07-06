@@ -84,13 +84,13 @@ func run(ctx context.Context) error {
 	)
 
 	handler := middleware.WithLogging(
-		httpserver.NewHandler(
-			pool,
-			registrationService,
-			authenticationService,
-			tokenManager,
-			userRepository,
-		),
+		httpserver.NewHandler(httpserver.Dependencies{
+			Database:          pool,
+			Registerer:        registrationService,
+			Authenticator:     authenticationService,
+			TokenValidator:    tokenManager,
+			CurrentUserReader: userRepository,
+		}),
 		lg,
 	)
 
