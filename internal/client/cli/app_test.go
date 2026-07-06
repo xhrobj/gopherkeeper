@@ -7,15 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
 )
-
-var testBuildInfo = buildinfo.Info{
-	Version: "v1.2.3",
-	Date:    "2026-06-30",
-	Commit:  "deadbeef",
-}
 
 func TestRun_RootHelpContainsBanner(t *testing.T) {
 	tests := []struct {
@@ -44,12 +37,11 @@ func TestRun_RootHelpContainsBanner(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var output bytes.Buffer
 
-			err := run(
-				context.Background(),
+			err := runWithHealthRunner(
+				t,
 				tt.args,
 				&output,
 				io.Discard,
-				testBuildInfo,
 				unexpectedHealthRunner(t),
 			)
 			if err != nil {
@@ -89,12 +81,11 @@ func TestRun_HealthHelpDoesNotContainBanner(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var output bytes.Buffer
 
-			err := run(
-				context.Background(),
+			err := runWithHealthRunner(
+				t,
 				tt.args,
 				&output,
 				io.Discard,
-				testBuildInfo,
 				unexpectedHealthRunner(t),
 			)
 			if err != nil {
@@ -132,12 +123,11 @@ func TestRun_VersionContainsBannerAndBuildInfo(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var output bytes.Buffer
 
-			err := run(
-				context.Background(),
+			err := runWithHealthRunner(
+				t,
 				tt.args,
 				&output,
 				io.Discard,
-				testBuildInfo,
 				unexpectedHealthRunner(t),
 			)
 			if err != nil {
@@ -152,7 +142,7 @@ func TestRun_VersionContainsBannerAndBuildInfo(t *testing.T) {
 			assertContainsAll(
 				t,
 				got,
-				"Build version: v1.2.3",
+				"Build version: v0.4.2",
 				"Build date: 2026-06-30",
 				"Build commit: deadbeef",
 			)
@@ -167,12 +157,11 @@ func TestRun_VersionContainsBannerAndBuildInfo(t *testing.T) {
 func TestRun_HealthCommandOutputDoesNotContainBanner(t *testing.T) {
 	var output bytes.Buffer
 
-	err := run(
-		context.Background(),
+	err := runWithHealthRunner(
+		t,
 		[]string{"gopherkeeper", "health"},
 		&output,
 		io.Discard,
-		testBuildInfo,
 		func(_ context.Context, _ config.Config, output io.Writer) error {
 			_, err := io.WriteString(output, "Server status: ok\n")
 			return err
@@ -190,11 +179,12 @@ func TestRun_HealthCommandOutputDoesNotContainBanner(t *testing.T) {
 
 func TestRun_HealthCommandConfiguration(t *testing.T) {
 	tests := []struct {
-		name       string
-		envAddress string
-		envCACert  string
-		args       []string
-		want       config.Config
+		name           string
+		envAddress     string
+		envCACert      string
+		envSessionFile string
+		args           []string
+		want           config.Config
 	}{
 		{
 			name: "defaults",
@@ -204,28 +194,33 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 			},
 		},
 		{
-			name:       "environment",
-			envAddress: "localhost:8081",
-			envCACert:  "env-ca.pem",
-			args:       []string{"gopherkeeper", "health"},
+			name:           "environment",
+			envAddress:     "localhost:8081",
+			envCACert:      "env-ca.pem",
+			envSessionFile: "env-session.json",
+			args:           []string{"gopherkeeper", "health"},
 			want: config.Config{
-				Address:    "localhost:8081",
-				CACertFile: "env-ca.pem",
+				Address:     "localhost:8081",
+				CACertFile:  "env-ca.pem",
+				SessionFile: "env-session.json",
 			},
 		},
 		{
-			name:       "flags over environment",
-			envAddress: "localhost:8081",
-			envCACert:  "env-ca.pem",
+			name:           "flags > environment",
+			envAddress:     "localhost:8081",
+			envCACert:      "env-ca.pem",
+			envSessionFile: "env-session.json",
 			args: []string{
 				"gopherkeeper",
 				"health",
 				"-a", "localhost:8082",
 				"--ca-cert", "flag-ca.pem",
+				"--session-file", "flag-session.json",
 			},
 			want: config.Config{
-				Address:    "localhost:8082",
-				CACertFile: "flag-ca.pem",
+				Address:     "localhost:8082",
+				CACertFile:  "flag-ca.pem",
+				SessionFile: "flag-session.json",
 			},
 		},
 	}
@@ -234,14 +229,14 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("ADDRESS", tt.envAddress)
 			t.Setenv("CA_CERT_FILE", tt.envCACert)
+			t.Setenv("SESSION_FILE", tt.envSessionFile)
 
 			var got config.Config
-			err := run(
-				context.Background(),
+			err := runWithHealthRunner(
+				t,
 				tt.args,
 				io.Discard,
 				io.Discard,
-				testBuildInfo,
 				func(_ context.Context, cfg config.Config, _ io.Writer) error {
 					got = cfg
 					return nil
@@ -258,6 +253,18 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 	}
 }
 
+func runWithHealthRunner(
+	t *testing.T,
+	args []string,
+	output io.Writer,
+	errorOutput io.Writer,
+	health outputRunner,
+) error {
+	t.Helper()
+
+	return runTestCommand(t, args, strings.NewReader(""), output, errorOutput, commandRunners{health: health})
+}
+
 func assertContainsAll(t *testing.T, got string, wants ...string) {
 	t.Helper()
 
@@ -265,32 +272,5 @@ func assertContainsAll(t *testing.T, got string, wants ...string) {
 		if !strings.Contains(got, want) {
 			t.Errorf("output = %q, want %q", got, want)
 		}
-	}
-}
-
-func unexpectedHealthRunner(t *testing.T) healthRunner {
-	t.Helper()
-
-	return func(context.Context, config.Config, io.Writer) error {
-		t.Fatal("health command must not run")
-		return nil
-	}
-}
-
-func unexpectedRegisterRunner(t *testing.T) registerRunner {
-	t.Helper()
-
-	return func(context.Context, config.Config, io.Reader, io.Writer, io.Writer, string, bool) error {
-		t.Fatal("register command must not run")
-		return nil
-	}
-}
-
-func unexpectedLoginRunner(t *testing.T) loginRunner {
-	t.Helper()
-
-	return func(context.Context, config.Config, io.Reader, io.Writer, io.Writer, string, bool) error {
-		t.Fatal("login command must not run")
-		return nil
 	}
 }

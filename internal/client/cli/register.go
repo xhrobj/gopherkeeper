@@ -7,46 +7,20 @@ import (
 	"io"
 
 	urfavecli "github.com/urfave/cli/v3"
-	clientapp "github.com/xhrobj/gopherkeeper/internal/client/app"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
+	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
-
-type registerRunner func(
-	context.Context,
-	config.Config,
-	io.Reader,
-	io.Writer,
-	io.Writer,
-	string,
-	bool,
-) error
 
 type userRegisterer interface {
 	Register(ctx context.Context, login, password string) (model.User, error)
 }
 
-type registrationStreams struct {
-	input        io.Reader
-	output       io.Writer
-	promptOutput io.Writer
-}
-
-func newRegisterCommand(input io.Reader, register registerRunner) *urfavecli.Command {
+func newRegisterCommand(input io.Reader, register passwordRunner) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "register",
 		Usage: "register a new user",
-		Flags: []urfavecli.Flag{
-			&urfavecli.StringFlag{
-				Name:     "login",
-				Usage:    "user login",
-				Required: true,
-			},
-			&urfavecli.BoolFlag{
-				Name:  "password-stdin",
-				Usage: "read password from standard input",
-			},
-		},
+		Flags: loginPasswordFlags(),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			return register(
 				ctx,
@@ -70,7 +44,7 @@ func runRegister(
 	login string,
 	passwordStdin bool,
 ) error {
-	application, err := clientapp.New(cfg)
+	application, err := usecase.New(cfg)
 	if err != nil {
 		return err
 	}
@@ -79,7 +53,7 @@ func runRegister(
 		ctx,
 		application,
 		terminalPasswordReader{},
-		registrationStreams{
+		passwordStreams{
 			input:        input,
 			output:       output,
 			promptOutput: promptOutput,
@@ -93,10 +67,14 @@ func executeRegistration(
 	ctx context.Context,
 	registerer userRegisterer,
 	passwords passwordReader,
-	streams registrationStreams,
+	streams passwordStreams,
 	login string,
 	passwordStdin bool,
 ) error {
+	if err := validateLoginArgument(login); err != nil {
+		return err
+	}
+
 	password, err := readRegistrationPassword(
 		passwords,
 		streams.input,

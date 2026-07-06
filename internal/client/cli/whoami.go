@@ -6,18 +6,16 @@ import (
 	"io"
 
 	urfavecli "github.com/urfave/cli/v3"
-	clientapp "github.com/xhrobj/gopherkeeper/internal/client/app"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
+	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
-
-type whoamiRunner func(context.Context, config.Config, io.Writer) error
 
 type currentUserGetter interface {
 	Whoami(ctx context.Context) (model.User, error)
 }
 
-func newWhoamiCommand(whoami whoamiRunner) *urfavecli.Command {
+func newWhoamiCommand(whoami outputRunner) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "whoami",
 		Usage: "show the authenticated user",
@@ -32,7 +30,7 @@ func runWhoami(
 	cfg config.Config,
 	output io.Writer,
 ) error {
-	application, err := clientapp.New(cfg)
+	application, err := usecase.New(cfg)
 	if err != nil {
 		return err
 	}

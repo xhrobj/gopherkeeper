@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
-	"github.com/urfave/cli/v3"
+	urfavecli "github.com/urfave/cli/v3"
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
 )
@@ -23,13 +22,19 @@ const banner = `
 
 `
 
-type healthRunner func(context.Context, config.Config, io.Writer) error
-
 type commandRunners struct {
-	health   healthRunner
-	register registerRunner
-	login    loginRunner
-	whoami   whoamiRunner
+	health   outputRunner
+	register passwordRunner
+	login    passwordRunner
+	whoami   outputRunner
+}
+
+type runOptions struct {
+	input       io.Reader
+	output      io.Writer
+	errorOutput io.Writer
+	info        buildinfo.Info
+	runners     commandRunners
 }
 
 // Run запускает командный интерфейс Клиента.
@@ -40,15 +45,7 @@ func Run(
 	errorOutput io.Writer,
 	info buildinfo.Info,
 ) error {
-	return runWithInput(
-		ctx,
-		args,
-		os.Stdin,
-		output,
-		errorOutput,
-		info,
-		commandRunners{health: runHealth, register: runRegister, login: runLogin, whoami: runWhoami},
-	)
+	return RunWithInput(ctx, args, os.Stdin, output, errorOutput, info)
 }
 
 // RunWithInput запускает командный интерфейс с заданным стандартным вводом.
@@ -60,112 +57,91 @@ func RunWithInput(
 	errorOutput io.Writer,
 	info buildinfo.Info,
 ) error {
-	return runWithInput(
-		ctx,
-		args,
-		input,
-		output,
-		errorOutput,
-		info,
-		commandRunners{health: runHealth, register: runRegister, login: runLogin, whoami: runWhoami},
-	)
+	return run(ctx, args, runOptions{
+		input:       input,
+		output:      output,
+		errorOutput: errorOutput,
+		info:        info,
+		runners:     defaultCommandRunners(),
+	})
 }
 
-func run(
-	ctx context.Context,
-	args []string,
-	output io.Writer,
-	errorOutput io.Writer,
-	info buildinfo.Info,
-	health healthRunner,
-) error {
-	return runWithInput(
-		ctx,
-		args,
-		strings.NewReader(""),
-		output,
-		errorOutput,
-		info,
-		commandRunners{health: health, register: runRegister, login: runLogin, whoami: runWhoami},
-	)
+func defaultCommandRunners() commandRunners {
+	return commandRunners{
+		health:   runHealth,
+		register: runRegister,
+		login:    runLogin,
+		whoami:   runWhoami,
+	}
 }
 
-func runWithInput(
-	ctx context.Context,
-	args []string,
-	input io.Reader,
-	output io.Writer,
-	errorOutput io.Writer,
-	info buildinfo.Info,
-	runners commandRunners,
-) error {
-	previousVersionPrinter := cli.VersionPrinter
-	cli.VersionPrinter = func(command *cli.Command) {
-		_ = printVersion(command.Root().Writer, info)
+func run(ctx context.Context, args []string, options runOptions) error {
+	previousVersionPrinter := urfavecli.VersionPrinter
+	urfavecli.VersionPrinter = func(command *urfavecli.Command) {
+		_ = printVersion(command.Root().Writer, options.info)
 	}
 	defer func() {
-		cli.VersionPrinter = previousVersionPrinter
+		urfavecli.VersionPrinter = previousVersionPrinter
 	}()
 
-	command := newCommand(input, output, errorOutput, info, runners)
+	command := newRootCommand(
+		options.input,
+		options.output,
+		options.errorOutput,
+		options.info,
+		options.runners,
+	)
 
 	return command.Run(ctx, args)
 }
 
-func newCommand(
+func newRootCommand(
 	input io.Reader,
 	output io.Writer,
 	errorOutput io.Writer,
 	info buildinfo.Info,
 	runners commandRunners,
-) *cli.Command {
+) *urfavecli.Command {
 	defaults := config.Load()
+
 	version := info.Version
 	if version == "" {
 		version = "¯\\_(ツ)_/¯"
 	}
 
-	return &cli.Command{
+	return &urfavecli.Command{
 		Usage:                         "securely store and access private data",
 		Version:                       version,
 		Writer:                        output,
 		ErrWriter:                     errorOutput,
-		CustomRootCommandHelpTemplate: banner + cli.RootCommandHelpTemplate,
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "address",
+		CustomRootCommandHelpTemplate: banner + urfavecli.RootCommandHelpTemplate,
+		Flags: []urfavecli.Flag{
+			&urfavecli.StringFlag{
+				Name:    addressFlag,
 				Aliases: []string{"a"},
 				Usage:   "Server address",
 				Value:   defaults.Address,
 			},
-			&cli.StringFlag{
-				Name:  "ca-cert",
+			&urfavecli.StringFlag{
+				Name:  caCertFlag,
 				Usage: "path to an additional trusted CA certificate",
 				Value: defaults.CACertFile,
 			},
-			&cli.StringFlag{
-				Name:  "session-file",
+			&urfavecli.StringFlag{
+				Name:  sessionFileFlag,
 				Usage: "path to online session file",
 				Value: defaults.SessionFile,
 			},
 		},
-		Commands: []*cli.Command{
+		Commands: []*urfavecli.Command{
 			newHealthCommand(runners.health),
 			newRegisterCommand(input, runners.register),
 			newLoginCommand(input, runners.login),
 			newWhoamiCommand(runners.whoami),
 		},
-		Action: func(_ context.Context, command *cli.Command) error {
-			return cli.ShowRootCommandHelp(command)
+		Action: func(_ context.Context, command *urfavecli.Command) error {
+			return urfavecli.ShowRootCommandHelp(command)
 		},
-	}
-}
-
-func configFromCommand(command *cli.Command) config.Config {
-	return config.Config{
-		Address:     command.String("address"),
-		CACertFile:  command.String("ca-cert"),
-		SessionFile: command.String("session-file"),
 	}
 }
 

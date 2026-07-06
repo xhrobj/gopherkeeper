@@ -4,10 +4,15 @@ import "os"
 
 const defaultAddress = "localhost:8080"
 
-// Config содержит конфигурацию Клиента.
+// Config содержит настройки командного Клиента.
 type Config struct {
-	Address     string
-	CACertFile  string
+	// Address задаёт адрес Сервера в формате host:port.
+	Address string
+
+	// CACertFile задаёт путь к PEM-файлу доверенного CA для HTTPS-подключений к Серверу.
+	CACertFile string
+
+	// SessionFile задаёт путь к файлу локального хранения online-сессии Клиента.
 	SessionFile string
 }
 

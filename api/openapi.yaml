@@ -147,7 +147,6 @@ paths:
                 $ref: '#/components/schemas/LoginResponse'
               example:
                 access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature
-                token_type: Bearer
                 expires_at: '2026-07-01T12:15:00Z'
                 user:
                   id: 42
@@ -316,7 +315,6 @@ components:
       additionalProperties: false
       required:
         - access_token
-        - token_type
         - expires_at
         - user
       properties:
@@ -324,12 +322,6 @@ components:
           type: string
           description: JWT access token для заголовка Authorization со схемой Bearer.
           example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature
-        token_type:
-          type: string
-          enum:
-            - Bearer
-          description: Тип token. В MVP всегда равен Bearer.
-          example: Bearer
         expires_at:
           type: string
           format: date-time

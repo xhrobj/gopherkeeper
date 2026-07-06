@@ -169,8 +169,8 @@ run-client-health: check-client-ca
 # запустить Клиент для регистрации пользователя
 # LOGIN нужно передать через окружение или командную строку make
 # примеры:
-# - `LOGIN=bob make run-client-register`
-# - `make run-client-register LOGIN=bob`
+# - `LOGIN=alice make run-client-register`
+# - `make run-client-register LOGIN=alice`
 run-client-register: check-client-ca
 	$(CLIENT) register \
 		--login $(LOGIN) \
@@ -179,6 +179,9 @@ run-client-register: check-client-ca
 
 # запустить Клиент для входа пользователя
 # LOGIN нужно передать через окружение или командную строку make
+# примеры:
+# - `LOGIN=alice make run-client-login`
+# - `make run-client-login LOGIN=alice`
 run-client-login: check-client-ca
 	$(CLIENT) login \
 		--login $(LOGIN) \

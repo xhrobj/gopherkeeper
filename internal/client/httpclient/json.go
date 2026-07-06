@@ -12,11 +12,16 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-// APIError представляет безопасную ошибку, возвращённую API Сервера.
+// APIError представляет ошибку, возвращённую API Сервера.
 type APIError struct {
+	// StatusCode содержит HTTP-статус ответа.
 	StatusCode int
-	Code       string
-	Message    string
+
+	// Code содержит код ошибки API.
+	Code string
+
+	// Message содержит текст ошибки, предназначенный для пользователя.
+	Message string
 }
 
 // Error возвращает безопасное описание ошибки API.

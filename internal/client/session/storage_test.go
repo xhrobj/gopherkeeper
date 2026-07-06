@@ -9,8 +9,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 func TestFileStorage_SaveAndLoad(t *testing.T) {
@@ -32,20 +30,8 @@ func TestFileStorage_SaveAndLoad(t *testing.T) {
 	if got.AccessToken != want.AccessToken {
 		t.Errorf("access token = %q, want %q", got.AccessToken, want.AccessToken)
 	}
-	if got.TokenType != want.TokenType {
-		t.Errorf("token type = %q, want %q", got.TokenType, want.TokenType)
-	}
 	if !got.ExpiresAt.Equal(want.ExpiresAt) {
 		t.Errorf("expires at = %s, want %s", got.ExpiresAt, want.ExpiresAt)
-	}
-	if got.User.ID != want.User.ID {
-		t.Errorf("user id = %d, want %d", got.User.ID, want.User.ID)
-	}
-	if got.User.Login != want.User.Login {
-		t.Errorf("user login = %q, want %q", got.User.Login, want.User.Login)
-	}
-	if !got.User.CreatedAt.Equal(want.User.CreatedAt) {
-		t.Errorf("user created_at = %s, want %s", got.User.CreatedAt, want.User.CreatedAt)
 	}
 }
 
@@ -109,15 +95,13 @@ func TestFileStorage_LoadRejectsInvalidJSON(t *testing.T) {
 		},
 		{
 			name: "unknown field",
-			body: `{"server_address":"localhost:8080","access_token":"token","token_type":"Bearer",` +
-				`"expires_at":"2026-07-04T12:15:00Z","user":{"id":42,"login":"alice",` +
-				`"created_at":"2026-07-04T12:00:00Z"},"extra":"value"}`,
+			body: `{"server_address":"localhost:8080","access_token":"token",` +
+				`"expires_at":"2026-07-04T12:15:00Z","extra":"value"}`,
 		},
 		{
 			name: "multiple JSON values",
-			body: `{"server_address":"localhost:8080","access_token":"token","token_type":"Bearer",` +
-				`"expires_at":"2026-07-04T12:15:00Z","user":{"id":42,"login":"alice",` +
-				`"created_at":"2026-07-04T12:00:00Z"}} {}`,
+			body: `{"server_address":"localhost:8080","access_token":"token",` +
+				`"expires_at":"2026-07-04T12:15:00Z"} {}`,
 		},
 	}
 
@@ -157,25 +141,11 @@ func TestFileStorage_SaveRejectsInvalidSession(t *testing.T) {
 			wantErr: ErrInvalid,
 		},
 		{
-			name: "unsupported token type",
-			mutate: func(s *Session) {
-				s.TokenType = "Basic"
-			},
-			wantErr: ErrInvalid,
-		},
-		{
 			name: "expired session",
 			mutate: func(s *Session) {
 				s.ExpiresAt = testNow()
 			},
 			wantErr: ErrExpired,
-		},
-		{
-			name: "missing user id",
-			mutate: func(s *Session) {
-				s.User.ID = 0
-			},
-			wantErr: ErrInvalid,
 		},
 	}
 
@@ -230,13 +200,7 @@ func testSession() Session {
 	return Session{
 		ServerAddress: "localhost:8080",
 		AccessToken:   "test.jwt.token",
-		TokenType:     tokenTypeBearer,
 		ExpiresAt:     time.Date(2026, time.July, 4, 12, 15, 0, 0, time.UTC),
-		User: model.User{
-			ID:        42,
-			Login:     "alice",
-			CreatedAt: time.Date(2026, time.July, 4, 12, 0, 0, 0, time.UTC),
-		},
 	}
 }
 

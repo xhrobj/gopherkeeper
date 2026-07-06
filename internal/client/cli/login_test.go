@@ -47,7 +47,7 @@ func TestExecuteLogin_Interactive(t *testing.T) {
 			}, nil
 		}),
 		passwords,
-		loginStreams{
+		passwordStreams{
 			input:        strings.NewReader(""),
 			output:       &output,
 			promptOutput: io.Discard,
@@ -96,7 +96,7 @@ func TestExecuteLogin_PasswordStdin(t *testing.T) {
 			}, nil
 		}),
 		passwords,
-		loginStreams{
+		passwordStreams{
 			input:        strings.NewReader(testRegistrationPassword + "\n"),
 			output:       io.Discard,
 			promptOutput: io.Discard,
@@ -125,7 +125,7 @@ func TestExecuteLogin_ReturnsApplicationError(t *testing.T) {
 			return model.User{}, applicationError
 		}),
 		&passwordReaderStub{lineValue: testRegistrationPassword},
-		loginStreams{
+		passwordStreams{
 			input:        strings.NewReader(testRegistrationPassword + "\n"),
 			output:       io.Discard,
 			promptOutput: io.Discard,
@@ -144,5 +144,41 @@ func TestExecuteLogin_ReturnsApplicationError(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "test.jwt.token") {
 		t.Error("application error contains access token")
+	}
+}
+
+func TestExecuteLogin_RejectsInvalidLoginBeforePasswordInput(t *testing.T) {
+	loggerCalled := false
+	passwords := &passwordReaderStub{
+		hiddenValues: []string{testRegistrationPassword},
+		lineValue:    testRegistrationPassword,
+	}
+
+	err := executeLogin(
+		context.Background(),
+		userLoggerFunc(func(context.Context, string, string) (model.User, error) {
+			loggerCalled = true
+			return model.User{}, nil
+		}),
+		passwords,
+		passwordStreams{
+			input:        strings.NewReader(testRegistrationPassword + "\n"),
+			output:       io.Discard,
+			promptOutput: io.Discard,
+		},
+		"-a",
+		false,
+	)
+	if !errors.Is(err, errInvalidLoginArgument) {
+		t.Fatalf("executeLogin() error = %v, want %v", err, errInvalidLoginArgument)
+	}
+	if loggerCalled {
+		t.Error("login application was called for invalid login")
+	}
+	if passwords.hiddenCalls != 0 {
+		t.Errorf("hidden password reads = %d, want 0", passwords.hiddenCalls)
+	}
+	if passwords.lineCalls != 0 {
+		t.Errorf("stdin password reads = %d, want 0", passwords.lineCalls)
 	}
 }

@@ -11,9 +11,6 @@ import (
 )
 
 func TestRegisterCommand_ConfigurationAndInput(t *testing.T) {
-	t.Setenv("ADDRESS", "localhost:8081")
-	t.Setenv("CA_CERT_FILE", "env-ca.pem")
-
 	input := strings.NewReader(testRegistrationPassword + "\n")
 	var gotConfig config.Config
 	var gotInput io.Reader
@@ -21,8 +18,8 @@ func TestRegisterCommand_ConfigurationAndInput(t *testing.T) {
 	var gotPasswordStdin bool
 	var output bytes.Buffer
 
-	err := runWithInput(
-		context.Background(),
+	err := runTestCommand(
+		t,
 		[]string{
 			"gkeep",
 			"register",
@@ -34,9 +31,7 @@ func TestRegisterCommand_ConfigurationAndInput(t *testing.T) {
 		input,
 		&output,
 		io.Discard,
-		testBuildInfo,
 		commandRunners{
-			health: unexpectedHealthRunner(t),
 			register: func(
 				_ context.Context,
 				cfg config.Config,
@@ -55,7 +50,7 @@ func TestRegisterCommand_ConfigurationAndInput(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("runWithInput() error = %v", err)
+		t.Fatalf("run() error = %v", err)
 	}
 
 	wantConfig := config.Config{
@@ -77,15 +72,13 @@ func TestRegisterCommand_ConfigurationAndInput(t *testing.T) {
 }
 
 func TestRegisterCommand_RequiresLogin(t *testing.T) {
-	err := runWithInput(
-		context.Background(),
+	err := runTestCommand(
+		t,
 		[]string{"gkeep", "register", "--password-stdin"},
 		strings.NewReader(testRegistrationPassword+"\n"),
 		io.Discard,
 		io.Discard,
-		testBuildInfo,
 		commandRunners{
-			health: unexpectedHealthRunner(t),
 			register: func(
 				context.Context,
 				config.Config,
@@ -101,22 +94,20 @@ func TestRegisterCommand_RequiresLogin(t *testing.T) {
 		},
 	)
 	if err == nil {
-		t.Fatal("runWithInput() error = nil, want required login error")
+		t.Fatal("run() error = nil, want required login error")
 	}
 }
 
 func TestRegisterCommand_HelpDoesNotOfferPasswordFlag(t *testing.T) {
 	var output bytes.Buffer
 
-	err := runWithInput(
-		context.Background(),
+	err := runTestCommand(
+		t,
 		[]string{"gkeep", "register", "--help"},
 		strings.NewReader(""),
 		&output,
 		io.Discard,
-		testBuildInfo,
 		commandRunners{
-			health: unexpectedHealthRunner(t),
 			register: func(
 				context.Context,
 				config.Config,
@@ -132,7 +123,7 @@ func TestRegisterCommand_HelpDoesNotOfferPasswordFlag(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("runWithInput() error = %v", err)
+		t.Fatalf("run() error = %v", err)
 	}
 
 	help := output.String()
@@ -141,8 +132,5 @@ func TestRegisterCommand_HelpDoesNotOfferPasswordFlag(t *testing.T) {
 	}
 	if strings.Contains(help, "--password string") {
 		t.Errorf("register help exposes password flag: %q", help)
-	}
-	if strings.Contains(help, banner) {
-		t.Errorf("register help contains root banner: %q", help)
 	}
 }
