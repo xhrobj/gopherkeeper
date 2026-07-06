@@ -3,7 +3,6 @@ package httpserver
 import (
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
@@ -17,12 +16,6 @@ const (
 type registerRequest struct {
 	Login    string `json:"login"`
 	Password string `json:"password"`
-}
-
-type userResponse struct {
-	ID        int64     `json:"id"`
-	Login     string    `json:"login"`
-	CreatedAt time.Time `json:"created_at"`
 }
 
 func registerHandler(registerer UserRegisterer) http.HandlerFunc {
