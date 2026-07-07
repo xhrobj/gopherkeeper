@@ -53,6 +53,20 @@ func (a *Application) Login(ctx context.Context, login, password string) (model.
 	return result.User, nil
 }
 
+// Logout удаляет локальную online-сессию Клиента.
+func (a *Application) Logout(_ context.Context) error {
+	sessions, err := a.sessionStorage()
+	if err != nil {
+		return fmt.Errorf("create online session storage: %w", err)
+	}
+
+	if err := sessions.Delete(); err != nil {
+		return fmt.Errorf("delete online session: %w", err)
+	}
+
+	return nil
+}
+
 // Whoami возвращает пользователя из текущей online-сессии.
 func (a *Application) Whoami(ctx context.Context) (model.User, error) {
 	storedSession, err := a.loadSession()

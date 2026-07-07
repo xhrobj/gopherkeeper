@@ -135,6 +135,21 @@ func (s *FileStorage) Save(session Session) error {
 	return nil
 }
 
+// Delete удаляет сохранённую online-сессию.
+//
+// Отсутствие session-файла не считается ошибкой: целевое состояние уже достигнуто.
+func (s *FileStorage) Delete() error {
+	if err := os.Remove(s.path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+
+		return fmt.Errorf("delete session file: %w", err)
+	}
+
+	return nil
+}
+
 // Load читает online-сессию, проверяет срок действия и привязку к Серверу.
 func (s *FileStorage) Load(expectedServerAddress string) (Session, error) {
 	if expectedServerAddress == "" {

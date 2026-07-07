@@ -27,9 +27,21 @@ type userClient interface {
 type sessionStorage interface {
 	Save(stored session.Session) error
 	Load(expectedServerAddress string) (session.Session, error)
+	Delete() error
 }
 
 type sessionStorageFactory func() (sessionStorage, error)
+
+// NewLocal создаёт клиентское application-приложение только для локальных session-операций.
+func NewLocal(cfg config.Config) *Application {
+	return newApplicationWithSessionFactory(
+		nil,
+		func() (sessionStorage, error) {
+			return session.NewFileStorage(cfg.SessionFile)
+		},
+		cfg.Address,
+	)
+}
 
 // New создаёт клиентское application-приложение из конфигурации CLI.
 func New(cfg config.Config) (*Application, error) {

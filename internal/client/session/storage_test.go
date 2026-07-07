@@ -46,6 +46,30 @@ func TestFileStorage_SaveCreatesPrivateFile(t *testing.T) {
 	assertFileMode(t, storage.Path(), 0o600)
 }
 
+func TestFileStorage_DeleteRemovesSessionFile(t *testing.T) {
+	storage := newTestStorage(t, "session.json")
+
+	if err := storage.Save(testSession()); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	if err := storage.Delete(); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+
+	_, err := os.Stat(storage.Path())
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stat deleted session = %v, want not exist", err)
+	}
+}
+
+func TestFileStorage_DeleteIgnoresMissingSessionFile(t *testing.T) {
+	storage := newTestStorage(t, "missing-session.json")
+
+	if err := storage.Delete(); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+}
+
 func TestFileStorage_LoadReturnsNotFound(t *testing.T) {
 	storage := newTestStorage(t, "missing-session.json")
 

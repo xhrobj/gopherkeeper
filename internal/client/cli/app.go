@@ -26,6 +26,7 @@ type commandRunners struct {
 	health   outputRunner
 	register passwordRunner
 	login    passwordRunner
+	logout   outputRunner
 	whoami   outputRunner
 }
 
@@ -71,6 +72,7 @@ func defaultCommandRunners() commandRunners {
 		health:   runHealth,
 		register: runRegister,
 		login:    runLogin,
+		logout:   runLogout,
 		whoami:   runWhoami,
 	}
 }
@@ -149,6 +151,7 @@ func newRootCommand(
 			newHealthCommand(runners.health),
 			newRegisterCommand(input, runners.register),
 			newLoginCommand(input, runners.login),
+			newLogoutCommand(runners.logout),
 			newWhoamiCommand(runners.whoami),
 		},
 		Action: func(_ context.Context, command *urfavecli.Command) error {

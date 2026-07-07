@@ -59,6 +59,7 @@ func TestRun_RootHelpContainsBanner(t *testing.T) {
 				"health",
 				"register",
 				"login",
+				"logout",
 				"whoami",
 			)
 		})

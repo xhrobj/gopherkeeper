@@ -32,8 +32,9 @@ func (s userClientStub) CurrentUser(ctx context.Context, accessToken string) (mo
 }
 
 type sessionStorageStub struct {
-	save func(session.Session) error
-	load func(string) (session.Session, error)
+	save   func(session.Session) error
+	load   func(string) (session.Session, error)
+	delete func() error
 }
 
 func (s sessionStorageStub) Save(stored session.Session) error {
@@ -42,6 +43,10 @@ func (s sessionStorageStub) Save(stored session.Session) error {
 
 func (s sessionStorageStub) Load(expectedServerAddress string) (session.Session, error) {
 	return s.load(expectedServerAddress)
+}
+
+func (s sessionStorageStub) Delete() error {
+	return s.delete()
 }
 
 func testOnlineSession() session.Session {

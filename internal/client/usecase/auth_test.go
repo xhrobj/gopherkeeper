@@ -474,3 +474,74 @@ func TestApplication_WhoamiDoesNotLeakTokenInNetworkError(t *testing.T) {
 		t.Error("network error contains access token")
 	}
 }
+
+func TestApplication_LogoutDeletesSession(t *testing.T) {
+	var deleted bool
+	application := newApplication(
+		userClientStub{
+			login: func(context.Context, string, string) (httpclient.LoginResult, error) {
+				t.Fatal("logout must not call HTTP client")
+				return httpclient.LoginResult{}, nil
+			},
+			whoami: func(context.Context, string) (model.User, error) {
+				t.Fatal("logout must not call HTTP client")
+				return model.User{}, nil
+			},
+		},
+		sessionStorageStub{
+			delete: func() error {
+				deleted = true
+				return nil
+			},
+		},
+		"localhost:8080",
+	)
+
+	if err := application.Logout(context.Background()); err != nil {
+		t.Fatalf("Logout() error = %v", err)
+	}
+	if !deleted {
+		t.Error("session was not deleted")
+	}
+}
+
+func TestApplication_LogoutReturnsSessionStorageCreationError(t *testing.T) {
+	storageError := errors.New("cache directory is unavailable")
+	application := newApplicationWithSessionFactory(
+		userClientStub{},
+		func() (sessionStorage, error) {
+			return nil, storageError
+		},
+		"localhost:8080",
+	)
+
+	err := application.Logout(context.Background())
+	if err == nil {
+		t.Fatal("Logout() error = nil, want session storage error")
+	}
+	if !errors.Is(err, storageError) {
+		t.Error("logout error does not preserve session storage error")
+	}
+}
+
+func TestApplication_LogoutReturnsDeleteError(t *testing.T) {
+	deleteError := errors.New("permission denied")
+	application := newApplication(
+		userClientStub{},
+		sessionStorageStub{
+			delete: func() error { return deleteError },
+		},
+		"localhost:8080",
+	)
+
+	err := application.Logout(context.Background())
+	if err == nil {
+		t.Fatal("Logout() error = nil, want delete error")
+	}
+	if !errors.Is(err, deleteError) {
+		t.Error("logout error does not preserve delete error")
+	}
+	if strings.Contains(err.Error(), "test.jwt.token") {
+		t.Error("logout error contains access token")
+	}
+}

@@ -9,6 +9,7 @@
 	run-client-health \
 	run-client-register \
 	run-client-login \
+	run-client-logout \
 	run-client-whoami \
 	test-all test test-race test-integration \
 	coverage \
@@ -195,6 +196,10 @@ run-client-register: check-client-config check-client-ca
 # - `make run-client-login LOGIN=alice`
 run-client-login: check-client-config check-client-ca
 	$(CLIENT) --config "$(CLIENT_CONFIG)" login --login "$(LOGIN)"
+
+# запустить Клиент для локального выхода из online-сессии
+run-client-logout: check-client-config
+	$(CLIENT) --config "$(CLIENT_CONFIG)" logout
 
 # запустить Клиент и вывести текущего пользователя online-сессии
 run-client-whoami: check-client-config check-client-ca

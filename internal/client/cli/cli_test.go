@@ -49,6 +49,9 @@ func runTestCommand(
 	if runners.login == nil {
 		runners.login = unexpectedLoginRunner(t)
 	}
+	if runners.logout == nil {
+		runners.logout = unexpectedLogoutRunner(t)
+	}
 	if runners.whoami == nil {
 		runners.whoami = unexpectedWhoamiRunner(t)
 	}
@@ -88,6 +91,16 @@ func unexpectedLoginRunner(t *testing.T) passwordRunner {
 	return func(context.Context, config.Config, io.Reader, io.Writer, io.Writer, string, bool) error {
 		t.Helper()
 		t.Fatal("login command must not run")
+		return nil
+	}
+}
+
+func unexpectedLogoutRunner(t *testing.T) outputRunner {
+	t.Helper()
+
+	return func(context.Context, config.Config, io.Writer) error {
+		t.Helper()
+		t.Fatal("logout command must not run")
 		return nil
 	}
 }
