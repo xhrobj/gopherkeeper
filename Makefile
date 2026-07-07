@@ -1,12 +1,15 @@
 .PHONY: \
 	show-coverage \
 	gen-tls-certs gen-jwt-secret \
-	check-client-ca \
+	check-client-config check-client-ca \
 	build build-server build-client build-client-cross \
 	db-up db-down db-connect db-erase \
-	run-server run-client \
+	run-server \
+	run-client \
 	run-client-health \
-	run-client-register run-client-login run-client-whoami \
+	run-client-register \
+	run-client-login \
+	run-client-whoami \
 	test-all test test-race test-integration \
 	coverage \
 	vet lint ci \
@@ -17,23 +20,7 @@ ENV_FILE ?= .env
 
 -include $(ENV_FILE)
 
-# TLS-сертификаты для локальной разработки
-TLS_CERT_DIR := .certs
-
-TLS_CA_CERT := $(TLS_CERT_DIR)/ca.pem
-TLS_SERVER_CERT := $(TLS_CERT_DIR)/server.pem
-TLS_SERVER_KEY := $(TLS_CERT_DIR)/server-key.pem
-
-# JWT-параметры локального запуска Сервера читаются из env-файла
-# и передаются Серверу через окружение.
-export JWT_SECRET
-export JWT_TTL
-
-# путь к локальному файлу online-сессии Клиента можно задать через env-файл.
-export SESSION_FILE
-
-# параметры логирования
-LOG_LEVEL ?= info
+# уровень логирования для Сервера и Клиента читается из env-файла
 export LOG_LEVEL
 
 # данные о сборке подставляются в бинарники Клиента и Сервера через ldflags
@@ -56,9 +43,22 @@ CLIENT_NAME := gkeep
 SERVER := $(BIN_DIR)/$(SERVER_NAME)
 CLIENT := $(BIN_DIR)/$(CLIENT_NAME)
 
+# TLS-сертификаты для локальной разработки
+TLS_CERT_DIR := .certs
+
+TLS_CA_CERT := $(TLS_CERT_DIR)/ca.pem
+TLS_SERVER_CERT := $(TLS_CERT_DIR)/server.pem
+TLS_SERVER_KEY := $(TLS_CERT_DIR)/server-key.pem
+
+# JWT-параметры локального запуска Сервера читаются из env-файла
+# и передаются Серверу через окружение.
+export JWT_SECRET
+export JWT_TTL
+
 # команда Docker Compose с выбранным env-файлом
 # !!!: для целей db-*, run-server, test-integration, coverage, test-all и ci
 # требуется env-файл с переменными POSTGRES_*
+#
 # NOTE: создать локальный env-файл: `cp .env.example .env`
 COMPOSE := docker compose --env-file $(ENV_FILE)
 
@@ -68,6 +68,15 @@ DATABASE_DSN ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST
 
 # !!!: строка подключения к локальному PostgreSQL собирается из POSTGRES_* и передается Серверу через окружение
 export DATABASE_DSN
+
+# Клиент может читать параметры из JSON-конфига.
+# !!!: конфиг передается только в run-client-* цели.
+#
+# NOTE: создать локальный конфиг Клиента:
+# `cp configs/client.example.json configs/client.json`
+# и указать в нем как минимум путь к self-signed TLS CA-сертификату, например:
+# `"ca_cert_file": ".certs/ca.pem"`
+CLIENT_CONFIG ?= configs/client.json
 
 # обновить профиль покрытия и вывести общий процент
 show-coverage: coverage
@@ -81,6 +90,13 @@ gen-tls-certs:
 # значение нужно скопировать в JWT_SECRET локального .env-файла
 gen-jwt-secret:
 	@openssl rand -base64 32
+
+check-client-config:
+	@if [ ! -f "$(CLIENT_CONFIG)" ]; then \
+		echo "(+_+) client config not found: $(CLIENT_CONFIG)"; \
+		echo "create it with: cp configs/client.example.json $(CLIENT_CONFIG)"; \
+		exit 1; \
+	fi
 
 check-client-ca:
 	@if [ ! -f "$(TLS_CA_CERT)" ]; then \
@@ -161,38 +177,28 @@ run-client: build-client
 	$(CLIENT)
 
 # запустить Клиент и выполнить health-запрос к Серверу
-run-client-health: check-client-ca
-	$(CLIENT) health \
-		-a $(ADDRESS) \
-		--ca-cert $(TLS_CA_CERT)
+run-client-health: check-client-config check-client-ca
+	$(CLIENT) --config "$(CLIENT_CONFIG)" health
 
 # запустить Клиент для регистрации пользователя
 # LOGIN нужно передать через окружение или командную строку make
 # примеры:
 # - `LOGIN=alice make run-client-register`
 # - `make run-client-register LOGIN=alice`
-run-client-register: check-client-ca
-	$(CLIENT) register \
-		--login $(LOGIN) \
-		-a $(ADDRESS) \
-		--ca-cert $(TLS_CA_CERT)
+run-client-register: check-client-config check-client-ca
+	$(CLIENT) --config "$(CLIENT_CONFIG)" register --login "$(LOGIN)"
 
 # запустить Клиент для входа пользователя
 # LOGIN нужно передать через окружение или командную строку make
 # примеры:
 # - `LOGIN=alice make run-client-login`
 # - `make run-client-login LOGIN=alice`
-run-client-login: check-client-ca
-	$(CLIENT) login \
-		--login $(LOGIN) \
-		-a $(ADDRESS) \
-		--ca-cert $(TLS_CA_CERT)
+run-client-login: check-client-config check-client-ca
+	$(CLIENT) --config "$(CLIENT_CONFIG)" login --login "$(LOGIN)"
 
 # запустить Клиент и вывести текущего пользователя online-сессии
-run-client-whoami: check-client-ca
-	$(CLIENT) whoami \
-		-a $(ADDRESS) \
-		--ca-cert $(TLS_CA_CERT)
+run-client-whoami: check-client-config check-client-ca
+	$(CLIENT) --config "$(CLIENT_CONFIG)" whoami
 
 # запустить полный набор тестов
 # !!!: для интеграционных тестов требуется запущенный Docker

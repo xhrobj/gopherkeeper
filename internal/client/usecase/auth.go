@@ -84,14 +84,11 @@ func (a *Application) loadSession() (session.Session, error) {
 
 func mapSessionLoadError(err error) error {
 	switch {
-	case errors.Is(err, session.ErrNotFound):
-		return newUserError("online session not found: run gkeep login", err)
-	case errors.Is(err, session.ErrExpired):
-		return newUserError("online session expired: run gkeep login", err)
-	case errors.Is(err, session.ErrServerMismatch):
-		return newUserError("online session belongs to another server: run gkeep login", err)
-	case errors.Is(err, session.ErrInvalid):
-		return newUserError("online session is invalid: run gkeep login", err)
+	case errors.Is(err, session.ErrNotFound),
+		errors.Is(err, session.ErrExpired),
+		errors.Is(err, session.ErrServerMismatch),
+		errors.Is(err, session.ErrInvalid):
+		return newUserError("not logged in", errors.Join(ErrNotLoggedIn, err))
 	default:
 		return fmt.Errorf("load online session: %w", err)
 	}
@@ -100,11 +97,14 @@ func mapSessionLoadError(err error) error {
 func mapCurrentUserError(err error) error {
 	var apiError *httpclient.APIError
 	if errors.As(err, &apiError) && apiError.Code == "unauthorized" {
-		return newUserError("online session is invalid or expired: run gkeep login", err)
+		return newUserError("not logged in", errors.Join(ErrNotLoggedIn, err))
 	}
 
 	return fmt.Errorf("get current user: %w", err)
 }
+
+// ErrNotLoggedIn означает, что Клиент не имеет действующей online-сессии.
+var ErrNotLoggedIn = errors.New("not logged in")
 
 type userError struct {
 	message string

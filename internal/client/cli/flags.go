@@ -6,6 +6,7 @@ import (
 )
 
 const (
+	configFlag      = "config"
 	addressFlag     = "address"
 	caCertFlag      = "ca-cert"
 	sessionFileFlag = "session-file"

@@ -11,6 +11,8 @@ import (
 )
 
 func TestRegisterCommand_ConfigurationAndInput(t *testing.T) {
+	isolateClientConfig(t)
+
 	input := strings.NewReader(testRegistrationPassword + "\n")
 	var gotConfig config.Config
 	var gotInput io.Reader
@@ -23,7 +25,7 @@ func TestRegisterCommand_ConfigurationAndInput(t *testing.T) {
 		[]string{
 			"gkeep",
 			"register",
-			"--login", "alice",
+			"-l", "alice",
 			"--password-stdin",
 			"--address", "localhost:8082",
 			"--ca-cert", "flag-ca.pem",
@@ -72,6 +74,8 @@ func TestRegisterCommand_ConfigurationAndInput(t *testing.T) {
 }
 
 func TestRegisterCommand_RequiresLogin(t *testing.T) {
+	isolateClientConfig(t)
+
 	err := runTestCommand(
 		t,
 		[]string{"gkeep", "register", "--password-stdin"},
@@ -99,6 +103,8 @@ func TestRegisterCommand_RequiresLogin(t *testing.T) {
 }
 
 func TestRegisterCommand_HelpDoesNotOfferPasswordFlag(t *testing.T) {
+	isolateClientConfig(t)
+
 	var output bytes.Buffer
 
 	err := runTestCommand(

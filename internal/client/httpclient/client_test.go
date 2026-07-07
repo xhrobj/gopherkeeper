@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/pem"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -42,6 +43,31 @@ func TestClient_HealthRejectsUntrustedCertificate(t *testing.T) {
 	_, err = client.Health(context.Background())
 	if err == nil {
 		t.Fatal("Health() error = nil, want TLS verification error")
+	}
+}
+
+func TestClient_HealthReturnsUnavailableErrorOnConnectionRefused(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen on free port: %v", err)
+	}
+	address := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatalf("close listener: %v", err)
+	}
+
+	client, err := New(address, "")
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, err = client.Health(context.Background())
+	if err == nil {
+		t.Fatal("Health() error = nil, want server unavailable error")
+	}
+
+	if err.Error() != "server unavailable: connection refused" {
+		t.Errorf("Health() error = %q, want server unavailable", err)
 	}
 }
 

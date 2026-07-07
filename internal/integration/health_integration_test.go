@@ -23,6 +23,7 @@ func TestIntegration_HTTPSHealthFlow(t *testing.T) {
 		t.Fatal("DATABASE_DSN is not set")
 	}
 
+	isolateClientConfig(t)
 	t.Setenv("ADDRESS", "")
 	t.Setenv("CA_CERT_FILE", "")
 

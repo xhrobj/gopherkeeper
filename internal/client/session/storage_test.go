@@ -36,7 +36,7 @@ func TestFileStorage_SaveAndLoad(t *testing.T) {
 }
 
 func TestFileStorage_SaveCreatesPrivateFile(t *testing.T) {
-	storage := newTestStorage(t, filepath.Join("gkeep", "session.json"))
+	storage := newTestStorage(t, filepath.Join("gopherkeeper", "session.json"))
 
 	if err := storage.Save(testSession()); err != nil {
 		t.Fatalf("Save() error = %v", err)
@@ -176,7 +176,7 @@ func TestNewFileStorageUsesDefaultPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UserCacheDir() error = %v", err)
 	}
-	want := filepath.Join(cacheDir, "gkeep", "session.json")
+	want := filepath.Join(cacheDir, "gopherkeeper", "session.json")
 	if storage.Path() != want {
 		t.Errorf("Path() = %q, want %q", storage.Path(), want)
 	}

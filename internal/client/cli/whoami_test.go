@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
@@ -44,8 +46,28 @@ func TestExecuteWhoami(t *testing.T) {
 	}
 }
 
+func TestExecuteWhoami_NotLoggedIn(t *testing.T) {
+	var output bytes.Buffer
+	applicationError := fmt.Errorf("not logged in: %w", usecase.ErrNotLoggedIn)
+
+	err := executeWhoami(
+		context.Background(),
+		currentUserGetterFunc(func(context.Context) (model.User, error) {
+			return model.User{}, applicationError
+		}),
+		&output,
+	)
+	if err != nil {
+		t.Fatalf("executeWhoami() error = %v", err)
+	}
+
+	if got := output.String(); got != "not logged in\n" {
+		t.Errorf("output = %q, want not logged in", got)
+	}
+}
+
 func TestExecuteWhoami_ReturnsApplicationError(t *testing.T) {
-	applicationError := errors.New("online session is invalid or expired: run gkeep login")
+	applicationError := errors.New("connection refused")
 
 	err := executeWhoami(
 		context.Background(),

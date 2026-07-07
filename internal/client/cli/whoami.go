@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -45,6 +46,14 @@ func executeWhoami(
 ) error {
 	user, err := getter.Whoami(ctx)
 	if err != nil {
+		if errors.Is(err, usecase.ErrNotLoggedIn) {
+			if _, writeErr := fmt.Fprintf(output, "%s\n", usecase.ErrNotLoggedIn); writeErr != nil {
+				return fmt.Errorf("write current user status: %w", writeErr)
+			}
+
+			return nil
+		}
+
 		return err
 	}
 

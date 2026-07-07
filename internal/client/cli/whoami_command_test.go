@@ -10,6 +10,8 @@ import (
 )
 
 func TestWhoamiCommand_Configuration(t *testing.T) {
+	isolateClientConfig(t)
+
 	var gotConfig config.Config
 	var output bytes.Buffer
 

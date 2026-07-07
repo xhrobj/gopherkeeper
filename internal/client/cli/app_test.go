@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -35,6 +36,8 @@ func TestRun_RootHelpContainsBanner(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			isolateClientConfig(t)
+
 			var output bytes.Buffer
 
 			err := runWithHealthRunner(
@@ -79,6 +82,8 @@ func TestRun_HealthHelpDoesNotContainBanner(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			isolateClientConfig(t)
+
 			var output bytes.Buffer
 
 			err := runWithHealthRunner(
@@ -121,6 +126,8 @@ func TestRun_VersionContainsBannerAndBuildInfo(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			isolateClientConfig(t)
+
 			var output bytes.Buffer
 
 			err := runWithHealthRunner(
@@ -155,6 +162,8 @@ func TestRun_VersionContainsBannerAndBuildInfo(t *testing.T) {
 }
 
 func TestRun_HealthCommandOutputDoesNotContainBanner(t *testing.T) {
+	isolateClientConfig(t)
+
 	var output bytes.Buffer
 
 	err := runWithHealthRunner(
@@ -183,6 +192,7 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 		envAddress     string
 		envCACert      string
 		envSessionFile string
+		envConfig      string
 		args           []string
 		want           config.Config
 	}{
@@ -194,6 +204,16 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 			},
 		},
 		{
+			name:      "config file",
+			envConfig: writeClientConfig(t, `{"address":"localhost:8081","ca_cert_file":"file-ca.pem","session_file":"file-session.json"}`),
+			args:      []string{"gopherkeeper", "health"},
+			want: config.Config{
+				Address:     "localhost:8081",
+				CACertFile:  "file-ca.pem",
+				SessionFile: "file-session.json",
+			},
+		},
+		{
 			name:           "environment",
 			envAddress:     "localhost:8081",
 			envCACert:      "env-ca.pem",
@@ -201,6 +221,19 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 			args:           []string{"gopherkeeper", "health"},
 			want: config.Config{
 				Address:     "localhost:8081",
+				CACertFile:  "env-ca.pem",
+				SessionFile: "env-session.json",
+			},
+		},
+		{
+			name:           "environment > config file",
+			envConfig:      writeClientConfig(t, `{"address":"localhost:8081","ca_cert_file":"file-ca.pem","session_file":"file-session.json"}`),
+			envAddress:     "localhost:8082",
+			envCACert:      "env-ca.pem",
+			envSessionFile: "env-session.json",
+			args:           []string{"gopherkeeper", "health"},
+			want: config.Config{
+				Address:     "localhost:8082",
 				CACertFile:  "env-ca.pem",
 				SessionFile: "env-session.json",
 			},
@@ -227,9 +260,12 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			isolateClientConfig(t)
+
 			t.Setenv("ADDRESS", tt.envAddress)
 			t.Setenv("CA_CERT_FILE", tt.envCACert)
 			t.Setenv("SESSION_FILE", tt.envSessionFile)
+			t.Setenv("CONFIG", tt.envConfig)
 
 			var got config.Config
 			err := runWithHealthRunner(
@@ -273,4 +309,15 @@ func assertContainsAll(t *testing.T, got string, wants ...string) {
 			t.Errorf("output = %q, want %q", got, want)
 		}
 	}
+}
+
+func writeClientConfig(t *testing.T, content string) string {
+	t.Helper()
+
+	path := t.TempDir() + "/client.json"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write client config: %v", err)
+	}
+
+	return path
 }

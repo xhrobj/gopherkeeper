@@ -344,22 +344,22 @@ func TestApplication_WhoamiMapsSessionErrors(t *testing.T) {
 		{
 			name:    "not found",
 			loadErr: session.ErrNotFound,
-			want:    "online session not found: run gkeep login",
+			want:    "not logged in",
 		},
 		{
 			name:    "expired",
 			loadErr: session.ErrExpired,
-			want:    "online session expired: run gkeep login",
+			want:    "not logged in",
 		},
 		{
 			name:    "server mismatch",
 			loadErr: session.ErrServerMismatch,
-			want:    "online session belongs to another server: run gkeep login",
+			want:    "not logged in",
 		},
 		{
 			name:    "invalid",
 			loadErr: session.ErrInvalid,
-			want:    "online session is invalid: run gkeep login",
+			want:    "not logged in",
 		},
 		{
 			name:    "filesystem",
@@ -391,6 +391,9 @@ func TestApplication_WhoamiMapsSessionErrors(t *testing.T) {
 			}
 			if !errors.Is(err, tt.loadErr) {
 				t.Error("whoami error does not preserve session error")
+			}
+			if tt.name != "filesystem" && !errors.Is(err, ErrNotLoggedIn) {
+				t.Error("whoami error does not match ErrNotLoggedIn")
 			}
 			if tt.name == "filesystem" {
 				if !strings.Contains(err.Error(), tt.want) {
@@ -433,8 +436,11 @@ func TestApplication_WhoamiMapsUnauthorizedAPIError(t *testing.T) {
 	if !errors.Is(err, apiError) {
 		t.Error("whoami error does not preserve API error")
 	}
-	if err.Error() != "online session is invalid or expired: run gkeep login" {
-		t.Errorf("error = %q, want readable session error", err)
+	if !errors.Is(err, ErrNotLoggedIn) {
+		t.Error("whoami error does not match ErrNotLoggedIn")
+	}
+	if err.Error() != "not logged in" {
+		t.Errorf("error = %q, want readable session status", err)
 	}
 	if strings.Contains(err.Error(), "test.jwt.token") {
 		t.Error("whoami error contains access token")

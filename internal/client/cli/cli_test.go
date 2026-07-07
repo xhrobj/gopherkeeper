@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -14,6 +15,16 @@ var testBuildInfo = buildinfo.Info{
 	Version: "v0.4.2",
 	Date:    "2026-06-30",
 	Commit:  "deadbeef",
+}
+
+func isolateClientConfig(t *testing.T) {
+	t.Helper()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	t.Setenv("CONFIG", "")
 }
 
 func runTestCommand(

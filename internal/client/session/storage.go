@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	sessionDirName  = "gkeep"
+	sessionDirName  = "gopherkeeper"
 	sessionFileName = "session.json"
 )
 
@@ -54,7 +54,7 @@ type FileStorage struct {
 // NewFileStorage создаёт файловое хранилище online-сессии.
 //
 // Если path пустой, используется путь по умолчанию внутри os.UserCacheDir():
-// gkeep/session.json.
+// gopherkeeper/session.json.
 func NewFileStorage(path string) (*FileStorage, error) {
 	return newFileStorage(path, time.Now)
 }

@@ -84,13 +84,17 @@ func run(ctx context.Context, args []string, options runOptions) error {
 		urfavecli.VersionPrinter = previousVersionPrinter
 	}()
 
-	command := newRootCommand(
+	command, err := newRootCommand(
 		options.input,
 		options.output,
 		options.errorOutput,
 		options.info,
 		options.runners,
+		commandArgs(args),
 	)
+	if err != nil {
+		return err
+	}
 
 	return command.Run(ctx, args)
 }
@@ -101,9 +105,12 @@ func newRootCommand(
 	errorOutput io.Writer,
 	info buildinfo.Info,
 	runners commandRunners,
-) *urfavecli.Command {
-	defaults := config.Load()
-
+	args []string,
+) (*urfavecli.Command, error) {
+	defaults, err := config.Parse(args)
+	if err != nil {
+		return nil, err
+	}
 	version := info.Version
 	if version == "" {
 		version = "¯\\_(ツ)_/¯"
@@ -116,6 +123,11 @@ func newRootCommand(
 		ErrWriter:                     errorOutput,
 		CustomRootCommandHelpTemplate: banner + urfavecli.RootCommandHelpTemplate,
 		Flags: []urfavecli.Flag{
+			&urfavecli.StringFlag{
+				Name:    configFlag,
+				Aliases: []string{"c"},
+				Usage:   "path to JSON client config file",
+			},
 			&urfavecli.StringFlag{
 				Name:    addressFlag,
 				Aliases: []string{"a"},
@@ -142,7 +154,15 @@ func newRootCommand(
 		Action: func(_ context.Context, command *urfavecli.Command) error {
 			return urfavecli.ShowRootCommandHelp(command)
 		},
+	}, nil
+}
+
+func commandArgs(args []string) []string {
+	if len(args) == 0 {
+		return nil
 	}
+
+	return args[1:]
 }
 
 func printVersion(output io.Writer, info buildinfo.Info) error {

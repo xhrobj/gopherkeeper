@@ -36,6 +36,16 @@ const (
 	testRegistrationPassword = "correct-horse-battery-staple"
 )
 
+func isolateClientConfig(t *testing.T) {
+	t.Helper()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	t.Setenv("CONFIG", "")
+}
+
 var integrationJWTSecret = []byte("0123456789abcdef0123456789abcdef")
 
 func openPostgres(t *testing.T, ctx context.Context, dsn string) *pgxpool.Pool {
