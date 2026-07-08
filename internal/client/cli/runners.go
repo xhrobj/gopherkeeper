@@ -9,6 +9,17 @@ import (
 
 type outputRunner func(context.Context, config.Config, io.Writer) error
 
+type textRecordCreateRunner func(
+	context.Context,
+	config.Config,
+	io.Writer,
+	string,
+	string,
+	string,
+) error
+
+type recordGetRunner func(context.Context, config.Config, io.Writer, string) error
+
 type passwordRunner func(
 	context.Context,
 	config.Config,

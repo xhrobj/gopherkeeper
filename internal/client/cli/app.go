@@ -23,11 +23,14 @@ const banner = `
 `
 
 type commandRunners struct {
-	health   outputRunner
-	register passwordRunner
-	login    passwordRunner
-	logout   outputRunner
-	whoami   outputRunner
+	health           outputRunner
+	register         passwordRunner
+	login            passwordRunner
+	logout           outputRunner
+	whoami           outputRunner
+	createTextRecord textRecordCreateRunner
+	listRecords      outputRunner
+	getRecord        recordGetRunner
 }
 
 type runOptions struct {
@@ -69,11 +72,14 @@ func RunWithInput(
 
 func defaultCommandRunners() commandRunners {
 	return commandRunners{
-		health:   runHealth,
-		register: runRegister,
-		login:    runLogin,
-		logout:   runLogout,
-		whoami:   runWhoami,
+		health:           runHealth,
+		register:         runRegister,
+		login:            runLogin,
+		logout:           runLogout,
+		whoami:           runWhoami,
+		createTextRecord: runCreateTextRecord,
+		listRecords:      runListRecords,
+		getRecord:        runGetRecord,
 	}
 }
 
@@ -153,6 +159,7 @@ func newRootCommand(
 			newLoginCommand(input, runners.login),
 			newLogoutCommand(runners.logout),
 			newWhoamiCommand(runners.whoami),
+			newRecordsCommand(runners),
 		},
 		Action: func(_ context.Context, command *urfavecli.Command) error {
 			return urfavecli.ShowRootCommandHelp(command)

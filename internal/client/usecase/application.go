@@ -13,6 +13,7 @@ import (
 // Application выполняет клиентские сценарии поверх HTTP client'а и локальной session.
 type Application struct {
 	users         userClient
+	records       recordClient
 	sessions      sessionStorage
 	newSessions   sessionStorageFactory
 	serverAddress string
@@ -62,6 +63,7 @@ func New(cfg config.Config) (*Application, error) {
 func newApplication(users userClient, sessions sessionStorage, serverAddress string) *Application {
 	return &Application{
 		users:         users,
+		records:       recordClientFromUserClient(users),
 		sessions:      sessions,
 		serverAddress: serverAddress,
 	}
@@ -74,9 +76,19 @@ func newApplicationWithSessionFactory(
 ) *Application {
 	return &Application{
 		users:         users,
+		records:       recordClientFromUserClient(users),
 		newSessions:   newSessions,
 		serverAddress: serverAddress,
 	}
+}
+
+func recordClientFromUserClient(users userClient) recordClient {
+	records, ok := users.(recordClient)
+	if !ok {
+		return nil
+	}
+
+	return records
 }
 
 func (a *Application) sessionStorage() (sessionStorage, error) {

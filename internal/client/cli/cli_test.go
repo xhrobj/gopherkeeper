@@ -55,6 +55,15 @@ func runTestCommand(
 	if runners.whoami == nil {
 		runners.whoami = unexpectedWhoamiRunner(t)
 	}
+	if runners.createTextRecord == nil {
+		runners.createTextRecord = unexpectedCreateTextRecordRunner(t)
+	}
+	if runners.listRecords == nil {
+		runners.listRecords = unexpectedListRecordsRunner(t)
+	}
+	if runners.getRecord == nil {
+		runners.getRecord = unexpectedGetRecordRunner(t)
+	}
 
 	return run(context.Background(), args, runOptions{
 		input:       input,
@@ -111,6 +120,36 @@ func unexpectedWhoamiRunner(t *testing.T) outputRunner {
 	return func(context.Context, config.Config, io.Writer) error {
 		t.Helper()
 		t.Fatal("whoami command must not run")
+		return nil
+	}
+}
+
+func unexpectedCreateTextRecordRunner(t *testing.T) textRecordCreateRunner {
+	t.Helper()
+
+	return func(context.Context, config.Config, io.Writer, string, string, string) error {
+		t.Helper()
+		t.Fatal("records create-text command must not run")
+		return nil
+	}
+}
+
+func unexpectedListRecordsRunner(t *testing.T) outputRunner {
+	t.Helper()
+
+	return func(context.Context, config.Config, io.Writer) error {
+		t.Helper()
+		t.Fatal("records list command must not run")
+		return nil
+	}
+}
+
+func unexpectedGetRecordRunner(t *testing.T) recordGetRunner {
+	t.Helper()
+
+	return func(context.Context, config.Config, io.Writer, string) error {
+		t.Helper()
+		t.Fatal("records get command must not run")
 		return nil
 	}
 }
