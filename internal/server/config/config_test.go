@@ -6,9 +6,14 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/xhrobj/gopherkeeper/internal/server/recordcrypto"
 )
 
-var testJWTSecret = []byte("0123456789abcdef0123456789abcdef")
+var (
+	testJWTSecret       = []byte("0123456789abcdef0123456789abcdef")
+	testRecordMasterKey = []byte("abcdef0123456789abcdef0123456789")
+)
 
 func TestParse(t *testing.T) {
 	tests := []struct {
@@ -18,45 +23,53 @@ func TestParse(t *testing.T) {
 		want Config
 	}{
 		{
-			name: "default address and JWT TTL",
+			name: "default address, JWT TTL and record key ID",
 			env: Config{
-				DatabaseDSN: "postgres://env",
-				TLSCertFile: "env-server.pem",
-				TLSKeyFile:  "env-server-key.pem",
-				JWTSecret:   testJWTSecret,
+				DatabaseDSN:     "postgres://env",
+				TLSCertFile:     "env-server.pem",
+				TLSKeyFile:      "env-server-key.pem",
+				JWTSecret:       testJWTSecret,
+				RecordMasterKey: testRecordMasterKey,
 			},
 			want: Config{
-				Address:     defaultAddress,
-				DatabaseDSN: "postgres://env",
-				TLSCertFile: "env-server.pem",
-				TLSKeyFile:  "env-server-key.pem",
-				JWTSecret:   testJWTSecret,
-				JWTTTL:      defaultJWTTTL,
+				Address:         defaultAddress,
+				DatabaseDSN:     "postgres://env",
+				TLSCertFile:     "env-server.pem",
+				TLSKeyFile:      "env-server-key.pem",
+				JWTSecret:       testJWTSecret,
+				JWTTTL:          defaultJWTTTL,
+				RecordMasterKey: testRecordMasterKey,
+				RecordKeyID:     recordcrypto.DefaultKeyID,
 			},
 		},
 		{
 			name: "environment",
 			env: Config{
-				Address:     "localhost:8081",
-				DatabaseDSN: "postgres://env",
-				TLSCertFile: "env-server.pem",
-				TLSKeyFile:  "env-server-key.pem",
-				JWTSecret:   testJWTSecret,
-				JWTTTL:      30 * time.Minute,
+				Address:         "localhost:8081",
+				DatabaseDSN:     "postgres://env",
+				TLSCertFile:     "env-server.pem",
+				TLSKeyFile:      "env-server-key.pem",
+				JWTSecret:       testJWTSecret,
+				JWTTTL:          30 * time.Minute,
+				RecordMasterKey: testRecordMasterKey,
+				RecordKeyID:     "records-v1",
 			},
 			want: Config{
-				Address:     "localhost:8081",
-				DatabaseDSN: "postgres://env",
-				TLSCertFile: "env-server.pem",
-				TLSKeyFile:  "env-server-key.pem",
-				JWTSecret:   testJWTSecret,
-				JWTTTL:      30 * time.Minute,
+				Address:         "localhost:8081",
+				DatabaseDSN:     "postgres://env",
+				TLSCertFile:     "env-server.pem",
+				TLSKeyFile:      "env-server-key.pem",
+				JWTSecret:       testJWTSecret,
+				JWTTTL:          30 * time.Minute,
+				RecordMasterKey: testRecordMasterKey,
+				RecordKeyID:     "records-v1",
 			},
 		},
 		{
 			name: "flags",
 			env: Config{
-				JWTSecret: testJWTSecret,
+				JWTSecret:       testJWTSecret,
+				RecordMasterKey: testRecordMasterKey,
 			},
 			args: []string{
 				"-a", "localhost:8082",
@@ -66,23 +79,27 @@ func TestParse(t *testing.T) {
 				"--jwt-ttl", "45m",
 			},
 			want: Config{
-				Address:     "localhost:8082",
-				DatabaseDSN: "postgres://flag",
-				TLSCertFile: "flag-server.pem",
-				TLSKeyFile:  "flag-server-key.pem",
-				JWTSecret:   testJWTSecret,
-				JWTTTL:      45 * time.Minute,
+				Address:         "localhost:8082",
+				DatabaseDSN:     "postgres://flag",
+				TLSCertFile:     "flag-server.pem",
+				TLSKeyFile:      "flag-server-key.pem",
+				JWTSecret:       testJWTSecret,
+				JWTTTL:          45 * time.Minute,
+				RecordMasterKey: testRecordMasterKey,
+				RecordKeyID:     recordcrypto.DefaultKeyID,
 			},
 		},
 		{
 			name: "flags > environment",
 			env: Config{
-				Address:     "localhost:8081",
-				DatabaseDSN: "postgres://env",
-				TLSCertFile: "env-server.pem",
-				TLSKeyFile:  "env-server-key.pem",
-				JWTSecret:   testJWTSecret,
-				JWTTTL:      30 * time.Minute,
+				Address:         "localhost:8081",
+				DatabaseDSN:     "postgres://env",
+				TLSCertFile:     "env-server.pem",
+				TLSKeyFile:      "env-server-key.pem",
+				JWTSecret:       testJWTSecret,
+				JWTTTL:          30 * time.Minute,
+				RecordMasterKey: testRecordMasterKey,
+				RecordKeyID:     "records-v1",
 			},
 			args: []string{
 				"-a", "localhost:8082",
@@ -92,12 +109,14 @@ func TestParse(t *testing.T) {
 				"--jwt-ttl", "45m",
 			},
 			want: Config{
-				Address:     "localhost:8082",
-				DatabaseDSN: "postgres://flag",
-				TLSCertFile: "flag-server.pem",
-				TLSKeyFile:  "flag-server-key.pem",
-				JWTSecret:   testJWTSecret,
-				JWTTTL:      45 * time.Minute,
+				Address:         "localhost:8082",
+				DatabaseDSN:     "postgres://flag",
+				TLSCertFile:     "flag-server.pem",
+				TLSKeyFile:      "flag-server-key.pem",
+				JWTSecret:       testJWTSecret,
+				JWTTTL:          45 * time.Minute,
+				RecordMasterKey: testRecordMasterKey,
+				RecordKeyID:     "records-v1",
 			},
 		},
 	}
@@ -128,7 +147,8 @@ func TestParse_ReturnsRequiredValueError(t *testing.T) {
 		{
 			name: "TLS certificate",
 			env: Config{
-				JWTSecret: testJWTSecret,
+				JWTSecret:       testJWTSecret,
+				RecordMasterKey: testRecordMasterKey,
 			},
 			args: []string{
 				"--database-dsn", "postgres://test",
@@ -139,7 +159,8 @@ func TestParse_ReturnsRequiredValueError(t *testing.T) {
 		{
 			name: "TLS private key",
 			env: Config{
-				JWTSecret: testJWTSecret,
+				JWTSecret:       testJWTSecret,
+				RecordMasterKey: testRecordMasterKey,
 			},
 			args: []string{
 				"--database-dsn", "postgres://test",
@@ -150,7 +171,8 @@ func TestParse_ReturnsRequiredValueError(t *testing.T) {
 		{
 			name: "database DSN",
 			env: Config{
-				JWTSecret: testJWTSecret,
+				JWTSecret:       testJWTSecret,
+				RecordMasterKey: testRecordMasterKey,
 			},
 			args: []string{
 				"--tls-cert", "server.pem",
@@ -160,12 +182,27 @@ func TestParse_ReturnsRequiredValueError(t *testing.T) {
 		},
 		{
 			name: "JWT secret",
+			env: Config{
+				RecordMasterKey: testRecordMasterKey,
+			},
 			args: []string{
 				"--database-dsn", "postgres://test",
 				"--tls-cert", "server.pem",
 				"--tls-key", "server-key.pem",
 			},
 			wantError: "JWT secret is required",
+		},
+		{
+			name: "record master key",
+			env: Config{
+				JWTSecret: testJWTSecret,
+			},
+			args: []string{
+				"--database-dsn", "postgres://test",
+				"--tls-cert", "server.pem",
+				"--tls-key", "server-key.pem",
+			},
+			wantError: "record master key is required",
 		},
 	}
 
@@ -205,7 +242,7 @@ func TestParse_ReturnsInvalidJWTSecretError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			setEnvironment(t, Config{})
+			setEnvironment(t, Config{RecordMasterKey: testRecordMasterKey})
 			t.Setenv("JWT_SECRET", tt.secret)
 
 			_, err := Parse([]string{
@@ -221,6 +258,65 @@ func TestParse_ReturnsInvalidJWTSecretError(t *testing.T) {
 				t.Fatalf("Parse() error = %q, want substring %q", err, tt.wantError)
 			}
 		})
+	}
+}
+
+func TestParse_ReturnsInvalidRecordMasterKeyError(t *testing.T) {
+	tests := []struct {
+		name      string
+		key       string
+		wantError string
+	}{
+		{
+			name:      "invalid base64",
+			key:       "not-base64",
+			wantError: "decode record master key",
+		},
+		{
+			name:      "wrong size",
+			key:       base64.StdEncoding.EncodeToString([]byte("too-short")),
+			wantError: "record master key must decode to 32 bytes",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setEnvironment(t, Config{JWTSecret: testJWTSecret})
+			t.Setenv("RECORD_MASTER_KEY", tt.key)
+
+			_, err := Parse([]string{
+				"--database-dsn", "postgres://test",
+				"--tls-cert", "server.pem",
+				"--tls-key", "server-key.pem",
+			})
+			if err == nil {
+				t.Fatal("Parse() error = nil, want record master key error")
+			}
+
+			if !strings.Contains(err.Error(), tt.wantError) {
+				t.Fatalf("Parse() error = %q, want substring %q", err, tt.wantError)
+			}
+		})
+	}
+}
+
+func TestParse_ReturnsInvalidRecordKeyIDError(t *testing.T) {
+	setEnvironment(t, Config{
+		DatabaseDSN:     "postgres://test",
+		TLSCertFile:     "server.pem",
+		TLSKeyFile:      "server-key.pem",
+		JWTSecret:       testJWTSecret,
+		RecordMasterKey: testRecordMasterKey,
+		RecordKeyID:     " ",
+	})
+
+	_, err := Parse(nil)
+	if err == nil {
+		t.Fatal("Parse() error = nil, want record key ID error")
+	}
+
+	if !strings.Contains(err.Error(), "record key ID must not be empty") {
+		t.Fatalf("Parse() error = %q, want record key ID error", err)
 	}
 }
 
@@ -260,10 +356,11 @@ func TestParse_ReturnsInvalidJWTTLError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			setEnvironment(t, Config{
-				DatabaseDSN: "postgres://test",
-				TLSCertFile: "server.pem",
-				TLSKeyFile:  "server-key.pem",
-				JWTSecret:   testJWTSecret,
+				DatabaseDSN:     "postgres://test",
+				TLSCertFile:     "server.pem",
+				TLSKeyFile:      "server-key.pem",
+				JWTSecret:       testJWTSecret,
+				RecordMasterKey: testRecordMasterKey,
 			})
 			t.Setenv("JWT_TTL", tt.envTTL)
 
@@ -307,4 +404,11 @@ func setEnvironment(t *testing.T, cfg Config) {
 		jwtTTL = cfg.JWTTTL.String()
 	}
 	t.Setenv("JWT_TTL", jwtTTL)
+
+	recordMasterKey := ""
+	if len(cfg.RecordMasterKey) > 0 {
+		recordMasterKey = base64.StdEncoding.EncodeToString(cfg.RecordMasterKey)
+	}
+	t.Setenv("RECORD_MASTER_KEY", recordMasterKey)
+	t.Setenv("RECORD_KEY_ID", cfg.RecordKeyID)
 }

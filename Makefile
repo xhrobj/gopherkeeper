@@ -1,6 +1,6 @@
 .PHONY: \
 	show-coverage \
-	gen-tls-certs gen-jwt-secret \
+	gen-tls-certs gen-jwt-secret gen-record-master-key \
 	check-client-config check-client-ca \
 	build build-server build-client build-client-cross \
 	db-up db-down db-connect db-erase \
@@ -16,12 +16,12 @@
 	vet lint ci \
 	clean clean-gen
 
-# брать локальные параметры из env-файла (если он есть)
+# загрузить локальный env-файл, если он есть
 ENV_FILE ?= .env
 
 -include $(ENV_FILE)
 
-# уровень логирования для Сервера и Клиента читается из env-файла
+# передать уровень логирования для Сервера и Клиента (читается из env-файла)
 export LOG_LEVEL
 
 # данные о сборке подставляются в бинарники Клиента и Сервера через ldflags
@@ -47,9 +47,9 @@ CLIENT := $(BIN_DIR)/$(CLIENT_NAME)
 # TLS-сертификаты для локальной разработки
 TLS_CERT_DIR := .certs
 
-TLS_CA_CERT := $(TLS_CERT_DIR)/ca.pem
-TLS_SERVER_CERT := $(TLS_CERT_DIR)/server.pem
-TLS_SERVER_KEY := $(TLS_CERT_DIR)/server-key.pem
+TLS_CA_CERT ?= $(TLS_CERT_DIR)/ca.pem
+TLS_SERVER_CERT ?= $(TLS_CERT_DIR)/server.pem
+TLS_SERVER_KEY ?= $(TLS_CERT_DIR)/server-key.pem
 
 # JWT-параметры локального запуска Сервера читаются из env-файла
 # и передаются Серверу через окружение.
@@ -90,6 +90,11 @@ gen-tls-certs:
 # сгенерировать случайный JWT secret для локальной разработки
 # значение нужно скопировать в JWT_SECRET локального .env-файла
 gen-jwt-secret:
+	@openssl rand -base64 32
+
+# сгенерировать случайный record master key для локальной разработки
+# значение нужно скопировать в RECORD_MASTER_KEY локального .env-файла
+gen-record-master-key:
 	@openssl rand -base64 32
 
 check-client-config:
