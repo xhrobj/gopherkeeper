@@ -108,7 +108,7 @@ export CONFIG=configs/client.json
 cp .env.example .env
 ```
 
-Проверить и при необходимости заполнить в `.env` параметры PostgreSQL, JWT и логирования:
+Проверить и при необходимости заполнить в `.env` параметры PostgreSQL, JWT, серверного шифрования записей и логирования:
 
 ```dotenv
 POSTGRES_USER=gopherkeeper
@@ -119,6 +119,9 @@ POSTGRES_PORT=5432
 
 JWT_SECRET=<secret>
 JWT_TTL=1h
+
+RECORD_MASTER_KEY=<secret>
+RECORD_KEY_ID=primary
 
 LOG_LEVEL=info
 ```
@@ -133,6 +136,19 @@ make gen-jwt-secret
 
 ```dotenv
 JWT_SECRET=<generated-secret>
+```
+
+Record master key для серверного шифрования payload'ов можно сгенерировать командой:
+
+```bash
+make gen-record-master-key
+```
+
+Скопировать выведенное значение в локальный `.env`:
+
+```dotenv
+RECORD_MASTER_KEY=<generated-record-master-key>
+RECORD_KEY_ID=primary
 ```
 
 ### 6. Запустить Docker
@@ -241,7 +257,52 @@ not logged in
 
 Состояние `not logged in` не считается технической ошибкой команды `whoami`.
 
-### 12. Выйти из online-сессии
+
+### 12. Создать text-запись
+
+Подготовить файл с приватным текстом:
+
+```bash
+mkdir -p .session
+printf 'secret note\n' > .session/note.txt
+```
+
+Создать запись:
+
+```bash
+./bin/gkeep records create-text --title 'my note' --text-file .session/note.txt
+```
+
+Ожидаемый результат:
+
+```text
+Created text record <record-id> with revision 1.
+```
+
+Приватный текст передаётся через файл, а не через аргумент команды, чтобы он не попадал в shell history. Для необязательной приватной метаинформации можно использовать `--metadata-file <path>`.
+
+### 13. Получить список записей
+
+```bash
+./bin/gkeep records list
+```
+
+Ожидаемый результат содержит только открытые metadata без приватного payload:
+
+```text
+ID                                    TYPE  TITLE    REVISION  UPDATED AT
+<record-id>                           text  my note  1         2026-07-08T12:00:00Z
+```
+
+### 14. Получить text-запись
+
+```bash
+./bin/gkeep records get <record-id>
+```
+
+Команда выводит открытую metadata и расшифрованный text payload текущего пользователя.
+
+### 15. Выйти из online-сессии
 
 ```bash
 ./bin/gkeep logout
