@@ -5,9 +5,12 @@ import (
 	"net/http"
 )
 
-// Response содержит безопасное описание HTTP-ошибки API.
+// Response содержит описание HTTP-ошибки API.
 type Response struct {
-	Code    string `json:"code"`
+	// Code содержит код ошибки.
+	Code string `json:"code"`
+
+	// Message содержит описание ошибки.
 	Message string `json:"message"`
 }
 

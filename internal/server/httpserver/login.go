@@ -8,7 +8,7 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
 )
 
-const tokenTypeBearer = "Bearer"
+const errorMessageInvalidLoginRequest = "invalid login request"
 
 type loginRequest struct {
 	Login    string `json:"login"`
@@ -17,7 +17,6 @@ type loginRequest struct {
 
 type loginResponse struct {
 	AccessToken string       `json:"access_token"`
-	TokenType   string       `json:"token_type"`
 	ExpiresAt   time.Time    `json:"expires_at"`
 	User        userResponse `json:"user"`
 }
@@ -68,7 +67,6 @@ func loginHandler(authenticator UserAuthenticator) http.HandlerFunc {
 		writeNoStoreHeaders(w)
 		writeJSONResponse(w, http.StatusOK, loginResponse{
 			AccessToken: result.AccessToken,
-			TokenType:   tokenTypeBearer,
 			ExpiresAt:   result.ExpiresAt.UTC(),
 			User: userResponse{
 				ID:        result.User.ID,

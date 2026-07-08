@@ -36,6 +36,16 @@ const (
 	testRegistrationPassword = "correct-horse-battery-staple"
 )
 
+func isolateClientConfig(t *testing.T) {
+	t.Helper()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	t.Setenv("CONFIG", "")
+}
+
 var integrationJWTSecret = []byte("0123456789abcdef0123456789abcdef")
 
 func openPostgres(t *testing.T, ctx context.Context, dsn string) *pgxpool.Pool {
@@ -236,13 +246,13 @@ func newServerHandler(pool *pgxpool.Pool) http.Handler {
 	passwordManager := auth.NewBcryptPasswordManager()
 	registrationService := service.NewRegistrationService(userRepository, passwordManager)
 
-	return httpserver.NewHandler(
-		pool,
-		registrationService,
-		unusedIntegrationAuthenticator,
-		unusedIntegrationTokenValidator,
-		unusedIntegrationCurrentUserReader,
-	)
+	return httpserver.NewHandler(httpserver.Dependencies{
+		Database:          pool,
+		Registerer:        registrationService,
+		Authenticator:     unusedIntegrationAuthenticator,
+		TokenValidator:    unusedIntegrationTokenValidator,
+		CurrentUserReader: unusedIntegrationCurrentUserReader,
+	})
 }
 
 func newAuthenticatedServerHandler(pool *pgxpool.Pool) http.Handler {
@@ -256,13 +266,13 @@ func newAuthenticatedServerHandler(pool *pgxpool.Pool) http.Handler {
 		tokenManager,
 	)
 
-	return httpserver.NewHandler(
-		pool,
-		registrationService,
-		authenticationService,
-		tokenManager,
-		userRepository,
-	)
+	return httpserver.NewHandler(httpserver.Dependencies{
+		Database:          pool,
+		Registerer:        registrationService,
+		Authenticator:     authenticationService,
+		TokenValidator:    tokenManager,
+		CurrentUserReader: userRepository,
+	})
 }
 
 var unusedIntegrationAuthenticator = integrationAuthenticatorFunc(func(

@@ -5,16 +5,16 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/urfave/cli/v3"
+	urfavecli "github.com/urfave/cli/v3"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
 	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
 )
 
-func newHealthCommand(health healthRunner) *cli.Command {
-	return &cli.Command{
+func newHealthCommand(health outputRunner) *urfavecli.Command {
+	return &urfavecli.Command{
 		Name:  "health",
 		Usage: "check Server availability",
-		Action: func(ctx context.Context, command *cli.Command) error {
+		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			return health(ctx, configFromCommand(command), command.Root().Writer)
 		},
 	}

@@ -6,6 +6,8 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/logger"
@@ -15,6 +17,7 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/server/middleware"
 	"github.com/xhrobj/gopherkeeper/internal/server/migration"
 	"github.com/xhrobj/gopherkeeper/internal/server/postgres"
+	"github.com/xhrobj/gopherkeeper/internal/server/recordcrypto"
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
 	"go.uber.org/zap"
 )
@@ -26,27 +29,20 @@ var (
 )
 
 func main() {
-	if err := buildinfo.Print(os.Stdout, buildinfo.Info{
-		Version: buildVersion,
-		Date:    buildDate,
-		Commit:  buildCommit,
-	}); err != nil {
+	if err := printIntro(os.Stdout); err != nil {
 		log.Fatal(err)
 	}
 
-	if err := printBanner(os.Stdout); err != nil {
-		log.Fatal(err)
-	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	ctx := context.Background()
-
-	if err := run(ctx); err != nil {
+	if err := run(ctx, os.Args[1:]); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(ctx context.Context) error {
-	cfg, err := config.Parse(os.Args[1:])
+func run(ctx context.Context, args []string) error {
+	cfg, err := config.Parse(args)
 	if err != nil {
 		return err
 	}
@@ -74,40 +70,61 @@ func run(ctx context.Context) error {
 	lg.Info("database migrations completed")
 
 	userRepository := postgres.NewUserRepository(pool)
+	recordRepository := postgres.NewRecordRepository(pool)
 	passwordManager := auth.NewBcryptPasswordManager()
 	tokenManager := auth.NewJWTTokenManager(cfg.JWTSecret, cfg.JWTTTL)
+	recordCrypto, err := recordcrypto.NewService(cfg.RecordMasterKey, cfg.RecordKeyID)
+	if err != nil {
+		return err
+	}
+
 	registrationService := service.NewRegistrationService(userRepository, passwordManager)
-	authenticationService := service.NewAuthenticationService(
-		userRepository,
-		passwordManager,
-		tokenManager,
-	)
+	authenticationService := service.NewAuthenticationService(userRepository, passwordManager, tokenManager)
+	recordService := service.NewRecordService(recordRepository, recordCrypto)
 
 	handler := middleware.WithLogging(
-		httpserver.NewHandler(
-			pool,
-			registrationService,
-			authenticationService,
-			tokenManager,
-			userRepository,
-		),
+		httpserver.NewHandler(httpserver.Dependencies{
+			Database:          pool,
+			Registerer:        registrationService,
+			Authenticator:     authenticationService,
+			TokenValidator:    tokenManager,
+			CurrentUserReader: userRepository,
+			Records:           recordService,
+		}),
 		lg,
 	)
 
-	server := httpserver.NewServer(
-		cfg.Address,
-		handler,
-	)
+	server := httpserver.NewServer(cfg.Address, handler)
 
 	lg.Info(
 		"https server starting",
 		zap.String("server_address", cfg.Address),
 	)
 
-	return server.ListenAndServeTLS(
+	if err := httpserver.ServeTLS(
+		ctx,
+		server,
 		cfg.TLSCertFile,
 		cfg.TLSKeyFile,
-	)
+	); err != nil {
+		return err
+	}
+
+	lg.Info("https server stopped")
+
+	return nil
+}
+
+func printIntro(output io.Writer) error {
+	if err := buildinfo.Print(output, buildinfo.Info{
+		Version: buildVersion,
+		Date:    buildDate,
+		Commit:  buildCommit,
+	}); err != nil {
+		return err
+	}
+
+	return printBanner(output)
 }
 
 func printBanner(output io.Writer) error {

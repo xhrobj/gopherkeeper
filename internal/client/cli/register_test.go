@@ -69,7 +69,7 @@ func TestExecuteRegistration_Interactive(t *testing.T) {
 			return model.User{Login: "alice"}, nil
 		}),
 		passwords,
-		registrationStreams{
+		passwordStreams{
 			input:        strings.NewReader(""),
 			output:       &output,
 			promptOutput: io.Discard,
@@ -111,7 +111,7 @@ func TestExecuteRegistration_PasswordStdin(t *testing.T) {
 			return model.User{Login: "bob"}, nil
 		}),
 		passwords,
-		registrationStreams{
+		passwordStreams{
 			input:        strings.NewReader(testRegistrationPassword + "\n"),
 			output:       io.Discard,
 			promptOutput: io.Discard,
@@ -144,7 +144,7 @@ func TestExecuteRegistration_RejectsMismatchedPasswords(t *testing.T) {
 			return model.User{}, nil
 		}),
 		passwords,
-		registrationStreams{
+		passwordStreams{
 			input:        strings.NewReader(""),
 			output:       io.Discard,
 			promptOutput: io.Discard,
@@ -175,7 +175,7 @@ func TestExecuteRegistration_ReturnsApplicationError(t *testing.T) {
 			return model.User{}, applicationError
 		}),
 		&passwordReaderStub{lineValue: testRegistrationPassword},
-		registrationStreams{
+		passwordStreams{
 			input:        strings.NewReader(testRegistrationPassword + "\n"),
 			output:       io.Discard,
 			promptOutput: io.Discard,
@@ -248,5 +248,41 @@ func TestTerminalPasswordReader_ReadHiddenRejectsNonTerminal(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--password-stdin") {
 		t.Errorf("ReadHidden() error = %q, want password-stdin hint", err)
+	}
+}
+
+func TestExecuteRegistration_RejectsInvalidLoginBeforePasswordInput(t *testing.T) {
+	registrarCalled := false
+	passwords := &passwordReaderStub{
+		hiddenValues: []string{testRegistrationPassword, testRegistrationPassword},
+		lineValue:    testRegistrationPassword,
+	}
+
+	err := executeRegistration(
+		context.Background(),
+		userRegistererFunc(func(context.Context, string, string) (model.User, error) {
+			registrarCalled = true
+			return model.User{}, nil
+		}),
+		passwords,
+		passwordStreams{
+			input:        strings.NewReader(testRegistrationPassword + "\n"),
+			output:       io.Discard,
+			promptOutput: io.Discard,
+		},
+		"-a",
+		false,
+	)
+	if !errors.Is(err, errInvalidLoginArgument) {
+		t.Fatalf("executeRegistration() error = %v, want %v", err, errInvalidLoginArgument)
+	}
+	if registrarCalled {
+		t.Error("registrar was called for invalid login")
+	}
+	if passwords.hiddenCalls != 0 {
+		t.Errorf("hidden password reads = %d, want 0", passwords.hiddenCalls)
+	}
+	if passwords.lineCalls != 0 {
+		t.Errorf("stdin password reads = %d, want 0", passwords.lineCalls)
 	}
 }

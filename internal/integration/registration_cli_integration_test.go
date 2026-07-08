@@ -26,6 +26,7 @@ func TestIntegration_CLIRegistrationFlow(t *testing.T) {
 		t.Fatal("DATABASE_DSN is not set")
 	}
 
+	isolateClientConfig(t)
 	t.Setenv("ADDRESS", "")
 	t.Setenv("CA_CERT_FILE", "")
 
@@ -124,6 +125,7 @@ func TestIntegration_CLILoginFlow(t *testing.T) {
 		t.Fatal("DATABASE_DSN is not set")
 	}
 
+	isolateClientConfig(t)
 	t.Setenv("ADDRESS", "")
 	t.Setenv("CA_CERT_FILE", "")
 	t.Setenv("SESSION_FILE", "")

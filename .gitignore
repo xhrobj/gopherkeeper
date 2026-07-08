@@ -38,3 +38,10 @@ __MACOSX/
 
 # сертификаты и ключи Local TLS
 /.certs/
+
+# каталог для локальной сессии Клиента
+/.session/
+
+# JSON-конфиг Клиента (разрешен только example-конфиг)
+/configs/*
+!/configs/client.example.json

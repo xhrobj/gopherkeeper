@@ -6,46 +6,20 @@ import (
 	"io"
 
 	urfavecli "github.com/urfave/cli/v3"
-	clientapp "github.com/xhrobj/gopherkeeper/internal/client/app"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
+	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
-
-type loginRunner func(
-	context.Context,
-	config.Config,
-	io.Reader,
-	io.Writer,
-	io.Writer,
-	string,
-	bool,
-) error
 
 type userLogger interface {
 	Login(ctx context.Context, login, password string) (model.User, error)
 }
 
-type loginStreams struct {
-	input        io.Reader
-	output       io.Writer
-	promptOutput io.Writer
-}
-
-func newLoginCommand(input io.Reader, login loginRunner) *urfavecli.Command {
+func newLoginCommand(input io.Reader, login passwordRunner) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "login",
 		Usage: "authenticate user and save online session",
-		Flags: []urfavecli.Flag{
-			&urfavecli.StringFlag{
-				Name:     "login",
-				Usage:    "user login",
-				Required: true,
-			},
-			&urfavecli.BoolFlag{
-				Name:  "password-stdin",
-				Usage: "read password from standard input",
-			},
-		},
+		Flags: loginPasswordFlags(),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			return login(
 				ctx,
@@ -69,7 +43,7 @@ func runLogin(
 	login string,
 	passwordStdin bool,
 ) error {
-	application, err := clientapp.New(cfg)
+	application, err := usecase.New(cfg)
 	if err != nil {
 		return err
 	}
@@ -78,7 +52,7 @@ func runLogin(
 		ctx,
 		application,
 		terminalPasswordReader{},
-		loginStreams{
+		passwordStreams{
 			input:        input,
 			output:       output,
 			promptOutput: promptOutput,
@@ -92,10 +66,14 @@ func executeLogin(
 	ctx context.Context,
 	logger userLogger,
 	passwords passwordReader,
-	streams loginStreams,
+	streams passwordStreams,
 	login string,
 	passwordStdin bool,
 ) error {
+	if err := validateLoginArgument(login); err != nil {
+		return err
+	}
+
 	password, err := readLoginPassword(
 		passwords,
 		streams.input,

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"syscall"
 	"time"
 )
 
@@ -72,7 +73,7 @@ func (c *Client) Health(ctx context.Context) (string, error) {
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return "", fmt.Errorf("send health request: %w", err)
+		return "", healthRequestError(err)
 	}
 	defer func() {
 		_ = response.Body.Close()
@@ -88,4 +89,12 @@ func (c *Client) Health(ctx context.Context) (string, error) {
 	}
 
 	return health.Status, nil
+}
+
+func healthRequestError(err error) error {
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return errors.New("server unavailable: connection refused")
+	}
+
+	return fmt.Errorf("send health request: %w", err)
 }

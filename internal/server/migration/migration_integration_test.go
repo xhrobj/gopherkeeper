@@ -114,8 +114,8 @@ func assertMigrationState(t *testing.T, ctx context.Context, pool *pgxpool.Pool)
 		t.Fatalf("read migration state: %v", err)
 	}
 
-	if version != 2 {
-		t.Errorf("migration version = %d, want 2", version)
+	if version != 3 {
+		t.Errorf("migration version = %d, want 3", version)
 	}
 	if dirty {
 		t.Error("migration state is dirty")
@@ -134,6 +134,7 @@ func assertMigrationState(t *testing.T, ctx context.Context, pool *pgxpool.Pool)
 	}
 
 	assertUsersTableExists(t, ctx, pool)
+	assertRecordsTableExists(t, ctx, pool)
 }
 
 func assertUsersTableExists(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
@@ -149,5 +150,21 @@ func assertUsersTableExists(t *testing.T, ctx context.Context, pool *pgxpool.Poo
 
 	if !exists {
 		t.Fatal("gopherkeeper.users table does not exist")
+	}
+}
+
+func assertRecordsTableExists(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+	t.Helper()
+
+	var exists bool
+	if err := pool.QueryRow(
+		ctx,
+		"SELECT to_regclass('gopherkeeper.records') IS NOT NULL",
+	).Scan(&exists); err != nil {
+		t.Fatalf("check records table: %v", err)
+	}
+
+	if !exists {
+		t.Fatal("gopherkeeper.records table does not exist")
 	}
 }

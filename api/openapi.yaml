@@ -16,6 +16,8 @@ tags:
     description: Регистрация и аутентификация пользователей.
   - name: Users
     description: Операции с текущим пользователем.
+  - name: Records
+    description: Операции с приватными записями пользователя.
 
 paths:
   /health:
@@ -147,7 +149,6 @@ paths:
                 $ref: '#/components/schemas/LoginResponse'
               example:
                 access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature
-                token_type: Bearer
                 expires_at: '2026-07-01T12:15:00Z'
                 user:
                   id: 42
@@ -228,6 +229,136 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+
+  /api/v1/records:
+    post:
+      summary: Создать приватную запись
+      description: >-
+        Создаёт новую приватную запись текущего пользователя. В MVP-4 поддерживается только type text.
+        Payload передаётся по HTTPS, валидируется Сервером, шифруется AES-GCM и сохраняется в PostgreSQL
+        только в виде ciphertext. Metadata внутри payload является приватной и хранится зашифрованной.
+      operationId: createRecord
+      tags:
+        - Records
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRecordRequest'
+            example:
+              type: text
+              title: Alice private note
+              payload:
+                text: secret note
+                metadata: private metadata
+      responses:
+        '201':
+          description: Запись создана
+          headers:
+            ETag:
+              description: Текущая revision созданной записи.
+              schema:
+                type: string
+                example: '"1"'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TextRecordResponse'
+        '400':
+          description: Некорректный JSON, тип записи, title или payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidRequest:
+                  summary: Некорректные данные записи
+                  value:
+                    code: invalid_request
+                    message: invalid record request
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    get:
+      summary: Получить список приватных записей
+      description: Возвращает открытые metadata записей текущего пользователя без расшифрования payload'ов.
+      operationId: listRecords
+      tags:
+        - Records
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Список metadata записей
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListRecordsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/records/{id}:
+    get:
+      summary: Получить приватную text-запись
+      description: >-
+        Возвращает открытую metadata и расшифрованный text payload одной записи текущего пользователя.
+        Отсутствующая и принадлежащая другому пользователю запись возвращают одинаковый 404.
+      operationId: getRecord
+      tags:
+        - Records
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID записи.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Text-запись найдена
+          headers:
+            ETag:
+              description: Текущая revision записи.
+              schema:
+                type: string
+                example: '"1"'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TextRecordResponse'
+        '400':
+          description: Некорректный UUID записи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidRequest:
+                  summary: Некорректный record id
+                  value:
+                    code: invalid_request
+                    message: invalid record request
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -237,6 +368,38 @@ components:
       description: JWT bearer token из ответа `POST /api/v1/auth/login`.
 
   responses:
+    Unauthorized:
+      description: Отсутствующий, некорректный или просроченный bearer token
+      headers:
+        WWW-Authenticate:
+          description: Ожидаемая Сервером схема аутентификации.
+          schema:
+            type: string
+            example: Bearer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            unauthorized:
+              summary: Отсутствующий или некорректный token
+              value:
+                code: unauthorized
+                message: missing or invalid bearer token
+
+    RecordNotFound:
+      description: Запись не найдена или недоступна текущему пользователю
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            recordNotFound:
+              summary: Запись не найдена
+              value:
+                code: record_not_found
+                message: record not found
+
     PayloadTooLarge:
       description: Тело запроса превышает допустимый размер
       content:
@@ -316,7 +479,6 @@ components:
       additionalProperties: false
       required:
         - access_token
-        - token_type
         - expires_at
         - user
       properties:
@@ -324,12 +486,6 @@ components:
           type: string
           description: JWT access token для заголовка Authorization со схемой Bearer.
           example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.example.signature
-        token_type:
-          type: string
-          enum:
-            - Bearer
-          description: Тип token. В MVP всегда равен Bearer.
-          example: Bearer
         expires_at:
           type: string
           format: date-time
@@ -385,6 +541,139 @@ components:
         Password длиной от 3 до 64 символов. Разрешены печатные ASCII-символы от ! до ~; пробелы
         и другие Unicode-символы запрещены.
       example: correct-horse-battery-staple
+
+
+    RecordType:
+      type: string
+      description: Тип приватной записи.
+      enum:
+        - text
+        - credentials
+        - card
+        - binary
+      example: text
+
+    TextPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - text
+      properties:
+        text:
+          type: string
+          description: Приватный текст записи. Хранится на Сервере только внутри encrypted payload.
+          minLength: 1
+          maxLength: 1048576
+          example: secret note
+        metadata:
+          type: string
+          description: Необязательная приватная метаинформация. Хранится внутри encrypted payload.
+          maxLength: 65536
+          example: private metadata
+
+    CreateRecordRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - payload
+      properties:
+        type:
+          type: string
+          description: Тип создаваемой записи. В MVP-4 поддерживается только text.
+          enum:
+            - text
+          example: text
+        title:
+          type: string
+          description: Открытое название записи, видимое в списке metadata.
+          minLength: 1
+          example: Alice private note
+        payload:
+          $ref: '#/components/schemas/TextPayload'
+
+    RecordMetadataResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - type
+        - title
+        - revision
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        type:
+          $ref: '#/components/schemas/RecordType'
+        title:
+          type: string
+          example: Alice private note
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+          example: 1
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-07-08T12:00:00Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-07-08T12:00:00Z'
+
+    TextRecordResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - type
+        - title
+        - revision
+        - created_at
+        - updated_at
+        - payload
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440000
+        type:
+          $ref: '#/components/schemas/RecordType'
+        title:
+          type: string
+          example: Alice private note
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+          example: 1
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-07-08T12:00:00Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-07-08T12:00:00Z'
+        payload:
+          $ref: '#/components/schemas/TextPayload'
+
+    ListRecordsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - records
+      properties:
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecordMetadataResponse'
 
     ErrorResponse:
       type: object

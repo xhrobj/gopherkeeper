@@ -1,4 +1,4 @@
-package app
+package usecase
 
 import (
 	"context"
@@ -12,39 +12,6 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/client/session"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
-
-const testPassword = "correct-horse-battery-staple"
-
-type userClientStub struct {
-	register func(context.Context, string, string) (model.User, error)
-	login    func(context.Context, string, string) (httpclient.LoginResult, error)
-	whoami   func(context.Context, string) (model.User, error)
-}
-
-func (s userClientStub) Register(ctx context.Context, login, password string) (model.User, error) {
-	return s.register(ctx, login, password)
-}
-
-func (s userClientStub) Login(ctx context.Context, login, password string) (httpclient.LoginResult, error) {
-	return s.login(ctx, login, password)
-}
-
-func (s userClientStub) CurrentUser(ctx context.Context, accessToken string) (model.User, error) {
-	return s.whoami(ctx, accessToken)
-}
-
-type sessionStorageStub struct {
-	save func(session.Session) error
-	load func(string) (session.Session, error)
-}
-
-func (s sessionStorageStub) Save(stored session.Session) error {
-	return s.save(stored)
-}
-
-func (s sessionStorageStub) Load(expectedServerAddress string) (session.Session, error) {
-	return s.load(expectedServerAddress)
-}
 
 func TestApplication_Register(t *testing.T) {
 	application := newApplication(
@@ -74,7 +41,7 @@ func TestApplication_Register(t *testing.T) {
 	}
 }
 
-func TestApplication_Register_ReturnsReadableDuplicateError(t *testing.T) {
+func TestApplication_RegisterReturnsReadableDuplicateError(t *testing.T) {
 	apiError := &httpclient.APIError{
 		StatusCode: http.StatusConflict,
 		Code:       "login_already_exists",
@@ -94,7 +61,7 @@ func TestApplication_Register_ReturnsReadableDuplicateError(t *testing.T) {
 	if err == nil {
 		t.Fatal("Register() error = nil, want duplicate error")
 	}
-	if !strings.Contains(err.Error(), `login "ALICE" is already registered`) {
+	if err.Error() != `login "ALICE" is already registered` {
 		t.Errorf("error = %q, want readable duplicate message", err)
 	}
 	if !errors.Is(err, apiError) {
@@ -105,7 +72,7 @@ func TestApplication_Register_ReturnsReadableDuplicateError(t *testing.T) {
 	}
 }
 
-func TestApplication_Register_DoesNotLeakPasswordInNetworkError(t *testing.T) {
+func TestApplication_RegisterDoesNotLeakPasswordInNetworkError(t *testing.T) {
 	networkError := errors.New("connection refused")
 	application := newApplication(
 		userClientStub{
@@ -129,7 +96,7 @@ func TestApplication_Register_DoesNotLeakPasswordInNetworkError(t *testing.T) {
 	}
 }
 
-func TestApplication_Register_DoesNotCreateSessionStorage(t *testing.T) {
+func TestApplication_RegisterDoesNotCreateSessionStorage(t *testing.T) {
 	application := newApplicationWithSessionFactory(
 		userClientStub{
 			register: func(context.Context, string, string) (model.User, error) {
@@ -152,7 +119,7 @@ func TestApplication_Register_DoesNotCreateSessionStorage(t *testing.T) {
 	}
 }
 
-func TestApplication_Login_ReturnsSessionStorageCreationError(t *testing.T) {
+func TestApplication_LoginReturnsSessionStorageCreationError(t *testing.T) {
 	storageError := errors.New("cache directory is unavailable")
 	loginCalled := false
 	application := newApplicationWithSessionFactory(
@@ -183,7 +150,7 @@ func TestApplication_Login_ReturnsSessionStorageCreationError(t *testing.T) {
 	}
 }
 
-func TestApplication_Login_SavesSession(t *testing.T) {
+func TestApplication_LoginSavesSession(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 5, 12, 0, 0, 0, time.UTC)
 	expiresAt := time.Date(2026, time.July, 5, 12, 15, 0, 0, time.UTC)
 	var savedSession session.Session
@@ -199,7 +166,6 @@ func TestApplication_Login_SavesSession(t *testing.T) {
 
 				return httpclient.LoginResult{
 					AccessToken: "test.jwt.token",
-					TokenType:   "Bearer",
 					ExpiresAt:   expiresAt,
 					User: model.User{
 						ID:        42,
@@ -229,20 +195,14 @@ func TestApplication_Login_SavesSession(t *testing.T) {
 	wantSession := session.Session{
 		ServerAddress: "localhost:8080",
 		AccessToken:   "test.jwt.token",
-		TokenType:     "Bearer",
 		ExpiresAt:     expiresAt,
-		User: model.User{
-			ID:        42,
-			Login:     "alice",
-			CreatedAt: createdAt,
-		},
 	}
 	if savedSession != wantSession {
 		t.Errorf("saved session = %+v, want %+v", savedSession, wantSession)
 	}
 }
 
-func TestApplication_Login_ReturnsReadableInvalidCredentialsError(t *testing.T) {
+func TestApplication_LoginReturnsReadableInvalidCredentialsError(t *testing.T) {
 	apiError := &httpclient.APIError{
 		StatusCode: http.StatusUnauthorized,
 		Code:       "invalid_credentials",
@@ -267,7 +227,7 @@ func TestApplication_Login_ReturnsReadableInvalidCredentialsError(t *testing.T) 
 	if err == nil {
 		t.Fatal("Login() error = nil, want invalid credentials")
 	}
-	if !strings.Contains(err.Error(), "invalid login or password") {
+	if err.Error() != "invalid login or password" {
 		t.Errorf("error = %q, want readable invalid credentials message", err)
 	}
 	if !errors.Is(err, apiError) {
@@ -278,7 +238,7 @@ func TestApplication_Login_ReturnsReadableInvalidCredentialsError(t *testing.T) 
 	}
 }
 
-func TestApplication_Login_DoesNotLeakPasswordInNetworkError(t *testing.T) {
+func TestApplication_LoginDoesNotLeakPasswordInNetworkError(t *testing.T) {
 	networkError := errors.New("connection refused")
 	application := newApplication(
 		userClientStub{
@@ -307,14 +267,13 @@ func TestApplication_Login_DoesNotLeakPasswordInNetworkError(t *testing.T) {
 	}
 }
 
-func TestApplication_Login_DoesNotLeakTokenInSaveError(t *testing.T) {
+func TestApplication_LoginDoesNotLeakTokenInSaveError(t *testing.T) {
 	saveError := errors.New("permission denied")
 	application := newApplication(
 		userClientStub{
 			login: func(context.Context, string, string) (httpclient.LoginResult, error) {
 				return httpclient.LoginResult{
 					AccessToken: "test.jwt.token",
-					TokenType:   "Bearer",
 					ExpiresAt:   time.Date(2026, time.July, 5, 12, 15, 0, 0, time.UTC),
 					User: model.User{
 						ID:        42,
@@ -343,8 +302,7 @@ func TestApplication_Login_DoesNotLeakTokenInSaveError(t *testing.T) {
 }
 
 func TestApplication_Whoami(t *testing.T) {
-	createdAt := time.Date(2026, time.July, 5, 12, 0, 0, 0, time.UTC)
-	expiresAt := time.Date(2026, time.July, 5, 12, 15, 0, 0, time.UTC)
+	currentUser := testUser()
 	application := newApplication(
 		userClientStub{
 			whoami: func(_ context.Context, accessToken string) (model.User, error) {
@@ -352,11 +310,7 @@ func TestApplication_Whoami(t *testing.T) {
 					t.Errorf("access token = %q, want test.jwt.token", accessToken)
 				}
 
-				return model.User{
-					ID:        42,
-					Login:     "alice",
-					CreatedAt: createdAt,
-				}, nil
+				return currentUser, nil
 			},
 		},
 		sessionStorageStub{
@@ -365,17 +319,7 @@ func TestApplication_Whoami(t *testing.T) {
 					t.Errorf("expected server address = %q, want localhost:8080", expectedServerAddress)
 				}
 
-				return session.Session{
-					ServerAddress: "localhost:8080",
-					AccessToken:   "test.jwt.token",
-					TokenType:     "Bearer",
-					ExpiresAt:     expiresAt,
-					User: model.User{
-						ID:        42,
-						Login:     "alice",
-						CreatedAt: createdAt,
-					},
-				}, nil
+				return testOnlineSession(), nil
 			},
 		},
 		"localhost:8080",
@@ -391,7 +335,7 @@ func TestApplication_Whoami(t *testing.T) {
 	}
 }
 
-func TestApplication_Whoami_MapsSessionErrors(t *testing.T) {
+func TestApplication_WhoamiMapsSessionErrors(t *testing.T) {
 	tests := []struct {
 		name    string
 		loadErr error
@@ -400,22 +344,22 @@ func TestApplication_Whoami_MapsSessionErrors(t *testing.T) {
 		{
 			name:    "not found",
 			loadErr: session.ErrNotFound,
-			want:    "online session not found: run gkeep login",
+			want:    "not logged in",
 		},
 		{
 			name:    "expired",
 			loadErr: session.ErrExpired,
-			want:    "online session expired: run gkeep login",
+			want:    "not logged in",
 		},
 		{
 			name:    "server mismatch",
 			loadErr: session.ErrServerMismatch,
-			want:    "online session belongs to another server: run gkeep login",
+			want:    "not logged in",
 		},
 		{
 			name:    "invalid",
 			loadErr: session.ErrInvalid,
-			want:    "online session is invalid: run gkeep login",
+			want:    "not logged in",
 		},
 		{
 			name:    "filesystem",
@@ -448,7 +392,14 @@ func TestApplication_Whoami_MapsSessionErrors(t *testing.T) {
 			if !errors.Is(err, tt.loadErr) {
 				t.Error("whoami error does not preserve session error")
 			}
-			if !strings.Contains(err.Error(), tt.want) {
+			if tt.name != "filesystem" && !errors.Is(err, ErrNotLoggedIn) {
+				t.Error("whoami error does not match ErrNotLoggedIn")
+			}
+			if tt.name == "filesystem" {
+				if !strings.Contains(err.Error(), tt.want) {
+					t.Errorf("error = %q, want %q", err, tt.want)
+				}
+			} else if err.Error() != tt.want {
 				t.Errorf("error = %q, want %q", err, tt.want)
 			}
 			if strings.Contains(err.Error(), "test.jwt.token") {
@@ -458,7 +409,7 @@ func TestApplication_Whoami_MapsSessionErrors(t *testing.T) {
 	}
 }
 
-func TestApplication_Whoami_MapsUnauthorizedAPIError(t *testing.T) {
+func TestApplication_WhoamiMapsUnauthorizedAPIError(t *testing.T) {
 	apiError := &httpclient.APIError{
 		StatusCode: http.StatusUnauthorized,
 		Code:       "unauthorized",
@@ -472,17 +423,7 @@ func TestApplication_Whoami_MapsUnauthorizedAPIError(t *testing.T) {
 		},
 		sessionStorageStub{
 			load: func(string) (session.Session, error) {
-				return session.Session{
-					ServerAddress: "localhost:8080",
-					AccessToken:   "test.jwt.token",
-					TokenType:     "Bearer",
-					ExpiresAt:     time.Date(2026, time.July, 5, 12, 15, 0, 0, time.UTC),
-					User: model.User{
-						ID:        42,
-						Login:     "alice",
-						CreatedAt: time.Date(2026, time.July, 5, 12, 0, 0, 0, time.UTC),
-					},
-				}, nil
+				return testOnlineSession(), nil
 			},
 		},
 		"localhost:8080",
@@ -495,15 +436,18 @@ func TestApplication_Whoami_MapsUnauthorizedAPIError(t *testing.T) {
 	if !errors.Is(err, apiError) {
 		t.Error("whoami error does not preserve API error")
 	}
-	if !strings.Contains(err.Error(), "online session is invalid or expired: run gkeep login") {
-		t.Errorf("error = %q, want readable session error", err)
+	if !errors.Is(err, ErrNotLoggedIn) {
+		t.Error("whoami error does not match ErrNotLoggedIn")
+	}
+	if err.Error() != "not logged in" {
+		t.Errorf("error = %q, want readable session status", err)
 	}
 	if strings.Contains(err.Error(), "test.jwt.token") {
 		t.Error("whoami error contains access token")
 	}
 }
 
-func TestApplication_Whoami_DoesNotLeakTokenInNetworkError(t *testing.T) {
+func TestApplication_WhoamiDoesNotLeakTokenInNetworkError(t *testing.T) {
 	networkError := errors.New("connection refused")
 	application := newApplication(
 		userClientStub{
@@ -513,17 +457,7 @@ func TestApplication_Whoami_DoesNotLeakTokenInNetworkError(t *testing.T) {
 		},
 		sessionStorageStub{
 			load: func(string) (session.Session, error) {
-				return session.Session{
-					ServerAddress: "localhost:8080",
-					AccessToken:   "test.jwt.token",
-					TokenType:     "Bearer",
-					ExpiresAt:     time.Date(2026, time.July, 5, 12, 15, 0, 0, time.UTC),
-					User: model.User{
-						ID:        42,
-						Login:     "alice",
-						CreatedAt: time.Date(2026, time.July, 5, 12, 0, 0, 0, time.UTC),
-					},
-				}, nil
+				return testOnlineSession(), nil
 			},
 		},
 		"localhost:8080",
@@ -538,5 +472,76 @@ func TestApplication_Whoami_DoesNotLeakTokenInNetworkError(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "test.jwt.token") {
 		t.Error("network error contains access token")
+	}
+}
+
+func TestApplication_LogoutDeletesSession(t *testing.T) {
+	var deleted bool
+	application := newApplication(
+		userClientStub{
+			login: func(context.Context, string, string) (httpclient.LoginResult, error) {
+				t.Fatal("logout must not call HTTP client")
+				return httpclient.LoginResult{}, nil
+			},
+			whoami: func(context.Context, string) (model.User, error) {
+				t.Fatal("logout must not call HTTP client")
+				return model.User{}, nil
+			},
+		},
+		sessionStorageStub{
+			delete: func() error {
+				deleted = true
+				return nil
+			},
+		},
+		"localhost:8080",
+	)
+
+	if err := application.Logout(context.Background()); err != nil {
+		t.Fatalf("Logout() error = %v", err)
+	}
+	if !deleted {
+		t.Error("session was not deleted")
+	}
+}
+
+func TestApplication_LogoutReturnsSessionStorageCreationError(t *testing.T) {
+	storageError := errors.New("cache directory is unavailable")
+	application := newApplicationWithSessionFactory(
+		userClientStub{},
+		func() (sessionStorage, error) {
+			return nil, storageError
+		},
+		"localhost:8080",
+	)
+
+	err := application.Logout(context.Background())
+	if err == nil {
+		t.Fatal("Logout() error = nil, want session storage error")
+	}
+	if !errors.Is(err, storageError) {
+		t.Error("logout error does not preserve session storage error")
+	}
+}
+
+func TestApplication_LogoutReturnsDeleteError(t *testing.T) {
+	deleteError := errors.New("permission denied")
+	application := newApplication(
+		userClientStub{},
+		sessionStorageStub{
+			delete: func() error { return deleteError },
+		},
+		"localhost:8080",
+	)
+
+	err := application.Logout(context.Background())
+	if err == nil {
+		t.Fatal("Logout() error = nil, want delete error")
+	}
+	if !errors.Is(err, deleteError) {
+		t.Error("logout error does not preserve delete error")
+	}
+	if strings.Contains(err.Error(), "test.jwt.token") {
+		t.Error("logout error contains access token")
 	}
 }

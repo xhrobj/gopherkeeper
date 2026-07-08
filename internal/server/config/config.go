@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
+
+	"github.com/xhrobj/gopherkeeper/internal/server/recordcrypto"
 )
 
 const (
@@ -18,12 +21,29 @@ const (
 
 // Config содержит конфигурацию Сервера.
 type Config struct {
-	Address     string
+	// Address задаёт address HTTPS listener'а Сервера.
+	Address string
+
+	// DatabaseDSN задаёт PostgreSQL DSN для подключения Сервера к базе данных.
 	DatabaseDSN string
+
+	// TLSCertFile задаёт путь к TLS certificate Сервера.
 	TLSCertFile string
-	TLSKeyFile  string
-	JWTSecret   []byte
-	JWTTTL      time.Duration
+
+	// TLSKeyFile задаёт путь к TLS private key Сервера.
+	TLSKeyFile string
+
+	// JWTSecret задаёт секретный ключ для подписи и проверки JWT.
+	JWTSecret []byte
+
+	// JWTTTL задаёт время жизни JWT access token.
+	JWTTTL time.Duration
+
+	// RecordMasterKey задаёт мастер-ключ для серверного шифрования payload'ов записей.
+	RecordMasterKey []byte
+
+	// RecordKeyID задаёт идентификатор активного ключа шифрования записей.
+	RecordKeyID string
 }
 
 // Parse формирует конфигурацию Сервера из переменных окружения
@@ -35,8 +55,10 @@ func Parse(args []string) (Config, error) {
 		TLSCertFile: os.Getenv("TLS_CERT_FILE"),
 		TLSKeyFile:  os.Getenv("TLS_KEY_FILE"),
 		JWTTTL:      defaultJWTTTL,
+		RecordKeyID: recordcrypto.DefaultKeyID,
 	}
 	jwtSecretRaw := os.Getenv("JWT_SECRET")
+	recordMasterKeyRaw := os.Getenv("RECORD_MASTER_KEY")
 
 	if address := os.Getenv("ADDRESS"); address != "" {
 		cfg.Address = address
@@ -49,6 +71,10 @@ func Parse(args []string) (Config, error) {
 		}
 
 		cfg.JWTTTL = duration
+	}
+
+	if recordKeyID := os.Getenv("RECORD_KEY_ID"); recordKeyID != "" {
+		cfg.RecordKeyID = recordKeyID
 	}
 
 	flags := flag.NewFlagSet("server", flag.ContinueOnError)
@@ -80,7 +106,7 @@ func Parse(args []string) (Config, error) {
 		return Config{}, errors.New("JWT secret is required")
 	}
 
-	jwtSecret, err := decodeJWTSecret(jwtSecretRaw)
+	jwtSecret, err := decodeFixedBase64Secret(jwtSecretRaw, jwtSecretSize, "JWT secret")
 	if err != nil {
 		return Config{}, err
 	}
@@ -90,17 +116,36 @@ func Parse(args []string) (Config, error) {
 		return Config{}, errors.New("JWT TTL must be positive")
 	}
 
+	if recordMasterKeyRaw == "" {
+		return Config{}, errors.New("record master key is required")
+	}
+
+	recordMasterKey, err := decodeFixedBase64Secret(
+		recordMasterKeyRaw,
+		recordcrypto.MasterKeySize,
+		"record master key",
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.RecordMasterKey = recordMasterKey
+
+	cfg.RecordKeyID = strings.TrimSpace(cfg.RecordKeyID)
+	if cfg.RecordKeyID == "" {
+		return Config{}, errors.New("record key ID must not be empty")
+	}
+
 	return cfg, nil
 }
 
-func decodeJWTSecret(value string) ([]byte, error) {
+func decodeFixedBase64Secret(value string, size int, name string) ([]byte, error) {
 	secret, err := base64.StdEncoding.DecodeString(value)
 	if err != nil {
-		return nil, fmt.Errorf("decode JWT secret: %w", err)
+		return nil, fmt.Errorf("decode %s: %w", name, err)
 	}
 
-	if len(secret) != jwtSecretSize {
-		return nil, fmt.Errorf("JWT secret must decode to %d bytes", jwtSecretSize)
+	if len(secret) != size {
+		return nil, fmt.Errorf("%s must decode to %d bytes", name, size)
 	}
 
 	return secret, nil

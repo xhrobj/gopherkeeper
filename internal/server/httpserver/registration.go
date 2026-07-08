@@ -3,40 +3,19 @@ package httpserver
 import (
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
 )
 
 const (
-	errorCodeInvalidRequest       = "invalid_request"
-	errorCodeInvalidCredentials   = "invalid_credentials"
-	errorCodeLoginAlreadyExists   = "login_already_exists"
-	errorCodePayloadTooLarge      = "payload_too_large"
-	errorCodeUnsupportedMediaType = "unsupported_media_type"
-	errorCodeInternal             = "internal_error"
-)
-
-const (
-	errorMessageInvalidRequest       = "invalid registration data"
-	errorMessageInvalidLoginRequest  = "invalid login request"
-	errorMessageInvalidCredentials   = "invalid login or password"
-	errorMessageLoginAlreadyExists   = "login is already registered"
-	errorMessagePayloadTooLarge      = "request body is too large"
-	errorMessageUnsupportedMediaType = "content type must be application/json"
-	errorMessageInternal             = "internal server error"
+	errorMessageInvalidRegistrationRequest = "invalid registration data"
+	errorMessageLoginAlreadyExists         = "login is already registered"
 )
 
 type registerRequest struct {
 	Login    string `json:"login"`
 	Password string `json:"password"`
-}
-
-type userResponse struct {
-	ID        int64     `json:"id"`
-	Login     string    `json:"login"`
-	CreatedAt time.Time `json:"created_at"`
 }
 
 func registerHandler(registerer UserRegisterer) http.HandlerFunc {
@@ -67,7 +46,7 @@ func registerHandler(registerer UserRegisterer) http.HandlerFunc {
 				w,
 				http.StatusBadRequest,
 				errorCodeInvalidRequest,
-				errorMessageInvalidRequest,
+				errorMessageInvalidRegistrationRequest,
 			)
 			return
 		}
@@ -109,7 +88,7 @@ func writeRegistrationError(w http.ResponseWriter, err error) {
 			w,
 			http.StatusBadRequest,
 			errorCodeInvalidRequest,
-			errorMessageInvalidRequest,
+			errorMessageInvalidRegistrationRequest,
 		)
 
 	case errors.Is(err, model.ErrLoginAlreadyExists):

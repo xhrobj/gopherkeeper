@@ -91,9 +91,6 @@ func TestLoginHandler_AuthenticatesUser(t *testing.T) {
 	if body.AccessToken != "access-token" {
 		t.Errorf("response access_token = %q, want access-token", body.AccessToken)
 	}
-	if body.TokenType != tokenTypeBearer {
-		t.Errorf("response token_type = %q, want %q", body.TokenType, tokenTypeBearer)
-	}
 	if !body.ExpiresAt.Equal(expiresAt) {
 		t.Errorf("response expires_at = %s, want %s", body.ExpiresAt, expiresAt)
 	}

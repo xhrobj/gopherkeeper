@@ -32,9 +32,6 @@ func TestClient_Login(t *testing.T) {
 	if result.AccessToken != "test.jwt.token" {
 		t.Errorf("access token = %q, want test.jwt.token", result.AccessToken)
 	}
-	if result.TokenType != "Bearer" {
-		t.Errorf("token type = %q, want Bearer", result.TokenType)
-	}
 	if !result.ExpiresAt.Equal(expiresAt) {
 		t.Errorf("expires at = %s, want %s", result.ExpiresAt, expiresAt)
 	}
@@ -62,7 +59,6 @@ func newSuccessfulLoginServer(t *testing.T, createdAt time.Time, expiresAt time.
 		w.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(w).Encode(loginResponse{
 			AccessToken: "test.jwt.token",
-			TokenType:   "Bearer",
 			ExpiresAt:   expiresAt,
 			User: userResponse{
 				ID:        42,

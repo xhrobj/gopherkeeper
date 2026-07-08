@@ -6,9 +6,11 @@ import (
 	"io"
 	"mime"
 	"net/http"
+
+	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-const maxRequestBodySize int64 = 4 * 1024 * 1024
+const maxRequestBodySize = model.HTTPRequestBodyMaxSize
 
 var errMultipleJSONValues = errors.New("request body must contain one JSON value")
 
