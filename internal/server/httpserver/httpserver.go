@@ -61,6 +61,9 @@ type Dependencies struct {
 
 	// CurrentUserReader читает данные текущего пользователя.
 	CurrentUserReader CurrentUserReader
+
+	// Records выполняет сценарии приватных записей.
+	Records RecordManager
 }
 
 // NewHandler создаёт основной HTTP-handler Сервера.
@@ -73,6 +76,18 @@ func NewHandler(deps Dependencies) http.Handler {
 	mux.Handle(
 		"GET /api/v1/users/me",
 		middleware.WithAuthentication(currentUserHandler(deps.CurrentUserReader), deps.TokenValidator),
+	)
+	mux.Handle(
+		"POST /api/v1/records",
+		middleware.WithAuthentication(createRecordHandler(deps.Records), deps.TokenValidator),
+	)
+	mux.Handle(
+		"GET /api/v1/records",
+		middleware.WithAuthentication(listRecordsHandler(deps.Records), deps.TokenValidator),
+	)
+	mux.Handle(
+		"GET /api/v1/records/{id}",
+		middleware.WithAuthentication(getRecordHandler(deps.Records), deps.TokenValidator),
 	)
 
 	return mux

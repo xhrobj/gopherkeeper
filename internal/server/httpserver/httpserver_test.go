@@ -219,6 +219,91 @@ func TestNewHandler_RoutesCurrentUser(t *testing.T) {
 	}
 }
 
+func TestNewHandler_RoutesRecords(t *testing.T) {
+	createdAt := time.Date(2026, time.July, 8, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name       string
+		request    *http.Request
+		wantStatus int
+	}{
+		{
+			name:       "create",
+			request:    newCreateRecordRequest(t, createTextRecordRequestBody(t, "my note", "secret", "")),
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name:       "list",
+			request:    httptest.NewRequest(http.MethodGet, "/api/v1/records", nil),
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "get",
+			request:    httptest.NewRequest(http.MethodGet, "/api/v1/records/"+testRecordID, nil),
+			wantStatus: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deps := newTestDependencies(t)
+			deps.TokenValidator = tokenValidatorFunc(func(_ context.Context, token string) (int64, error) {
+				if token != "valid-token" {
+					t.Fatalf("Validate() token = %q, want valid-token", token)
+				}
+
+				return 42, nil
+			})
+			deps.Records = recordManagerStub{
+				createText: func(_ context.Context, request service.CreateTextRecordRequest) (service.TextRecord, error) {
+					return service.TextRecord{
+						Metadata: model.RecordMetadata{
+							ID:        testRecordID,
+							Type:      model.RecordTypeText,
+							Title:     request.Title,
+							Revision:  model.RecordInitialRevision,
+							CreatedAt: createdAt,
+							UpdatedAt: createdAt,
+						},
+						Payload: request.Payload,
+					}, nil
+				},
+				list: func(context.Context, int64) ([]model.RecordMetadata, error) {
+					return []model.RecordMetadata{{
+						ID:        testRecordID,
+						Type:      model.RecordTypeText,
+						Title:     "my note",
+						Revision:  model.RecordInitialRevision,
+						CreatedAt: createdAt,
+						UpdatedAt: createdAt,
+					}}, nil
+				},
+				getText: func(context.Context, int64, string) (service.TextRecord, error) {
+					return service.TextRecord{
+						Metadata: model.RecordMetadata{
+							ID:        testRecordID,
+							Type:      model.RecordTypeText,
+							Title:     "my note",
+							Revision:  model.RecordInitialRevision,
+							CreatedAt: createdAt,
+							UpdatedAt: createdAt,
+						},
+						Payload: model.TextPayload{Text: "secret"},
+					}, nil
+				},
+			}
+			handler := NewHandler(deps)
+			tt.request.Header.Set("Authorization", "Bearer valid-token")
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, tt.request)
+
+			if response.Code != tt.wantStatus {
+				t.Errorf("status code = %d, want %d", response.Code, tt.wantStatus)
+			}
+		})
+	}
+}
+
 func newTestDependencies(t *testing.T) Dependencies {
 	t.Helper()
 
@@ -230,6 +315,7 @@ func newTestDependencies(t *testing.T) Dependencies {
 		Authenticator:     unusedUserAuthenticator(t),
 		TokenValidator:    unusedTokenValidator(t),
 		CurrentUserReader: unusedCurrentUserReader(t),
+		Records:           unusedRecordManager(t),
 	}
 }
 
@@ -275,4 +361,23 @@ func unusedCurrentUserReader(t *testing.T) CurrentUserReader {
 		t.Fatal("current user reader must not be called")
 		return model.User{}, nil
 	})
+}
+
+func unusedRecordManager(t *testing.T) RecordManager {
+	t.Helper()
+
+	return recordManagerStub{
+		createText: func(context.Context, service.CreateTextRecordRequest) (service.TextRecord, error) {
+			t.Fatal("record manager must not be called")
+			return service.TextRecord{}, nil
+		},
+		list: func(context.Context, int64) ([]model.RecordMetadata, error) {
+			t.Fatal("record manager must not be called")
+			return nil, nil
+		},
+		getText: func(context.Context, int64, string) (service.TextRecord, error) {
+			t.Fatal("record manager must not be called")
+			return service.TextRecord{}, nil
+		},
+	}
 }
