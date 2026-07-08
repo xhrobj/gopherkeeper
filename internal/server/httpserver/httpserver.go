@@ -19,6 +19,7 @@ const (
 
 // DatabasePinger проверяет доступность PostgreSQL.
 type DatabasePinger interface {
+	// Ping проверяет доступность базы данных.
 	Ping(context.Context) error
 }
 
@@ -44,18 +45,28 @@ type healthResponse struct {
 	Status string `json:"status"`
 }
 
-// Dependencies содержит зависимости HTTP-handler'а Сервера.
+// Dependencies содержит зависимости HTTP-обработчиков Сервера.
 type Dependencies struct {
-	Database          DatabasePinger
-	Registerer        UserRegisterer
-	Authenticator     UserAuthenticator
-	TokenValidator    middleware.TokenValidator
+	// Database проверяет доступность PostgreSQL.
+	Database DatabasePinger
+
+	// Registerer регистрирует новых пользователей.
+	Registerer UserRegisterer
+
+	// Authenticator выполняет вход пользователя.
+	Authenticator UserAuthenticator
+
+	// TokenValidator проверяет токен доступа.
+	TokenValidator middleware.TokenValidator
+
+	// CurrentUserReader читает данные текущего пользователя.
 	CurrentUserReader CurrentUserReader
 }
 
 // NewHandler создаёт основной HTTP-handler Сервера.
 func NewHandler(deps Dependencies) http.Handler {
 	mux := http.NewServeMux()
+
 	mux.HandleFunc("GET /health", healthHandler(deps.Database))
 	mux.HandleFunc("POST /api/v1/auth/register", registerHandler(deps.Registerer))
 	mux.HandleFunc("POST /api/v1/auth/login", loginHandler(deps.Authenticator))

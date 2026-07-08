@@ -44,6 +44,7 @@ func UserIDFromContext(ctx context.Context) (int64, bool) {
 
 func bearerToken(headerValue string) (string, bool) {
 	fields := strings.Fields(headerValue)
+
 	if len(fields) != 2 || !strings.EqualFold(fields[0], authorizationSchemeBearer) {
 		return "", false
 	}
