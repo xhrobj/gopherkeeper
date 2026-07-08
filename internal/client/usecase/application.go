@@ -46,13 +46,14 @@ func NewLocal(cfg config.Config) *Application {
 
 // New создаёт клиентское application-приложение из конфигурации CLI.
 func New(cfg config.Config) (*Application, error) {
-	users, err := httpclient.New(cfg.Address, cfg.CACertFile)
+	client, err := httpclient.New(cfg.Address, cfg.CACertFile)
 	if err != nil {
 		return nil, err
 	}
 
-	return newApplicationWithSessionFactory(
-		users,
+	return newApplicationWithRecordsAndSessionFactory(
+		client,
+		client,
 		func() (sessionStorage, error) {
 			return session.NewFileStorage(cfg.SessionFile)
 		},
@@ -61,9 +62,18 @@ func New(cfg config.Config) (*Application, error) {
 }
 
 func newApplication(users userClient, sessions sessionStorage, serverAddress string) *Application {
+	return newApplicationWithRecords(users, nil, sessions, serverAddress)
+}
+
+func newApplicationWithRecords(
+	users userClient,
+	records recordClient,
+	sessions sessionStorage,
+	serverAddress string,
+) *Application {
 	return &Application{
 		users:         users,
-		records:       recordClientFromUserClient(users),
+		records:       records,
 		sessions:      sessions,
 		serverAddress: serverAddress,
 	}
@@ -74,21 +84,21 @@ func newApplicationWithSessionFactory(
 	newSessions sessionStorageFactory,
 	serverAddress string,
 ) *Application {
+	return newApplicationWithRecordsAndSessionFactory(users, nil, newSessions, serverAddress)
+}
+
+func newApplicationWithRecordsAndSessionFactory(
+	users userClient,
+	records recordClient,
+	newSessions sessionStorageFactory,
+	serverAddress string,
+) *Application {
 	return &Application{
 		users:         users,
-		records:       recordClientFromUserClient(users),
+		records:       records,
 		newSessions:   newSessions,
 		serverAddress: serverAddress,
 	}
-}
-
-func recordClientFromUserClient(users userClient) recordClient {
-	records, ok := users.(recordClient)
-	if !ok {
-		return nil
-	}
-
-	return records
 }
 
 func (a *Application) sessionStorage() (sessionStorage, error) {

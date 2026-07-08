@@ -50,7 +50,7 @@ func TestBuildAAD_RejectsInvalidInput(t *testing.T) {
 		recordType model.RecordType
 	}{
 		{name: "invalid user", userID: 0, recordID: testRecordID, recordType: model.RecordTypeText},
-		{name: "invalid record id", userID: 42, recordID: "not-a-uuid", recordType: model.RecordTypeText},
+		{name: "invalid record ID", userID: 42, recordID: "not-a-uuid", recordType: model.RecordTypeText},
 		{name: "invalid record type", userID: 42, recordID: testRecordID, recordType: model.RecordType("otp")},
 	}
 
@@ -108,10 +108,10 @@ func TestService_DecryptRejectsTampering(t *testing.T) {
 		aad       []byte
 	}{
 		{name: "wrong version", encrypted: withVersion(encrypted, 69), aad: []byte("test aad")},
-		{name: "wrong key id", encrypted: withKeyID(encrypted, "secondary"), aad: []byte("test aad")},
+		{name: "wrong key ID", encrypted: withKeyID(encrypted, "secondary"), aad: []byte("test aad")},
 		{name: "wrong nonce", encrypted: withNonce(encrypted, []byte("short")), aad: []byte("test aad")},
 		{name: "empty ciphertext", encrypted: withCiphertext(encrypted, nil), aad: []byte("test aad")},
-		{name: "wrong aad", encrypted: encrypted, aad: []byte("another aad")},
+		{name: "wrong AAD", encrypted: encrypted, aad: []byte("another aad")},
 		{name: "changed ciphertext", encrypted: withChangedCiphertext(encrypted), aad: []byte("test aad")},
 	}
 

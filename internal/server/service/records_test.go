@@ -48,14 +48,15 @@ func TestRecordService_CreateText(t *testing.T) {
 			if record.UserID != 42 || record.Type != model.RecordTypeText || record.Title != "Alice note" {
 				t.Fatalf("Create() record = %+v", record)
 			}
-			if record.Revision != model.RecordInitialRevision {
-				t.Fatalf("Create() revision = %d, want %d", record.Revision, model.RecordInitialRevision)
+			if record.Revision != 0 {
+				t.Fatalf("Create() revision = %d, want DB default", record.Revision)
 			}
 			if record.CryptoVersion != encrypted.CryptoVersion || record.KeyID != encrypted.KeyID ||
 				!bytes.Equal(record.Nonce, encrypted.Nonce) || !bytes.Equal(record.Ciphertext, encrypted.Ciphertext) {
 				t.Fatalf("Create() encrypted record = %+v", record)
 			}
 
+			record.Revision = model.RecordInitialRevision
 			record.CreatedAt = createdAt
 			record.UpdatedAt = updatedAt
 			return record, nil

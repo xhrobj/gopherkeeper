@@ -106,7 +106,6 @@ func (s *RecordService) CreateText(ctx context.Context, request CreateTextRecord
 		UserID:        request.UserID,
 		Type:          model.RecordTypeText,
 		Title:         request.Title,
-		Revision:      model.RecordInitialRevision,
 		CryptoVersion: encrypted.CryptoVersion,
 		KeyID:         encrypted.KeyID,
 		Nonce:         encrypted.Nonce,

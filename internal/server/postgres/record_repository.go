@@ -32,19 +32,17 @@ func (r *RecordRepository) Create(ctx context.Context, record model.Record) (mod
 			user_id,
 			type,
 			title,
-			revision,
 			crypto_version,
 			key_id,
 			nonce,
 			ciphertext
-		 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		 RETURNING id::text, user_id, type, title, revision, created_at, updated_at,
 			crypto_version::int, key_id, nonce, ciphertext`,
 		record.ID,
 		record.UserID,
 		string(record.Type),
 		record.Title,
-		record.Revision,
 		record.CryptoVersion,
 		record.KeyID,
 		record.Nonce,

@@ -97,7 +97,6 @@ func newTestRecord(id string, userID int64, title string) model.Record {
 		UserID:        userID,
 		Type:          model.RecordTypeText,
 		Title:         title,
-		Revision:      model.RecordInitialRevision,
 		CryptoVersion: recordcrypto.CryptoVersion,
 		KeyID:         recordcrypto.DefaultKeyID,
 		Nonce:         []byte("nonce"),
