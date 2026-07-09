@@ -3,7 +3,7 @@ openapi: 3.0.3
 info:
   title: GophKeeper API
   description: API взаимодействия CLI-клиента и Сервера GophKeeper.
-  version: 0.3.0
+  version: 0.4.0
 
 servers:
   - url: https://localhost:8080
@@ -359,6 +359,141 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+    put:
+      summary: Изменить приватную text-запись
+      description: >-
+        Заменяет открытую metadata и приватный text payload существующей записи. Клиент обязан передать
+        актуальную revision записи в заголовке If-Match как strong ETag, например "1". Сервер выполняет
+        update только при совпадении ожидаемой и текущей revision, затем атомарно увеличивает revision и
+        возвращает новое значение в ETag. Отсутствующая и принадлежащая другому пользователю запись
+        возвращают одинаковый 404.
+      operationId: updateRecord
+      tags:
+        - Records
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID записи.
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match
+          in: header
+          required: true
+          description: Ожидаемая revision записи в формате strong ETag, например "1".
+          schema:
+            type: string
+            pattern: '^"[1-9][0-9]*"$'
+            example: '"1"'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRecordRequest'
+            example:
+              type: text
+              title: Alice updated note
+              payload:
+                text: updated secret note
+                metadata: updated private metadata
+      responses:
+        '200':
+          description: Text-запись изменена
+          headers:
+            ETag:
+              description: Новая revision записи после успешного update.
+              schema:
+                type: string
+                example: '"2"'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TextRecordResponse'
+        '400':
+          description: Некорректный UUID записи, If-Match, JSON, тип записи, title или payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidRequest:
+                  summary: Некорректные данные изменения записи
+                  value:
+                    code: invalid_request
+                    message: invalid record request
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '409':
+          $ref: '#/components/responses/RecordRevisionConflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      summary: Удалить приватную запись
+      description: >-
+        Физически удаляет запись текущего пользователя. Клиент обязан передать актуальную revision записи
+        в заголовке If-Match как strong ETag, например "1". Сервер удаляет запись только при совпадении
+        ожидаемой и текущей revision. Отсутствующая и принадлежащая другому пользователю запись возвращают
+        одинаковый 404.
+      operationId: deleteRecord
+      tags:
+        - Records
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID записи.
+          schema:
+            type: string
+            format: uuid
+        - name: If-Match
+          in: header
+          required: true
+          description: Ожидаемая revision записи в формате strong ETag, например "1".
+          schema:
+            type: string
+            pattern: '^"[1-9][0-9]*"$'
+            example: '"1"'
+      responses:
+        '204':
+          description: Запись физически удалена
+        '400':
+          description: Некорректный UUID записи или If-Match
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidRequest:
+                  summary: Некорректные данные удаления записи
+                  value:
+                    code: invalid_request
+                    message: invalid record request
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/RecordNotFound'
+        '409':
+          $ref: '#/components/responses/RecordRevisionConflict'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -399,6 +534,32 @@ components:
               value:
                 code: record_not_found
                 message: record not found
+
+    RecordRevisionConflict:
+      description: Текущая revision записи не совпадает с revision из If-Match
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            recordRevisionConflict:
+              summary: Запись была изменена другим Клиентом
+              value:
+                code: record_revision_conflict
+                message: record revision conflict
+
+    PreconditionRequired:
+      description: Для изменения или удаления записи требуется заголовок If-Match
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            preconditionRequired:
+              summary: Не передана ожидаемая revision записи
+              value:
+                code: precondition_required
+                message: record revision is required
 
     PayloadTooLarge:
       description: Тело запроса превышает допустимый размер
@@ -590,6 +751,28 @@ components:
           description: Открытое название записи, видимое в списке metadata.
           minLength: 1
           example: Alice private note
+        payload:
+          $ref: '#/components/schemas/TextPayload'
+
+    UpdateRecordRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - payload
+      properties:
+        type:
+          type: string
+          description: Тип изменяемой записи. В MVP-5 поддерживается только text.
+          enum:
+            - text
+          example: text
+        title:
+          type: string
+          description: Новое открытое название записи, видимое в списке metadata.
+          minLength: 1
+          example: Alice updated note
         payload:
           $ref: '#/components/schemas/TextPayload'
 
