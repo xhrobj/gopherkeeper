@@ -22,6 +22,8 @@ type recordManagerStub struct {
 	createText func(context.Context, service.CreateTextRecordRequest) (service.TextRecord, error)
 	list       func(context.Context, int64) ([]model.RecordMetadata, error)
 	getText    func(context.Context, int64, string) (service.TextRecord, error)
+	updateText func(context.Context, service.UpdateTextRecordRequest) (service.TextRecord, error)
+	delete     func(context.Context, service.DeleteRecordRequest) error
 }
 
 func (s recordManagerStub) CreateText(
@@ -37,6 +39,17 @@ func (s recordManagerStub) List(ctx context.Context, userID int64) ([]model.Reco
 
 func (s recordManagerStub) GetText(ctx context.Context, userID int64, recordID string) (service.TextRecord, error) {
 	return s.getText(ctx, userID, recordID)
+}
+
+func (s recordManagerStub) UpdateText(
+	ctx context.Context,
+	request service.UpdateTextRecordRequest,
+) (service.TextRecord, error) {
+	return s.updateText(ctx, request)
+}
+
+func (s recordManagerStub) Delete(ctx context.Context, request service.DeleteRecordRequest) error {
+	return s.delete(ctx, request)
 }
 
 func TestCreateRecordHandler_CreatesTextRecord(t *testing.T) {
@@ -365,6 +378,454 @@ func TestGetRecordHandler_ReturnsTextRecord(t *testing.T) {
 	})
 }
 
+func TestUpdateRecordHandler_UpdatesTextRecord(t *testing.T) {
+	createdAt := time.Date(2026, time.July, 9, 12, 0, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, time.July, 9, 12, 1, 0, 0, time.UTC)
+	var gotRequest service.UpdateTextRecordRequest
+	records := recordManagerStub{
+		updateText: func(_ context.Context, request service.UpdateTextRecordRequest) (service.TextRecord, error) {
+			gotRequest = request
+
+			return service.TextRecord{
+				Metadata: model.RecordMetadata{
+					ID:        request.RecordID,
+					Type:      model.RecordTypeText,
+					Title:     request.Title,
+					Revision:  2,
+					CreatedAt: createdAt,
+					UpdatedAt: updatedAt,
+				},
+				Payload: request.Payload,
+			}, nil
+		},
+	}
+	request := newUpdateRecordRequest(t, testRecordID, updateTextRecordRequestBody(t, "new note", "new secret", "new metadata"))
+	request.Header.Set("If-Match", `"1"`)
+	response := httptest.NewRecorder()
+
+	serveAuthenticatedRecordHandler(t, updateRecordHandler(records), response, request)
+
+	if gotRequest.UserID != 42 {
+		t.Errorf("UpdateText() userID = %d, want 42", gotRequest.UserID)
+	}
+	if gotRequest.RecordID != testRecordID {
+		t.Errorf("UpdateText() recordID = %q, want %q", gotRequest.RecordID, testRecordID)
+	}
+	if gotRequest.ExpectedRevision != 1 {
+		t.Errorf("UpdateText() expected revision = %d, want 1", gotRequest.ExpectedRevision)
+	}
+	if gotRequest.Title != "new note" {
+		t.Errorf("UpdateText() title = %q, want new note", gotRequest.Title)
+	}
+	if gotRequest.Payload.Text != "new secret" {
+		t.Errorf("UpdateText() payload text = %q, want new secret", gotRequest.Payload.Text)
+	}
+	if gotRequest.Payload.Metadata != "new metadata" {
+		t.Errorf("UpdateText() metadata = %q, want new metadata", gotRequest.Payload.Metadata)
+	}
+	if response.Code != http.StatusOK {
+		t.Errorf("status code = %d, want %d", response.Code, http.StatusOK)
+	}
+	if etag := response.Header().Get("ETag"); etag != `"2"` {
+		t.Errorf("ETag = %q, want %q", etag, `"2"`)
+	}
+
+	var body textRecordResponse
+	decodeJSONResponse(t, response, &body)
+	assertTextRecordResponse(t, body, textRecordResponse{
+		ID:        testRecordID,
+		Type:      model.RecordTypeText,
+		Title:     "new note",
+		Revision:  2,
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+		Payload: model.TextPayload{
+			Text:     "new secret",
+			Metadata: "new metadata",
+		},
+	})
+}
+
+func TestUpdateRecordHandler_RejectsInvalidRequest(t *testing.T) {
+	tests := []struct {
+		name        string
+		ifMatch     string
+		contentType string
+		body        string
+		wantStatus  int
+		wantCode    string
+		wantMessage string
+	}{
+		{
+			name:        "missing If-Match",
+			contentType: "application/json",
+			body:        updateTextRecordRequestBody(t, "my note", "secret note", ""),
+			wantStatus:  http.StatusPreconditionRequired,
+			wantCode:    errorCodePreconditionRequired,
+			wantMessage: errorMessagePreconditionRequired,
+		},
+		{
+			name:        "unquoted If-Match",
+			ifMatch:     "1",
+			contentType: "application/json",
+			body:        updateTextRecordRequestBody(t, "my note", "secret note", ""),
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "weak If-Match",
+			ifMatch:     `W/"1"`,
+			contentType: "application/json",
+			body:        updateTextRecordRequestBody(t, "my note", "secret note", ""),
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "zero If-Match revision",
+			ifMatch:     `"0"`,
+			contentType: "application/json",
+			body:        updateTextRecordRequestBody(t, "my note", "secret note", ""),
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "missing Content-Type",
+			ifMatch:     `"1"`,
+			body:        updateTextRecordRequestBody(t, "my note", "secret note", ""),
+			wantStatus:  http.StatusUnsupportedMediaType,
+			wantCode:    errorCodeUnsupportedMediaType,
+			wantMessage: errorMessageUnsupportedMediaType,
+		},
+		{
+			name:        "malformed JSON",
+			ifMatch:     `"1"`,
+			contentType: "application/json",
+			body:        `{"type":"text"`,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "unknown field",
+			ifMatch:     `"1"`,
+			contentType: "application/json",
+			body:        `{"type":"text","title":"my note","payload":{"text":"secret"},"extra":42}`,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "unsupported record type",
+			ifMatch:     `"1"`,
+			contentType: "application/json",
+			body:        `{"type":"card","title":"my note","payload":{"text":"secret"}}`,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "multiple JSON values",
+			ifMatch:     `"1"`,
+			contentType: "application/json",
+			body: updateTextRecordRequestBody(t, "my note", "secret note", "") +
+				updateTextRecordRequestBody(t, "my note", "secret note", ""),
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			records := recordManagerStub{
+				updateText: func(context.Context, service.UpdateTextRecordRequest) (service.TextRecord, error) {
+					t.Fatal("record service must not be called")
+					return service.TextRecord{}, nil
+				},
+			}
+			request := httptest.NewRequest(http.MethodPut, "/api/v1/records/"+testRecordID, strings.NewReader(tt.body))
+			request.SetPathValue("id", testRecordID)
+			if tt.ifMatch != "" {
+				request.Header.Set("If-Match", tt.ifMatch)
+			}
+			if tt.contentType != "" {
+				request.Header.Set("Content-Type", tt.contentType)
+			}
+			response := httptest.NewRecorder()
+
+			serveAuthenticatedRecordHandler(t, updateRecordHandler(records), response, request)
+
+			assertErrorResponse(t, response, tt.wantStatus, tt.wantCode, tt.wantMessage)
+		})
+	}
+}
+
+func TestUpdateRecordHandler_RejectsOversizedBody(t *testing.T) {
+	records := recordManagerStub{
+		updateText: func(context.Context, service.UpdateTextRecordRequest) (service.TextRecord, error) {
+			t.Fatal("record service must not be called")
+			return service.TextRecord{}, nil
+		},
+	}
+	body := `{"type":"text","title":"my note","payload":{"text":"` +
+		strings.Repeat("a", int(maxRequestBodySize)) +
+		`"}}`
+	request := newUpdateRecordRequest(t, testRecordID, body)
+	request.Header.Set("If-Match", `"1"`)
+	response := httptest.NewRecorder()
+
+	serveAuthenticatedRecordHandler(t, updateRecordHandler(records), response, request)
+
+	assertErrorResponse(
+		t,
+		response,
+		http.StatusRequestEntityTooLarge,
+		errorCodePayloadTooLarge,
+		errorMessagePayloadTooLarge,
+	)
+}
+
+func TestUpdateRecordHandler_MapsServiceErrors(t *testing.T) {
+	internalError := errors.New("database connection details")
+	tests := []struct {
+		name        string
+		serviceErr  error
+		wantStatus  int
+		wantCode    string
+		wantMessage string
+	}{
+		{
+			name:        "invalid record id",
+			serviceErr:  model.ErrInvalidRecordID,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "payload too large",
+			serviceErr:  model.ErrPayloadTooLarge,
+			wantStatus:  http.StatusRequestEntityTooLarge,
+			wantCode:    errorCodePayloadTooLarge,
+			wantMessage: errorMessagePayloadTooLarge,
+		},
+		{
+			name:        "record not found",
+			serviceErr:  model.ErrRecordNotFound,
+			wantStatus:  http.StatusNotFound,
+			wantCode:    errorCodeRecordNotFound,
+			wantMessage: errorMessageRecordNotFound,
+		},
+		{
+			name:        "revision conflict",
+			serviceErr:  model.ErrRecordRevisionConflict,
+			wantStatus:  http.StatusConflict,
+			wantCode:    errorCodeRevisionConflict,
+			wantMessage: errorMessageRevisionConflict,
+		},
+		{
+			name:        "internal error",
+			serviceErr:  internalError,
+			wantStatus:  http.StatusInternalServerError,
+			wantCode:    errorCodeInternal,
+			wantMessage: errorMessageInternal,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			records := recordManagerStub{
+				updateText: func(context.Context, service.UpdateTextRecordRequest) (service.TextRecord, error) {
+					return service.TextRecord{}, tt.serviceErr
+				},
+			}
+			request := newUpdateRecordRequest(t, testRecordID, updateTextRecordRequestBody(t, "my note", "secret", ""))
+			request.Header.Set("If-Match", `"1"`)
+			response := httptest.NewRecorder()
+
+			serveAuthenticatedRecordHandler(t, updateRecordHandler(records), response, request)
+
+			assertErrorResponse(t, response, tt.wantStatus, tt.wantCode, tt.wantMessage)
+			if strings.Contains(response.Body.String(), internalError.Error()) {
+				t.Error("response body contains internal error details")
+			}
+		})
+	}
+}
+
+func TestDeleteRecordHandler_DeletesRecord(t *testing.T) {
+	var gotRequest service.DeleteRecordRequest
+	records := recordManagerStub{
+		delete: func(_ context.Context, request service.DeleteRecordRequest) error {
+			gotRequest = request
+			return nil
+		},
+	}
+	request := newDeleteRecordRequest(testRecordID)
+	request.Header.Set("If-Match", `"2"`)
+	response := httptest.NewRecorder()
+
+	serveAuthenticatedRecordHandler(t, deleteRecordHandler(records), response, request)
+
+	if gotRequest.UserID != 42 {
+		t.Errorf("Delete() userID = %d, want 42", gotRequest.UserID)
+	}
+	if gotRequest.RecordID != testRecordID {
+		t.Errorf("Delete() recordID = %q, want %q", gotRequest.RecordID, testRecordID)
+	}
+	if gotRequest.ExpectedRevision != 2 {
+		t.Errorf("Delete() expected revision = %d, want 2", gotRequest.ExpectedRevision)
+	}
+	if response.Code != http.StatusNoContent {
+		t.Errorf("status code = %d, want %d", response.Code, http.StatusNoContent)
+	}
+	if response.Body.Len() != 0 {
+		t.Errorf("response body = %q, want empty", response.Body.String())
+	}
+}
+
+func TestDeleteRecordHandler_RejectsInvalidIfMatch(t *testing.T) {
+	tests := []struct {
+		name        string
+		ifMatch     string
+		wantStatus  int
+		wantCode    string
+		wantMessage string
+	}{
+		{
+			name:        "missing If-Match",
+			wantStatus:  http.StatusPreconditionRequired,
+			wantCode:    errorCodePreconditionRequired,
+			wantMessage: errorMessagePreconditionRequired,
+		},
+		{
+			name:        "unquoted If-Match",
+			ifMatch:     "1",
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "zero If-Match revision",
+			ifMatch:     `"0"`,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			records := recordManagerStub{
+				delete: func(context.Context, service.DeleteRecordRequest) error {
+					t.Fatal("record service must not be called")
+					return nil
+				},
+			}
+			request := newDeleteRecordRequest(testRecordID)
+			if tt.ifMatch != "" {
+				request.Header.Set("If-Match", tt.ifMatch)
+			}
+			response := httptest.NewRecorder()
+
+			serveAuthenticatedRecordHandler(t, deleteRecordHandler(records), response, request)
+
+			assertErrorResponse(t, response, tt.wantStatus, tt.wantCode, tt.wantMessage)
+		})
+	}
+}
+
+func TestDeleteRecordHandler_MapsServiceErrors(t *testing.T) {
+	internalError := errors.New("database connection details")
+	tests := []struct {
+		name        string
+		serviceErr  error
+		wantStatus  int
+		wantCode    string
+		wantMessage string
+	}{
+		{
+			name:        "invalid record id",
+			serviceErr:  model.ErrInvalidRecordID,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "record not found",
+			serviceErr:  model.ErrRecordNotFound,
+			wantStatus:  http.StatusNotFound,
+			wantCode:    errorCodeRecordNotFound,
+			wantMessage: errorMessageRecordNotFound,
+		},
+		{
+			name:        "revision conflict",
+			serviceErr:  model.ErrRecordRevisionConflict,
+			wantStatus:  http.StatusConflict,
+			wantCode:    errorCodeRevisionConflict,
+			wantMessage: errorMessageRevisionConflict,
+		},
+		{
+			name:        "internal error",
+			serviceErr:  internalError,
+			wantStatus:  http.StatusInternalServerError,
+			wantCode:    errorCodeInternal,
+			wantMessage: errorMessageInternal,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			records := recordManagerStub{
+				delete: func(context.Context, service.DeleteRecordRequest) error {
+					return tt.serviceErr
+				},
+			}
+			request := newDeleteRecordRequest(testRecordID)
+			request.Header.Set("If-Match", `"1"`)
+			response := httptest.NewRecorder()
+
+			serveAuthenticatedRecordHandler(t, deleteRecordHandler(records), response, request)
+
+			assertErrorResponse(t, response, tt.wantStatus, tt.wantCode, tt.wantMessage)
+			if strings.Contains(response.Body.String(), internalError.Error()) {
+				t.Error("response body contains internal error details")
+			}
+		})
+	}
+}
+
+func TestParseIfMatchRevision(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		want    int64
+		wantErr error
+	}{
+		{name: "strong ETag", value: `"42"`, want: 42},
+		{name: "missing", wantErr: model.ErrRecordPreconditionRequired},
+		{name: "unquoted", value: "42", wantErr: model.ErrInvalidRecordRevision},
+		{name: "weak ETag", value: `W/"42"`, wantErr: model.ErrInvalidRecordRevision},
+		{name: "zero", value: `"0"`, wantErr: model.ErrInvalidRecordRevision},
+		{name: "negative", value: `"-1"`, wantErr: model.ErrInvalidRecordRevision},
+		{name: "overflow", value: `"9223372036854775808"`, wantErr: model.ErrInvalidRecordRevision},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseIfMatchRevision(tt.value)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("parseIfMatchRevision() error = %v, want %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("parseIfMatchRevision() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRecordHandlers_RequireAuthentication(t *testing.T) {
 	records := recordManagerStub{
 		createText: func(context.Context, service.CreateTextRecordRequest) (service.TextRecord, error) {
@@ -378,6 +839,14 @@ func TestRecordHandlers_RequireAuthentication(t *testing.T) {
 		getText: func(context.Context, int64, string) (service.TextRecord, error) {
 			t.Fatal("record service must not be called")
 			return service.TextRecord{}, nil
+		},
+		updateText: func(context.Context, service.UpdateTextRecordRequest) (service.TextRecord, error) {
+			t.Fatal("record service must not be called")
+			return service.TextRecord{}, nil
+		},
+		delete: func(context.Context, service.DeleteRecordRequest) error {
+			t.Fatal("record service must not be called")
+			return nil
 		},
 	}
 	tests := []struct {
@@ -399,6 +868,16 @@ func TestRecordHandlers_RequireAuthentication(t *testing.T) {
 			name:    "get",
 			handler: getRecordHandler(records),
 			request: httptest.NewRequest(http.MethodGet, "/api/v1/records/"+testRecordID, nil),
+		},
+		{
+			name:    "update",
+			handler: updateRecordHandler(records),
+			request: newUpdateRecordRequest(t, testRecordID, updateTextRecordRequestBody(t, "my note", "secret", "")),
+		},
+		{
+			name:    "delete",
+			handler: deleteRecordHandler(records),
+			request: newDeleteRecordRequest(testRecordID),
 		},
 	}
 
@@ -457,6 +936,23 @@ func newCreateRecordRequest(t *testing.T, body string) *http.Request {
 	return request
 }
 
+func newUpdateRecordRequest(t *testing.T, recordID string, body string) *http.Request {
+	t.Helper()
+
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/records/"+recordID, strings.NewReader(body))
+	request.SetPathValue("id", recordID)
+	request.Header.Set("Content-Type", "application/json")
+
+	return request
+}
+
+func newDeleteRecordRequest(recordID string) *http.Request {
+	request := httptest.NewRequest(http.MethodDelete, "/api/v1/records/"+recordID, nil)
+	request.SetPathValue("id", recordID)
+
+	return request
+}
+
 func createTextRecordRequestBody(t *testing.T, title string, text string, metadata string) string {
 	t.Helper()
 
@@ -470,6 +966,24 @@ func createTextRecordRequestBody(t *testing.T, title string, text string, metada
 	})
 	if err != nil {
 		t.Fatalf("encode create record request: %v", err)
+	}
+
+	return string(body)
+}
+
+func updateTextRecordRequestBody(t *testing.T, title string, text string, metadata string) string {
+	t.Helper()
+
+	body, err := json.Marshal(updateRecordRequest{
+		Type:  model.RecordTypeText,
+		Title: title,
+		Payload: model.TextPayload{
+			Text:     text,
+			Metadata: metadata,
+		},
+	})
+	if err != nil {
+		t.Fatalf("encode update record request: %v", err)
 	}
 
 	return string(body)

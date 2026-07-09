@@ -241,6 +241,16 @@ func TestNewHandler_RoutesRecords(t *testing.T) {
 			request:    httptest.NewRequest(http.MethodGet, "/api/v1/records/"+testRecordID, nil),
 			wantStatus: http.StatusOK,
 		},
+		{
+			name:       "update",
+			request:    newUpdateRecordRequest(t, testRecordID, updateTextRecordRequestBody(t, "new note", "new secret", "")),
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "delete",
+			request:    newDeleteRecordRequest(testRecordID),
+			wantStatus: http.StatusNoContent,
+		},
 	}
 
 	for _, tt := range tests {
@@ -253,6 +263,7 @@ func TestNewHandler_RoutesRecords(t *testing.T) {
 
 				return 42, nil
 			})
+			tt.request.Header.Set("If-Match", `"1"`)
 			deps.Records = recordManagerStub{
 				createText: func(_ context.Context, request service.CreateTextRecordRequest) (service.TextRecord, error) {
 					return service.TextRecord{
@@ -289,6 +300,22 @@ func TestNewHandler_RoutesRecords(t *testing.T) {
 						},
 						Payload: model.TextPayload{Text: "secret"},
 					}, nil
+				},
+				updateText: func(_ context.Context, request service.UpdateTextRecordRequest) (service.TextRecord, error) {
+					return service.TextRecord{
+						Metadata: model.RecordMetadata{
+							ID:        request.RecordID,
+							Type:      model.RecordTypeText,
+							Title:     request.Title,
+							Revision:  2,
+							CreatedAt: createdAt,
+							UpdatedAt: createdAt,
+						},
+						Payload: request.Payload,
+					}, nil
+				},
+				delete: func(context.Context, service.DeleteRecordRequest) error {
+					return nil
 				},
 			}
 			handler := NewHandler(deps)
@@ -378,6 +405,14 @@ func unusedRecordManager(t *testing.T) RecordManager {
 		getText: func(context.Context, int64, string) (service.TextRecord, error) {
 			t.Fatal("record manager must not be called")
 			return service.TextRecord{}, nil
+		},
+		updateText: func(context.Context, service.UpdateTextRecordRequest) (service.TextRecord, error) {
+			t.Fatal("record manager must not be called")
+			return service.TextRecord{}, nil
+		},
+		delete: func(context.Context, service.DeleteRecordRequest) error {
+			t.Fatal("record manager must not be called")
+			return nil
 		},
 	}
 }

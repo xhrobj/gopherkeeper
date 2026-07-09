@@ -89,6 +89,14 @@ func NewHandler(deps Dependencies) http.Handler {
 		"GET /api/v1/records/{id}",
 		middleware.WithAuthentication(getRecordHandler(deps.Records), deps.TokenValidator),
 	)
+	mux.Handle(
+		"PUT /api/v1/records/{id}",
+		middleware.WithAuthentication(updateRecordHandler(deps.Records), deps.TokenValidator),
+	)
+	mux.Handle(
+		"DELETE /api/v1/records/{id}",
+		middleware.WithAuthentication(deleteRecordHandler(deps.Records), deps.TokenValidator),
+	)
 
 	return mux
 }
