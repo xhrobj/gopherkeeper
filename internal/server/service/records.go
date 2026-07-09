@@ -27,6 +27,18 @@ type RecordReader interface {
 	Get(ctx context.Context, userID int64, recordID string) (model.Record, error)
 }
 
+// RecordUpdater изменяет encrypted record при совпадении ожидаемой ревизии.
+type RecordUpdater interface {
+	// Update изменяет encrypted record и возвращает зафиксированное состояние.
+	Update(ctx context.Context, record model.Record, expectedRevision int64) (model.Record, error)
+}
+
+// RecordDeleter удаляет encrypted record при совпадении ожидаемой ревизии.
+type RecordDeleter interface {
+	// Delete физически удаляет encrypted record.
+	Delete(ctx context.Context, userID int64, recordID string, expectedRevision int64) error
+}
+
 // RecordPayloadCrypto шифрует и расшифровывает приватные payload'ы записей.
 type RecordPayloadCrypto interface {
 	// Encrypt шифрует plaintext payload с authenticated data.
@@ -40,6 +52,8 @@ type RecordPayloadCrypto interface {
 type RecordRepository interface {
 	RecordCreator
 	RecordReader
+	RecordUpdater
+	RecordDeleter
 }
 
 // CreateTextRecordRequest содержит входные данные для создания text-записи.

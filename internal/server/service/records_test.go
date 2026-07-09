@@ -239,10 +239,14 @@ type recordRepositoryStub struct {
 	createFunc func(context.Context, model.Record) (model.Record, error)
 	listFunc   func(context.Context, int64) ([]model.RecordMetadata, error)
 	getFunc    func(context.Context, int64, string) (model.Record, error)
+	updateFunc func(context.Context, model.Record, int64) (model.Record, error)
+	deleteFunc func(context.Context, int64, string, int64) error
 
 	createCalls int
 	listCalls   int
 	getCalls    int
+	updateCalls int
+	deleteCalls int
 }
 
 func (s *recordRepositoryStub) Create(ctx context.Context, record model.Record) (model.Record, error) {
@@ -270,6 +274,33 @@ func (s *recordRepositoryStub) Get(ctx context.Context, userID int64, recordID s
 	}
 
 	return s.getFunc(ctx, userID, recordID)
+}
+
+func (s *recordRepositoryStub) Update(
+	ctx context.Context,
+	record model.Record,
+	expectedRevision int64,
+) (model.Record, error) {
+	s.updateCalls++
+	if s.updateFunc == nil {
+		return model.Record{}, errors.New("unexpected Update call")
+	}
+
+	return s.updateFunc(ctx, record, expectedRevision)
+}
+
+func (s *recordRepositoryStub) Delete(
+	ctx context.Context,
+	userID int64,
+	recordID string,
+	expectedRevision int64,
+) error {
+	s.deleteCalls++
+	if s.deleteFunc == nil {
+		return errors.New("unexpected Delete call")
+	}
+
+	return s.deleteFunc(ctx, userID, recordID, expectedRevision)
 }
 
 type recordPayloadCryptoStub struct {
