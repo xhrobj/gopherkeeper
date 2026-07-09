@@ -148,18 +148,17 @@ make gen-record-master-key
 
 ```dotenv
 RECORD_MASTER_KEY=<generated-record-master-key>
-RECORD_KEY_ID=primary
 ```
 
-### 6. Запустить Docker
+### 6.1 Запустить Docker
 
 Перед запуском Сервера должен быть запущен Docker.
 
 PostgreSQL поднимается автоматически командой `make run-server`, поэтому отдельно запускать `docker compose` для обычного локального сценария не нужно.
 
-### 7. Запустить Сервер
+### 6.2. Запустить Сервер
 
-Запустить Сервер через Makefile:
+Сервер удобнее запускать через Makefile, предварительно стартовав Docker:
 
 ```bash
 make run-server
@@ -174,13 +173,50 @@ make run-server
 
 После старта Сервер применит миграции и начнёт принимать HTTPS-запросы.
 
+### 6.3. Проверить доступность Сервера
+
+В другом терминале:
+
+```bash
+make run-client-health
+```
+
+### 7. Подготовить удобный запуск Клиента
+
+Если Сервер удобнее запустить через `make`, то для Клиента удобнее один раз подготовить окружение и запускать напрямую.
+
+1. Добавьте локальный каталог `bin/` в `PATH`, чтобы вместо `./bin/gkeep` можно было вызывать просто `gkeep`:
+
+  ```bash
+  export PATH="$PWD/bin:$PATH"
+  ```
+
+2. Задайте путь к конфигурации Клиента:
+
+  ```bash
+  export CONFIG=configs/client.json
+  ```
+
+3. Соберите Клиент:
+
+ ```bash
+  make build-client
+  ```
+
+После этого команды Клиента можно запускать короче:
+
+```bash
+gkeep health
+```
+
+Эти переменные действуют только в текущей shell-сессии. Если открыть новый терминал, команды нужно выполнить повторно.
+
 ### 8. Проверить доступность Сервера
 
 В другом терминале:
 
 ```bash
-export CONFIG=configs/client.json
-./bin/gkeep health
+gkeep health
 ```
 
 Ожидаемый результат:
@@ -198,7 +234,7 @@ server unavailable: connection refused
 ### 9. Зарегистрировать пользователя
 
 ```bash
-./bin/gkeep register -l alice
+gkeep register -l alice
 ```
 
 Клиент запросит пароль интерактивно:
@@ -220,7 +256,7 @@ printf '%s\n' "$GKEEP_PASSWORD" | ./bin/gkeep register -l alice --password-stdin
 ### 10. Войти под пользователем
 
 ```bash
-./bin/gkeep login -l alice
+gkeep login -l alice
 ```
 
 Ожидаемый результат:
@@ -231,16 +267,10 @@ User alice logged in successfully.
 
 После успешного входа Клиент сохраняет JWT bearer token в локальный session-файл. Token не выводится в stdout или stderr.
 
-Для CI и скриптов:
-
-```bash
-printf '%s\n' "$GKEEP_PASSWORD" | ./bin/gkeep login -l alice --password-stdin
-```
-
 ### 11. Проверить текущую online-сессию
 
 ```bash
-./bin/gkeep whoami
+gkeep whoami
 ```
 
 Если пользователь вошёл:
@@ -255,22 +285,19 @@ alice
 not logged in
 ```
 
-Состояние `not logged in` не считается технической ошибкой команды `whoami`.
-
-
 ### 12. Создать text-запись
 
 Подготовить файл с приватным текстом:
 
 ```bash
-mkdir -p .session
-printf 'secret note\n' > .session/note.txt
+mkdir -p .tmp
+printf 'secret note\n' > .tmp/note.txt
 ```
 
 Создать запись:
 
 ```bash
-./bin/gkeep records create-text --title 'my note' --text-file .session/note.txt
+gkeep records create-text --title 'my note' --text-file .tmp/note.txt
 ```
 
 Ожидаемый результат:
@@ -284,7 +311,7 @@ Created text record <record-id> with revision 1.
 ### 13. Получить список записей
 
 ```bash
-./bin/gkeep records list
+gkeep records list
 ```
 
 Ожидаемый результат содержит только открытые metadata без приватного payload:
@@ -297,15 +324,59 @@ ID                                    TYPE  TITLE    REVISION  UPDATED AT
 ### 14. Получить text-запись
 
 ```bash
-./bin/gkeep records get <record-id>
+gkeep records get <record-id>
 ```
 
 Команда выводит открытую metadata и расшифрованный text payload текущего пользователя.
 
-### 15. Выйти из online-сессии
+### 15. Обновить text-запись
+
+Подготовить новый файл с приватным текстом:
 
 ```bash
-./bin/gkeep logout
+printf 'updated secret note\n' > .tmp/note-updated.txt
+```
+
+Обновить запись, передав ожидаемую текущую ревизию:
+
+```bash
+gkeep records update-text <record-id> --revision 1 --title 'updated note' --text-file .tmp/note-updated.txt
+```
+
+Ожидаемый результат:
+
+```text
+Updated text record <record-id> to revision 2.
+```
+
+`--revision` обязателен: Клиент передаёт его Серверу в HTTP-заголовке `If-Match`, чтобы не перетереть изменения с другого устройства. Если запись уже изменилась и ревизия устарела, команда завершится конфликтом:
+
+```text
+record revision conflict
+```
+
+Как и при создании, приватный текст и приватная метаинформация передаются через файлы: `--text-file` и необязательный `--metadata-file`.
+
+### 16. Удалить запись
+
+Удалить запись можно только с ожидаемой актуальной ревизией:
+
+```bash
+gkeep records delete <record-id> --revision 2
+```
+
+Ожидаемый результат:
+
+```text
+Deleted record <record-id>.
+```
+
+Если ревизия устарела, Сервер возвращает конфликт и запись не удаляется. После успешного удаления повторный `gkeep records get <record-id>` вернёт `record not found`.
+
+### 17. Выйти из online-сессии
+
+```bash
+gkeep logout
 ```
 
 Ожидаемый результат:
@@ -379,4 +450,4 @@ make ci
 make build-client-cross
 ```
 
-Клиентские сценарии выше показаны прямыми вызовами `./bin/gkeep`, потому что после добавления JSON-конфига они не требуют длинного набора флагов.
+Клиентские сценарии выше показаны прямыми вызовами `gkeep` после добавления локального `bin/` в `PATH` и настройки `CONFIG`.
