@@ -18,7 +18,20 @@ type textRecordCreateRunner func(
 	string,
 ) error
 
+type textRecordUpdateRunner func(
+	context.Context,
+	config.Config,
+	io.Writer,
+	string,
+	int64,
+	string,
+	string,
+	string,
+) error
+
 type recordGetRunner func(context.Context, config.Config, io.Writer, string) error
+
+type recordDeleteRunner func(context.Context, config.Config, io.Writer, string, int64) error
 
 type passwordRunner func(
 	context.Context,

@@ -1,7 +1,7 @@
 .PHONY: \
 	show-coverage \
 	gen-tls-certs gen-jwt-secret gen-record-master-key \
-	check-client-config check-client-ca \
+	check-client-config \
 	build build-server build-client build-client-cross \
 	db-up db-down db-connect db-erase \
 	run-server \
@@ -25,7 +25,7 @@ ENV_FILE ?= .env
 export LOG_LEVEL
 
 # данные о сборке подставляются в бинарники Клиента и Сервера через ldflags
-BUILD_VERSION ?= v0.3.0
+BUILD_VERSION ?= v0.4.0
 BUILD_DATE ?= $(shell date +%Y-%m-%d)
 BUILD_COMMIT ?= $(shell git rev-parse --short HEAD)
 
@@ -51,10 +51,11 @@ TLS_CA_CERT ?= $(TLS_CERT_DIR)/ca.pem
 TLS_SERVER_CERT ?= $(TLS_CERT_DIR)/server.pem
 TLS_SERVER_KEY ?= $(TLS_CERT_DIR)/server-key.pem
 
-# JWT-параметры локального запуска Сервера читаются из env-файла
+# JWT-параметры и мастер-ключ шифрования записей читаются из env-файла
 # и передаются Серверу через окружение.
 export JWT_SECRET
 export JWT_TTL
+export RECORD_MASTER_KEY
 
 # команда Docker Compose с выбранным env-файлом
 # !!!: для целей db-*, run-server, test-integration, coverage, test-all и ci
@@ -101,14 +102,6 @@ check-client-config:
 	@if [ ! -f "$(CLIENT_CONFIG)" ]; then \
 		echo "(+_+) client config not found: $(CLIENT_CONFIG)"; \
 		echo "create it with: cp configs/client.example.json $(CLIENT_CONFIG)"; \
-		exit 1; \
-	fi
-
-check-client-ca:
-	@if [ ! -f "$(TLS_CA_CERT)" ]; then \
-		echo "(+_+) CA certificate not found: $(TLS_CA_CERT)"; \
-		echo "1. start the local Server first with 'make run-server'"; \
-		echo "2. or copy the Server CA certificate and set TLS_CA_CERT"; \
 		exit 1; \
 	fi
 
@@ -183,7 +176,7 @@ run-client: build-client
 	$(CLIENT)
 
 # запустить Клиент и выполнить health-запрос к Серверу
-run-client-health: check-client-config check-client-ca
+run-client-health: check-client-config
 	$(CLIENT) --config "$(CLIENT_CONFIG)" health
 
 # запустить Клиент для регистрации пользователя
@@ -191,7 +184,7 @@ run-client-health: check-client-config check-client-ca
 # примеры:
 # - `LOGIN=alice make run-client-register`
 # - `make run-client-register LOGIN=alice`
-run-client-register: check-client-config check-client-ca
+run-client-register: check-client-config
 	$(CLIENT) --config "$(CLIENT_CONFIG)" register --login "$(LOGIN)"
 
 # запустить Клиент для входа пользователя
@@ -199,7 +192,7 @@ run-client-register: check-client-config check-client-ca
 # примеры:
 # - `LOGIN=alice make run-client-login`
 # - `make run-client-login LOGIN=alice`
-run-client-login: check-client-config check-client-ca
+run-client-login: check-client-config
 	$(CLIENT) --config "$(CLIENT_CONFIG)" login --login "$(LOGIN)"
 
 # запустить Клиент для локального выхода из online-сессии
@@ -207,7 +200,7 @@ run-client-logout: check-client-config
 	$(CLIENT) --config "$(CLIENT_CONFIG)" logout
 
 # запустить Клиент и вывести текущего пользователя online-сессии
-run-client-whoami: check-client-config check-client-ca
+run-client-whoami: check-client-config
 	$(CLIENT) --config "$(CLIENT_CONFIG)" whoami
 
 # запустить полный набор тестов

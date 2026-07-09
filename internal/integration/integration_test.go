@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/server/auth"
 	"github.com/xhrobj/gopherkeeper/internal/server/httpserver"
 	"github.com/xhrobj/gopherkeeper/internal/server/postgres"
+	"github.com/xhrobj/gopherkeeper/internal/server/recordcrypto"
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
 )
 
@@ -255,8 +257,11 @@ func newServerHandler(pool *pgxpool.Pool) http.Handler {
 	})
 }
 
-func newAuthenticatedServerHandler(pool *pgxpool.Pool) http.Handler {
+func newAuthenticatedServerHandler(t *testing.T, pool *pgxpool.Pool) http.Handler {
+	t.Helper()
+
 	userRepository := postgres.NewUserRepository(pool)
+	recordRepository := postgres.NewRecordRepository(pool)
 	passwordManager := auth.NewBcryptPasswordManager()
 	registrationService := service.NewRegistrationService(userRepository, passwordManager)
 	tokenManager := auth.NewJWTTokenManager(integrationJWTSecret, 15*time.Minute)
@@ -265,6 +270,14 @@ func newAuthenticatedServerHandler(pool *pgxpool.Pool) http.Handler {
 		passwordManager,
 		tokenManager,
 	)
+	recordCrypto, err := recordcrypto.NewService(
+		[]byte(strings.Repeat("k", recordcrypto.MasterKeySize)),
+		recordcrypto.DefaultKeyID,
+	)
+	if err != nil {
+		t.Fatalf("create record crypto service: %v", err)
+	}
+	recordService := service.NewRecordService(recordRepository, recordCrypto)
 
 	return httpserver.NewHandler(httpserver.Dependencies{
 		Database:          pool,
@@ -272,6 +285,7 @@ func newAuthenticatedServerHandler(pool *pgxpool.Pool) http.Handler {
 		Authenticator:     authenticationService,
 		TokenValidator:    tokenManager,
 		CurrentUserReader: userRepository,
+		Records:           recordService,
 	})
 }
 

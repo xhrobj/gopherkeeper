@@ -98,8 +98,9 @@ func (a *Application) loadSession() (session.Session, error) {
 
 func mapSessionLoadError(err error) error {
 	switch {
+	case errors.Is(err, session.ErrExpired):
+		return newUserError("session expired, please login again", errors.Join(ErrNotLoggedIn, err))
 	case errors.Is(err, session.ErrNotFound),
-		errors.Is(err, session.ErrExpired),
 		errors.Is(err, session.ErrServerMismatch),
 		errors.Is(err, session.ErrInvalid):
 		return newUserError("not logged in", errors.Join(ErrNotLoggedIn, err))

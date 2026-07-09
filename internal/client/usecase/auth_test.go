@@ -349,7 +349,7 @@ func TestApplication_WhoamiMapsSessionErrors(t *testing.T) {
 		{
 			name:    "expired",
 			loadErr: session.ErrExpired,
-			want:    "not logged in",
+			want:    "session expired, please login again",
 		},
 		{
 			name:    "server mismatch",

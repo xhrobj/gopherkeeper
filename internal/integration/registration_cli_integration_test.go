@@ -157,7 +157,7 @@ func TestIntegration_CLILoginFlow(t *testing.T) {
 	caCertFile, serverCertFile, serverKeyFile := generateTLSFiles(t)
 	serverAddress, stopServer := startHTTPSServer(
 		t,
-		middleware.WithLogging(newAuthenticatedServerHandler(testPool), logger),
+		middleware.WithLogging(newAuthenticatedServerHandler(t, testPool), logger),
 		serverCertFile,
 		serverKeyFile,
 	)
