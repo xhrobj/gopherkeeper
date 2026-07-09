@@ -63,6 +63,22 @@ type CreateTextRecordRequest struct {
 	Payload model.TextPayload
 }
 
+// UpdateTextRecordRequest содержит входные данные для изменения text-записи.
+type UpdateTextRecordRequest struct {
+	UserID           int64
+	RecordID         string
+	ExpectedRevision int64
+	Title            string
+	Payload          model.TextPayload
+}
+
+// DeleteRecordRequest содержит входные данные для удаления приватной записи.
+type DeleteRecordRequest struct {
+	UserID           int64
+	RecordID         string
+	ExpectedRevision int64
+}
+
 // TextRecord содержит открытую metadata и расшифрованный text payload.
 type TextRecord struct {
 	Metadata model.RecordMetadata
@@ -100,19 +116,9 @@ func (s *RecordService) CreateText(ctx context.Context, request CreateTextRecord
 		return TextRecord{}, err
 	}
 
-	plaintext, err := json.Marshal(request.Payload)
+	encrypted, err := s.encryptTextPayload(request.UserID, recordID, request.Payload)
 	if err != nil {
-		return TextRecord{}, fmt.Errorf("marshal text payload: %w", err)
-	}
-
-	aad, err := recordcrypto.BuildAAD(request.UserID, recordID, model.RecordTypeText)
-	if err != nil {
-		return TextRecord{}, fmt.Errorf("build record AAD: %w", err)
-	}
-
-	encrypted, err := s.crypto.Encrypt(plaintext, aad)
-	if err != nil {
-		return TextRecord{}, fmt.Errorf("encrypt text payload: %w", err)
+		return TextRecord{}, err
 	}
 
 	record, err := s.records.Create(ctx, model.Record{
@@ -133,6 +139,82 @@ func (s *RecordService) CreateText(ctx context.Context, request CreateTextRecord
 		Metadata: record.Metadata(),
 		Payload:  request.Payload,
 	}, nil
+}
+
+// UpdateText изменяет text-запись при совпадении ожидаемой ревизии.
+func (s *RecordService) UpdateText(ctx context.Context, request UpdateTextRecordRequest) (TextRecord, error) {
+	if err := validateRecordOwner(request.UserID); err != nil {
+		return TextRecord{}, err
+	}
+	if err := model.ValidateRecordID(request.RecordID); err != nil {
+		return TextRecord{}, err
+	}
+	if err := model.ValidateRecordRevision(request.ExpectedRevision); err != nil {
+		return TextRecord{}, err
+	}
+	if err := model.ValidateRecordTitle(request.Title); err != nil {
+		return TextRecord{}, err
+	}
+	if err := request.Payload.Validate(); err != nil {
+		return TextRecord{}, err
+	}
+
+	current, err := s.records.Get(ctx, request.UserID, request.RecordID)
+	if err != nil {
+		return TextRecord{}, fmt.Errorf("get text record for update: %w", err)
+	}
+	if current.Type != model.RecordTypeText {
+		return TextRecord{}, model.ErrRecordTypeUnsupported
+	}
+	if current.Revision != request.ExpectedRevision {
+		return TextRecord{}, model.ErrRecordRevisionConflict
+	}
+
+	encrypted, err := s.encryptTextPayload(request.UserID, request.RecordID, request.Payload)
+	if err != nil {
+		return TextRecord{}, err
+	}
+
+	updated, err := s.records.Update(ctx, model.Record{
+		ID:            request.RecordID,
+		UserID:        request.UserID,
+		Type:          model.RecordTypeText,
+		Title:         request.Title,
+		CryptoVersion: encrypted.CryptoVersion,
+		KeyID:         encrypted.KeyID,
+		Nonce:         encrypted.Nonce,
+		Ciphertext:    encrypted.Ciphertext,
+	}, request.ExpectedRevision)
+	if err != nil {
+		return TextRecord{}, fmt.Errorf("update text record: %w", err)
+	}
+	if updated.Type != model.RecordTypeText {
+		return TextRecord{}, model.ErrRecordTypeUnsupported
+	}
+
+	return TextRecord{
+		Metadata: updated.Metadata(),
+		Payload:  request.Payload,
+	}, nil
+}
+
+// Delete удаляет приватную запись при совпадении ожидаемой ревизии.
+func (s *RecordService) Delete(ctx context.Context, request DeleteRecordRequest) error {
+	if err := validateRecordOwner(request.UserID); err != nil {
+		return err
+	}
+	if err := model.ValidateRecordID(request.RecordID); err != nil {
+		return err
+	}
+	if err := model.ValidateRecordRevision(request.ExpectedRevision); err != nil {
+		return err
+	}
+
+	if err := s.records.Delete(ctx, request.UserID, request.RecordID, request.ExpectedRevision); err != nil {
+		return fmt.Errorf("delete record: %w", err)
+	}
+
+	return nil
 }
 
 // List возвращает открытые поля записей пользователя без расшифрования payload'ов.
@@ -193,6 +275,29 @@ func (s *RecordService) GetText(ctx context.Context, userID int64, recordID stri
 		Metadata: record.Metadata(),
 		Payload:  payload,
 	}, nil
+}
+
+func (s *RecordService) encryptTextPayload(
+	userID int64,
+	recordID string,
+	payload model.TextPayload,
+) (recordcrypto.EncryptedPayload, error) {
+	plaintext, err := json.Marshal(payload)
+	if err != nil {
+		return recordcrypto.EncryptedPayload{}, fmt.Errorf("marshal text payload: %w", err)
+	}
+
+	aad, err := recordcrypto.BuildAAD(userID, recordID, model.RecordTypeText)
+	if err != nil {
+		return recordcrypto.EncryptedPayload{}, fmt.Errorf("build record AAD: %w", err)
+	}
+
+	encrypted, err := s.crypto.Encrypt(plaintext, aad)
+	if err != nil {
+		return recordcrypto.EncryptedPayload{}, fmt.Errorf("encrypt text payload: %w", err)
+	}
+
+	return encrypted, nil
 }
 
 func validateRecordOwner(userID int64) error {
