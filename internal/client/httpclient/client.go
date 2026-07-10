@@ -11,14 +11,15 @@ import (
 	"os"
 	"syscall"
 	"time"
+
+	"github.com/go-resty/resty/v2"
 )
 
 const requestTimeout = 10 * time.Second
 
 // Client выполняет HTTPS-запросы к Серверу GophKeeper.
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
+	client *resty.Client
 }
 
 type healthResponse struct {
@@ -50,41 +51,30 @@ func New(address, caCertFile string) (*Client, error) {
 		RootCAs:    rootCAs,
 	}
 
-	return &Client{
-		baseURL: "https://" + address,
-		httpClient: &http.Client{
-			Transport: transport,
-			Timeout:   requestTimeout,
-		},
-	}, nil
+	restyClient := resty.NewWithClient(&http.Client{
+		Transport: transport,
+		Timeout:   requestTimeout,
+	})
+	restyClient.SetBaseURL("https://" + address)
+
+	return &Client{client: restyClient}, nil
 }
 
 // Health проверяет доступность Сервера и возвращает его технический статус.
 func (c *Client) Health(ctx context.Context) (string, error) {
-	request, err := http.NewRequestWithContext(
-		ctx,
-		http.MethodGet,
-		c.baseURL+"/health",
-		nil,
-	)
-	if err != nil {
-		return "", fmt.Errorf("create health request: %w", err)
-	}
-
-	response, err := c.httpClient.Do(request)
+	response, err := c.client.R().
+		SetContext(ctx).
+		Get("/health")
 	if err != nil {
 		return "", healthRequestError(err)
 	}
-	defer func() {
-		_ = response.Body.Close()
-	}()
 
-	if response.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("health request returned status %s", response.Status)
+	if response.StatusCode() != http.StatusOK {
+		return "", fmt.Errorf("health request returned status %s", response.Status())
 	}
 
 	var health healthResponse
-	if err := json.NewDecoder(response.Body).Decode(&health); err != nil {
+	if err := json.Unmarshal(response.Body(), &health); err != nil {
 		return "", fmt.Errorf("decode health response: %w", err)
 	}
 
