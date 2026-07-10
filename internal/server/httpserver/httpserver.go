@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/xhrobj/gopherkeeper/internal/model"
 	"github.com/xhrobj/gopherkeeper/internal/server/middleware"
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
@@ -68,37 +70,30 @@ type Dependencies struct {
 
 // NewHandler создаёт основной HTTP-handler Сервера.
 func NewHandler(deps Dependencies) http.Handler {
-	mux := http.NewServeMux()
+	router := chi.NewRouter()
 
-	mux.HandleFunc("GET /health", healthHandler(deps.Database))
-	mux.HandleFunc("POST /api/v1/auth/register", registerHandler(deps.Registerer))
-	mux.HandleFunc("POST /api/v1/auth/login", loginHandler(deps.Authenticator))
-	mux.Handle(
-		"GET /api/v1/users/me",
-		middleware.WithAuthentication(currentUserHandler(deps.CurrentUserReader), deps.TokenValidator),
-	)
-	mux.Handle(
-		"POST /api/v1/records",
-		middleware.WithAuthentication(createRecordHandler(deps.Records), deps.TokenValidator),
-	)
-	mux.Handle(
-		"GET /api/v1/records",
-		middleware.WithAuthentication(listRecordsHandler(deps.Records), deps.TokenValidator),
-	)
-	mux.Handle(
-		"GET /api/v1/records/{id}",
-		middleware.WithAuthentication(getRecordHandler(deps.Records), deps.TokenValidator),
-	)
-	mux.Handle(
-		"PUT /api/v1/records/{id}",
-		middleware.WithAuthentication(updateRecordHandler(deps.Records), deps.TokenValidator),
-	)
-	mux.Handle(
-		"DELETE /api/v1/records/{id}",
-		middleware.WithAuthentication(deleteRecordHandler(deps.Records), deps.TokenValidator),
-	)
+	router.Method(http.MethodGet, "/health", healthHandler(deps.Database))
+	router.Route("/api/v1", func(router chi.Router) {
+		router.Route("/auth", func(router chi.Router) {
+			router.Method(http.MethodPost, "/register", registerHandler(deps.Registerer))
+			router.Method(http.MethodPost, "/login", loginHandler(deps.Authenticator))
+		})
 
-	return mux
+		router.Group(func(router chi.Router) {
+			router.Use(func(handler http.Handler) http.Handler {
+				return middleware.WithAuthentication(handler, deps.TokenValidator)
+			})
+
+			router.Method(http.MethodGet, "/users/me", currentUserHandler(deps.CurrentUserReader))
+			router.Method(http.MethodPost, "/records", createRecordHandler(deps.Records))
+			router.Method(http.MethodGet, "/records", listRecordsHandler(deps.Records))
+			router.Method(http.MethodGet, "/records/{id}", getRecordHandler(deps.Records))
+			router.Method(http.MethodPut, "/records/{id}", updateRecordHandler(deps.Records))
+			router.Method(http.MethodDelete, "/records/{id}", deleteRecordHandler(deps.Records))
+		})
+	})
+
+	return router
 }
 
 func healthHandler(database DatabasePinger) http.HandlerFunc {
