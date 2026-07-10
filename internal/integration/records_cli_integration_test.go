@@ -53,7 +53,7 @@ type cliTextRecordFlow struct {
 func newCLITextRecordFlow(t *testing.T) *cliTextRecordFlow {
 	t.Helper()
 
-	ctx, pool, httpLogs, serverAddress, caCertFile := startCLITextRecordTestServer(t)
+	ctx, pool, httpLogs, serverAddress, caCertFile := startCLIRecordTestServer(t)
 	if _, _, err := runRegisterCommand(ctx, serverAddress, caCertFile, " Alice ", testRegistrationPassword); err != nil {
 		t.Fatalf("register Alice: %v", err)
 	}
@@ -74,7 +74,7 @@ func newCLITextRecordFlow(t *testing.T) *cliTextRecordFlow {
 	}
 }
 
-func startCLITextRecordTestServer(
+func startCLIRecordTestServer(
 	t *testing.T,
 ) (context.Context, *pgxpool.Pool, *bytes.Buffer, string, string) {
 	t.Helper()
@@ -392,13 +392,21 @@ func runDeleteRecordCommand(
 }
 
 func runClientCommand(ctx context.Context, args []string) (string, string, error) {
+	return runClientCommandWithInput(ctx, args, "")
+}
+
+func runClientCommandWithInput(
+	ctx context.Context,
+	args []string,
+	input string,
+) (string, string, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
 	err := clientcli.RunWithInput(
 		ctx,
 		args,
-		strings.NewReader(""),
+		strings.NewReader(input),
 		&stdout,
 		&stderr,
 		buildinfo.Info{},

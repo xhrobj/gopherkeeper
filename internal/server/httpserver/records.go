@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"regexp"
@@ -24,36 +25,38 @@ const (
 	errorMessagePreconditionRequired = "record revision is required"
 )
 
-var revisionETagPattern = regexp.MustCompile(`^[1-9][0-9]*$`)
+var (
+	revisionETagPattern      = regexp.MustCompile(`^[1-9][0-9]*$`)
+	errInvalidRecordResponse = errors.New("invalid record response")
+)
 
 // RecordManager выполняет серверные сценарии приватных записей.
 type RecordManager interface {
-	// CreateText создаёт text-запись пользователя.
-	CreateText(ctx context.Context, request service.CreateTextRecordRequest) (service.TextRecord, error)
+	// Create создаёт приватную запись пользователя.
+	Create(ctx context.Context, request service.CreateRecordRequest) (service.DecryptedRecord, error)
 
 	// List возвращает открытые поля записей пользователя.
 	List(ctx context.Context, userID int64) ([]model.RecordMetadata, error)
 
-	// GetText возвращает text-запись пользователя.
-	GetText(ctx context.Context, userID int64, recordID string) (service.TextRecord, error)
+	// Get возвращает запись пользователя с расшифрованным payload согласно её типу.
+	Get(ctx context.Context, userID int64, recordID string) (service.DecryptedRecord, error)
 
-	// UpdateText изменяет text-запись пользователя.
-	UpdateText(ctx context.Context, request service.UpdateTextRecordRequest) (service.TextRecord, error)
+	// Update изменяет приватную запись пользователя.
+	Update(ctx context.Context, request service.UpdateRecordRequest) (service.DecryptedRecord, error)
 
 	// Delete удаляет приватную запись пользователя.
 	Delete(ctx context.Context, request service.DeleteRecordRequest) error
 }
 
-type createRecordRequest struct {
-	Type    model.RecordType  `json:"type"`
-	Title   string            `json:"title"`
-	Payload model.TextPayload `json:"payload"`
+type recordRequestEnvelope struct {
+	Type    model.RecordType `json:"type"`
+	Title   string           `json:"title"`
+	Payload json.RawMessage  `json:"payload"`
 }
 
-type updateRecordRequest struct {
-	Type    model.RecordType  `json:"type"`
-	Title   string            `json:"title"`
-	Payload model.TextPayload `json:"payload"`
+type decodedRecordRequest struct {
+	Title   string
+	Payload model.RecordPayload
 }
 
 type recordMetadataResponse struct {
@@ -65,14 +68,9 @@ type recordMetadataResponse struct {
 	UpdatedAt time.Time        `json:"updated_at"`
 }
 
-type textRecordResponse struct {
-	ID        string            `json:"id"`
-	Type      model.RecordType  `json:"type"`
-	Title     string            `json:"title"`
-	Revision  int64             `json:"revision"`
-	CreatedAt time.Time         `json:"created_at"`
-	UpdatedAt time.Time         `json:"updated_at"`
-	Payload   model.TextPayload `json:"payload"`
+type recordResponse struct {
+	recordMetadataResponse
+	Payload model.RecordPayload `json:"payload"`
 }
 
 type listRecordsResponse struct {
@@ -97,7 +95,7 @@ func createRecordHandler(records RecordManager) http.Handler {
 			return
 		}
 
-		request, err := decodeCreateRecordRequest(w, r)
+		request, err := decodeRecordRequest(w, r)
 		if err != nil {
 			if isRequestBodyTooLarge(err) {
 				writeErrorResponse(
@@ -113,7 +111,7 @@ func createRecordHandler(records RecordManager) http.Handler {
 			return
 		}
 
-		record, err := records.CreateText(r.Context(), service.CreateTextRecordRequest{
+		record, err := records.Create(r.Context(), service.CreateRecordRequest{
 			UserID:  userID,
 			Title:   request.Title,
 			Payload: request.Payload,
@@ -123,8 +121,14 @@ func createRecordHandler(records RecordManager) http.Handler {
 			return
 		}
 
+		response, err := newRecordResponse(record)
+		if err != nil {
+			writeRecordError(w, err)
+			return
+		}
+
 		w.Header().Set("ETag", revisionETag(record.Metadata.Revision))
-		writeJSONResponse(w, http.StatusCreated, newTextRecordResponse(record))
+		writeJSONResponse(w, http.StatusCreated, response)
 	})
 }
 
@@ -161,15 +165,20 @@ func getRecordHandler(records RecordManager) http.Handler {
 			return
 		}
 
-		recordID := r.PathValue("id")
-		record, err := records.GetText(r.Context(), userID, recordID)
+		record, err := records.Get(r.Context(), userID, r.PathValue("id"))
+		if err != nil {
+			writeRecordError(w, err)
+			return
+		}
+
+		response, err := newRecordResponse(record)
 		if err != nil {
 			writeRecordError(w, err)
 			return
 		}
 
 		w.Header().Set("ETag", revisionETag(record.Metadata.Revision))
-		writeJSONResponse(w, http.StatusOK, newTextRecordResponse(record))
+		writeJSONResponse(w, http.StatusOK, response)
 	})
 }
 
@@ -197,7 +206,7 @@ func updateRecordHandler(records RecordManager) http.Handler {
 			return
 		}
 
-		request, err := decodeUpdateRecordRequest(w, r)
+		request, err := decodeRecordRequest(w, r)
 		if err != nil {
 			if isRequestBodyTooLarge(err) {
 				writeErrorResponse(
@@ -213,7 +222,7 @@ func updateRecordHandler(records RecordManager) http.Handler {
 			return
 		}
 
-		record, err := records.UpdateText(r.Context(), service.UpdateTextRecordRequest{
+		record, err := records.Update(r.Context(), service.UpdateRecordRequest{
 			UserID:           userID,
 			RecordID:         r.PathValue("id"),
 			ExpectedRevision: expectedRevision,
@@ -225,8 +234,14 @@ func updateRecordHandler(records RecordManager) http.Handler {
 			return
 		}
 
+		response, err := newRecordResponse(record)
+		if err != nil {
+			writeRecordError(w, err)
+			return
+		}
+
 		w.Header().Set("ETag", revisionETag(record.Metadata.Revision))
-		writeJSONResponse(w, http.StatusOK, newTextRecordResponse(record))
+		writeJSONResponse(w, http.StatusOK, response)
 	})
 }
 
@@ -257,30 +272,24 @@ func deleteRecordHandler(records RecordManager) http.Handler {
 	})
 }
 
-func decodeCreateRecordRequest(w http.ResponseWriter, r *http.Request) (createRecordRequest, error) {
-	var request createRecordRequest
-	if err := decodeJSONRequest(w, r, &request); err != nil {
-		return createRecordRequest{}, err
+func decodeRecordRequest(w http.ResponseWriter, r *http.Request) (decodedRecordRequest, error) {
+	var envelope recordRequestEnvelope
+	if err := decodeJSONRequest(w, r, &envelope); err != nil {
+		return decodedRecordRequest{}, err
 	}
 
-	if request.Type != model.RecordTypeText {
-		return createRecordRequest{}, model.ErrRecordTypeUnsupported
+	payload, err := model.NewRecordPayload(envelope.Type)
+	if err != nil {
+		return decodedRecordRequest{}, err
+	}
+	if err := decodeJSONPayload(envelope.Payload, payload); err != nil {
+		return decodedRecordRequest{}, err
 	}
 
-	return request, nil
-}
-
-func decodeUpdateRecordRequest(w http.ResponseWriter, r *http.Request) (updateRecordRequest, error) {
-	var request updateRecordRequest
-	if err := decodeJSONRequest(w, r, &request); err != nil {
-		return updateRecordRequest{}, err
-	}
-
-	if request.Type != model.RecordTypeText {
-		return updateRecordRequest{}, model.ErrRecordTypeUnsupported
-	}
-
-	return request, nil
+	return decodedRecordRequest{
+		Title:   envelope.Title,
+		Payload: payload,
+	}, nil
 }
 
 func parseIfMatchRevision(value string) (int64, error) {
@@ -339,6 +348,7 @@ func writeRecordError(w http.ResponseWriter, err error) {
 		errors.Is(err, model.ErrInvalidRecordRevision),
 		errors.Is(err, model.ErrInvalidRecordTitle),
 		errors.Is(err, model.ErrInvalidTextPayload),
+		errors.Is(err, model.ErrInvalidCredentialsPayload),
 		errors.Is(err, model.ErrRecordTypeUnsupported):
 		writeInvalidRecordRequest(w)
 
@@ -376,16 +386,16 @@ func newRecordMetadataResponse(metadata model.RecordMetadata) recordMetadataResp
 	}
 }
 
-func newTextRecordResponse(record service.TextRecord) textRecordResponse {
-	metadata := record.Metadata
-
-	return textRecordResponse{
-		ID:        metadata.ID,
-		Type:      metadata.Type,
-		Title:     metadata.Title,
-		Revision:  metadata.Revision,
-		CreatedAt: metadata.CreatedAt,
-		UpdatedAt: metadata.UpdatedAt,
-		Payload:   record.Payload,
+func newRecordResponse(record service.DecryptedRecord) (recordResponse, error) {
+	if record.Payload == nil {
+		return recordResponse{}, errInvalidRecordResponse
 	}
+	if err := record.Payload.Validate(); err != nil || record.Metadata.Type != record.Payload.RecordType() {
+		return recordResponse{}, errInvalidRecordResponse
+	}
+
+	return recordResponse{
+		recordMetadataResponse: newRecordMetadataResponse(record.Metadata),
+		Payload:                record.Payload,
+	}, nil
 }

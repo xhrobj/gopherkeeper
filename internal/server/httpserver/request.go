@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -20,7 +21,15 @@ func decodeJSONRequest(w http.ResponseWriter, r *http.Request, target any) error
 		_ = r.Body.Close()
 	}()
 
-	decoder := json.NewDecoder(r.Body)
+	return decodeJSONValue(r.Body, target)
+}
+
+func decodeJSONPayload(payload json.RawMessage, target any) error {
+	return decodeJSONValue(bytes.NewReader(payload), target)
+}
+
+func decodeJSONValue(reader io.Reader, target any) error {
+	decoder := json.NewDecoder(reader)
 	decoder.DisallowUnknownFields()
 
 	if err := decoder.Decode(target); err != nil {

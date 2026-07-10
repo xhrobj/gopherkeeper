@@ -3,7 +3,7 @@ openapi: 3.0.3
 info:
   title: GophKeeper API
   description: API взаимодействия CLI-клиента и Сервера GophKeeper.
-  version: 0.4.0
+  version: 0.5.0
 
 servers:
   - url: https://localhost:8080
@@ -234,7 +234,7 @@ paths:
     post:
       summary: Создать приватную запись
       description: >-
-        Создаёт новую приватную запись текущего пользователя. В MVP-4 поддерживается только type text.
+        Создаёт новую приватную запись текущего пользователя. Поддерживаются type text и credentials.
         Payload передаётся по HTTPS, валидируется Сервером, шифруется AES-GCM и сохраняется в PostgreSQL
         только в виде ciphertext. Metadata внутри payload является приватной и хранится зашифрованной.
       operationId: createRecord
@@ -248,12 +248,25 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/CreateRecordRequest'
-            example:
-              type: text
-              title: Alice private note
-              payload:
-                text: secret note
-                metadata: private metadata
+            examples:
+              textRecord:
+                summary: Text-запись
+                value:
+                  type: text
+                  title: Alice private note
+                  payload:
+                    text: secret note
+                    metadata: private metadata
+              credentialsRecord:
+                summary: Credentials-запись
+                value:
+                  type: credentials
+                  title: GitHub
+                  payload:
+                    login: alice
+                    password: correct-horse-battery-staple
+                    url: https://github.com/login
+                    metadata: private metadata
       responses:
         '201':
           description: Запись создана
@@ -266,7 +279,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TextRecordResponse'
+                $ref: '#/components/schemas/RecordResponse'
+              examples:
+                textRecord:
+                  $ref: '#/components/examples/TextRecordResponse'
+                credentialsRecord:
+                  $ref: '#/components/examples/CredentialsRecordResponse'
         '400':
           description: Некорректный JSON, тип записи, title или payload
           content:
@@ -310,10 +328,11 @@ paths:
 
   /api/v1/records/{id}:
     get:
-      summary: Получить приватную text-запись
+      summary: Получить приватную запись
       description: >-
-        Возвращает открытую metadata и расшифрованный text payload одной записи текущего пользователя.
-        Отсутствующая и принадлежащая другому пользователю запись возвращают одинаковый 404.
+        Возвращает открытую metadata и расшифрованный payload одной записи текущего пользователя. Формат
+        payload определяется полем type. Отсутствующая и принадлежащая другому пользователю запись
+        возвращают одинаковый 404.
       operationId: getRecord
       tags:
         - Records
@@ -329,7 +348,7 @@ paths:
             format: uuid
       responses:
         '200':
-          description: Text-запись найдена
+          description: Запись найдена
           headers:
             ETag:
               description: Текущая revision записи.
@@ -339,7 +358,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TextRecordResponse'
+                $ref: '#/components/schemas/RecordResponse'
+              examples:
+                textRecord:
+                  $ref: '#/components/examples/TextRecordResponse'
+                credentialsRecord:
+                  $ref: '#/components/examples/CredentialsRecordResponse'
         '400':
           description: Некорректный UUID записи
           content:
@@ -360,13 +384,13 @@ paths:
           $ref: '#/components/responses/InternalError'
 
     put:
-      summary: Изменить приватную text-запись
+      summary: Изменить приватную запись
       description: >-
-        Заменяет открытую metadata и приватный text payload существующей записи. Клиент обязан передать
-        актуальную revision записи в заголовке If-Match как strong ETag, например "1". Сервер выполняет
-        update только при совпадении ожидаемой и текущей revision, затем атомарно увеличивает revision и
-        возвращает новое значение в ETag. Отсутствующая и принадлежащая другому пользователю запись
-        возвращают одинаковый 404.
+        Заменяет открытый title и приватный payload существующей записи без изменения её type. Клиент
+        обязан передать актуальную revision записи в заголовке If-Match как strong ETag, например "1".
+        Сервер выполняет update только при совпадении ожидаемой и текущей revision, затем атомарно
+        увеличивает revision и возвращает новое значение в ETag. Отсутствующая и принадлежащая другому
+        пользователю запись возвращают одинаковый 404.
       operationId: updateRecord
       tags:
         - Records
@@ -394,15 +418,28 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/UpdateRecordRequest'
-            example:
-              type: text
-              title: Alice updated note
-              payload:
-                text: updated secret note
-                metadata: updated private metadata
+            examples:
+              textRecord:
+                summary: Изменение text-записи
+                value:
+                  type: text
+                  title: Alice updated note
+                  payload:
+                    text: updated secret note
+                    metadata: updated private metadata
+              credentialsRecord:
+                summary: Изменение credentials-записи
+                value:
+                  type: credentials
+                  title: GitHub updated
+                  payload:
+                    login: alice@example.com
+                    password: new-correct-horse-battery-staple
+                    url: https://github.com/login
+                    metadata: updated private metadata
       responses:
         '200':
-          description: Text-запись изменена
+          description: Запись изменена
           headers:
             ETag:
               description: Новая revision записи после успешного update.
@@ -412,7 +449,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TextRecordResponse'
+                $ref: '#/components/schemas/RecordResponse'
+              examples:
+                textRecord:
+                  $ref: '#/components/examples/TextRecordResponse'
+                credentialsRecord:
+                  $ref: '#/components/examples/CredentialsRecordResponse'
         '400':
           description: Некорректный UUID записи, If-Match, JSON, тип записи, title или payload
           content:
@@ -598,6 +640,35 @@ components:
                 code: internal_error
                 message: internal server error
 
+  examples:
+    TextRecordResponse:
+      summary: Text-запись
+      value:
+        id: 550e8400-e29b-41d4-a716-446655440000
+        type: text
+        title: Alice private note
+        revision: 1
+        created_at: '2026-07-08T12:00:00Z'
+        updated_at: '2026-07-08T12:00:00Z'
+        payload:
+          text: secret note
+          metadata: private metadata
+
+    CredentialsRecordResponse:
+      summary: Credentials-запись
+      value:
+        id: 550e8400-e29b-41d4-a716-446655440001
+        type: credentials
+        title: GitHub
+        revision: 1
+        created_at: '2026-07-10T12:00:00Z'
+        updated_at: '2026-07-10T12:00:00Z'
+        payload:
+          login: alice
+          password: correct-horse-battery-staple
+          url: https://github.com/login
+          metadata: private metadata
+
   schemas:
     HealthResponse:
       type: object
@@ -732,7 +803,47 @@ components:
           maxLength: 65536
           example: private metadata
 
+    CredentialsPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - login
+        - password
+      properties:
+        login:
+          type: string
+          minLength: 1
+          description: Обязательный приватный login. Значение сохраняется без нормализации и обрезания.
+          example: alice
+        password:
+          type: string
+          format: password
+          minLength: 1
+          description: Обязательный приватный password. Значение сохраняется без нормализации и обрезания.
+          example: correct-horse-battery-staple
+        url:
+          type: string
+          description: >-
+            Необязательная приватная строка, связанная с ресурсом. Формат URI не проверяется, значение
+            сохраняется без нормализации.
+          example: https://github.com/login
+        metadata:
+          type: string
+          description: Необязательная приватная метаинформация. Хранится внутри encrypted payload.
+          maxLength: 65536
+          example: private metadata
+
     CreateRecordRequest:
+      oneOf:
+        - $ref: '#/components/schemas/CreateTextRecordRequest'
+        - $ref: '#/components/schemas/CreateCredentialsRecordRequest'
+      discriminator:
+        propertyName: type
+        mapping:
+          text: '#/components/schemas/CreateTextRecordRequest'
+          credentials: '#/components/schemas/CreateCredentialsRecordRequest'
+
+    CreateTextRecordRequest:
       type: object
       additionalProperties: false
       required:
@@ -742,7 +853,6 @@ components:
       properties:
         type:
           type: string
-          description: Тип создаваемой записи. В MVP-4 поддерживается только text.
           enum:
             - text
           example: text
@@ -754,7 +864,7 @@ components:
         payload:
           $ref: '#/components/schemas/TextPayload'
 
-    UpdateRecordRequest:
+    CreateCredentialsRecordRequest:
       type: object
       additionalProperties: false
       required:
@@ -764,7 +874,38 @@ components:
       properties:
         type:
           type: string
-          description: Тип изменяемой записи. В MVP-5 поддерживается только text.
+          enum:
+            - credentials
+          example: credentials
+        title:
+          type: string
+          description: Открытое название записи, видимое в списке metadata.
+          minLength: 1
+          example: GitHub
+        payload:
+          $ref: '#/components/schemas/CredentialsPayload'
+
+    UpdateRecordRequest:
+      oneOf:
+        - $ref: '#/components/schemas/UpdateTextRecordRequest'
+        - $ref: '#/components/schemas/UpdateCredentialsRecordRequest'
+      discriminator:
+        propertyName: type
+        mapping:
+          text: '#/components/schemas/UpdateTextRecordRequest'
+          credentials: '#/components/schemas/UpdateCredentialsRecordRequest'
+
+    UpdateTextRecordRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - payload
+      properties:
+        type:
+          type: string
+          description: Тип записи должен совпадать с неизменяемым type существующей записи.
           enum:
             - text
           example: text
@@ -775,6 +916,28 @@ components:
           example: Alice updated note
         payload:
           $ref: '#/components/schemas/TextPayload'
+
+    UpdateCredentialsRecordRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - payload
+      properties:
+        type:
+          type: string
+          description: Тип записи должен совпадать с неизменяемым type существующей записи.
+          enum:
+            - credentials
+          example: credentials
+        title:
+          type: string
+          description: Новое открытое название записи, видимое в списке metadata.
+          minLength: 1
+          example: GitHub updated
+        payload:
+          $ref: '#/components/schemas/CredentialsPayload'
 
     RecordMetadataResponse:
       type: object
@@ -810,6 +973,16 @@ components:
           format: date-time
           example: '2026-07-08T12:00:00Z'
 
+    RecordResponse:
+      oneOf:
+        - $ref: '#/components/schemas/TextRecordResponse'
+        - $ref: '#/components/schemas/CredentialsRecordResponse'
+      discriminator:
+        propertyName: type
+        mapping:
+          text: '#/components/schemas/TextRecordResponse'
+          credentials: '#/components/schemas/CredentialsRecordResponse'
+
     TextRecordResponse:
       type: object
       additionalProperties: false
@@ -827,7 +1000,10 @@ components:
           format: uuid
           example: 550e8400-e29b-41d4-a716-446655440000
         type:
-          $ref: '#/components/schemas/RecordType'
+          type: string
+          enum:
+            - text
+          example: text
         title:
           type: string
           example: Alice private note
@@ -846,6 +1022,46 @@ components:
           example: '2026-07-08T12:00:00Z'
         payload:
           $ref: '#/components/schemas/TextPayload'
+
+    CredentialsRecordResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - type
+        - title
+        - revision
+        - created_at
+        - updated_at
+        - payload
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440001
+        type:
+          type: string
+          enum:
+            - credentials
+          example: credentials
+        title:
+          type: string
+          example: GitHub
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+          example: 1
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-07-10T12:00:00Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-07-10T12:00:00Z'
+        payload:
+          $ref: '#/components/schemas/CredentialsPayload'
 
     ListRecordsResponse:
       type: object

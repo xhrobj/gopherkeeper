@@ -98,6 +98,14 @@ func TestTextPayload_Validate(t *testing.T) {
 	}
 }
 
+func TestTextPayload_ValidateNil(t *testing.T) {
+	var payload *TextPayload
+
+	if err := payload.Validate(); !errors.Is(err, ErrInvalidTextPayload) {
+		t.Fatalf("Validate() error = %v, want %v", err, ErrInvalidTextPayload)
+	}
+}
+
 func TestRecord_Metadata(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 8, 12, 0, 0, 0, time.UTC)
 	updatedAt := time.Date(2026, time.July, 8, 12, 5, 0, 0, time.UTC)

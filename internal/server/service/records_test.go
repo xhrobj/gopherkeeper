@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -139,6 +140,132 @@ func TestRecordService_List(t *testing.T) {
 	}
 }
 
+func TestRecordService_Get(t *testing.T) {
+	recordID := "550e8400-e29b-41d4-a716-446655440000"
+	createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, time.July, 10, 12, 1, 0, 0, time.UTC)
+	textPayload := model.TextPayload{Text: "secret note", Metadata: "private metadata"}
+	credentialsPayload := model.CredentialsPayload{
+		Login:    "alice",
+		Password: "correct-horse-battery-staple",
+		URL:      "https://github.com",
+		Metadata: "personal account",
+	}
+	tests := []struct {
+		name            string
+		recordType      model.RecordType
+		payload         any
+		wantText        *model.TextPayload
+		wantCredentials *model.CredentialsPayload
+	}{
+		{
+			name:       "text record",
+			recordType: model.RecordTypeText,
+			payload:    textPayload,
+			wantText:   &textPayload,
+		},
+		{
+			name:            "credentials record",
+			recordType:      model.RecordTypeCredentials,
+			payload:         credentialsPayload,
+			wantCredentials: &credentialsPayload,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plaintext, err := json.Marshal(tt.payload)
+			if err != nil {
+				t.Fatalf("json.Marshal() error = %v", err)
+			}
+			stored := model.Record{
+				ID:            recordID,
+				UserID:        42,
+				Type:          tt.recordType,
+				Title:         "Alice record",
+				Revision:      model.RecordInitialRevision,
+				CreatedAt:     createdAt,
+				UpdatedAt:     updatedAt,
+				CryptoVersion: recordcrypto.CryptoVersion,
+				KeyID:         recordcrypto.DefaultKeyID,
+				Nonce:         []byte("nonce"),
+				Ciphertext:    []byte("ciphertext"),
+			}
+			records := &recordRepositoryStub{
+				getFunc: func(_ context.Context, userID int64, gotRecordID string) (model.Record, error) {
+					if userID != 42 || gotRecordID != recordID {
+						t.Fatalf("Get() args = %d, %q", userID, gotRecordID)
+					}
+
+					return stored, nil
+				},
+			}
+			crypto := &recordPayloadCryptoStub{
+				decryptFunc: func(encrypted recordcrypto.EncryptedPayload, aad []byte) ([]byte, error) {
+					if encrypted.CryptoVersion != stored.CryptoVersion || encrypted.KeyID != stored.KeyID ||
+						!bytes.Equal(encrypted.Nonce, stored.Nonce) ||
+						!bytes.Equal(encrypted.Ciphertext, stored.Ciphertext) {
+						t.Fatalf("Decrypt() encrypted payload = %+v", encrypted)
+					}
+					wantAAD := fmt.Sprintf(
+						"gopherkeeper:v1:user:42:record:%s:type:%s",
+						recordID,
+						tt.recordType,
+					)
+					if string(aad) != wantAAD {
+						t.Fatalf("Decrypt() AAD = %q, want %q", aad, wantAAD)
+					}
+
+					return plaintext, nil
+				},
+			}
+			service := NewRecordService(records, crypto)
+
+			got, err := service.Get(context.Background(), 42, recordID)
+			if err != nil {
+				t.Fatalf("Get() error = %v", err)
+			}
+			if got.Metadata != stored.Metadata() {
+				t.Errorf("Get() metadata = %+v, want %+v", got.Metadata, stored.Metadata())
+			}
+			switch tt.recordType {
+			case model.RecordTypeText:
+				payload, ok := textPayloadValue(got.Payload)
+				if !ok || tt.wantText == nil || payload != *tt.wantText {
+					t.Errorf("Get() text payload = %+v, want %+v", got.Payload, tt.wantText)
+				}
+			case model.RecordTypeCredentials:
+				payload, ok := credentialsPayloadValue(got.Payload)
+				if !ok || tt.wantCredentials == nil || payload != *tt.wantCredentials {
+					t.Errorf("Get() credentials payload = %+v, want %+v", got.Payload, tt.wantCredentials)
+				}
+			}
+		})
+	}
+}
+
+func TestRecordService_GetRejectsUnsupportedType(t *testing.T) {
+	records := &recordRepositoryStub{
+		getFunc: func(context.Context, int64, string) (model.Record, error) {
+			return model.Record{
+				ID:     "550e8400-e29b-41d4-a716-446655440000",
+				UserID: 42,
+				Type:   model.RecordTypeCard,
+			}, nil
+		},
+	}
+	crypto := &recordPayloadCryptoStub{}
+	service := NewRecordService(records, crypto)
+
+	_, err := service.Get(context.Background(), 42, "550e8400-e29b-41d4-a716-446655440000")
+	if !errors.Is(err, errInvalidStoredRecord) {
+		t.Fatalf("Get() error = %v, want errInvalidStoredRecord", err)
+	}
+	if crypto.decryptCalls != 0 {
+		t.Fatalf("Decrypt() calls = %d, want 0", crypto.decryptCalls)
+	}
+}
+
 func TestRecordService_GetText(t *testing.T) {
 	recordID := "550e8400-e29b-41d4-a716-446655440000"
 	stored := model.Record{
@@ -223,7 +350,11 @@ func TestRecordService_GetTextUnsupportedType(t *testing.T) {
 			}, nil
 		},
 	}
-	crypto := &recordPayloadCryptoStub{}
+	crypto := &recordPayloadCryptoStub{
+		decryptFunc: func(recordcrypto.EncryptedPayload, []byte) ([]byte, error) {
+			return []byte(`{"login":"alice","password":"secret"}`), nil
+		},
+	}
 	service := NewRecordService(records, crypto)
 
 	_, err := service.GetText(context.Background(), 42, "550e8400-e29b-41d4-a716-446655440000")
@@ -232,6 +363,60 @@ func TestRecordService_GetTextUnsupportedType(t *testing.T) {
 	}
 	if crypto.decryptCalls != 0 {
 		t.Fatalf("Decrypt() calls = %d, want 0", crypto.decryptCalls)
+	}
+}
+
+func TestRecordService_RejectsNilPayload(t *testing.T) {
+	var textPayload *model.TextPayload
+	var credentialsPayload *model.CredentialsPayload
+
+	tests := []struct {
+		name    string
+		payload model.RecordPayload
+		wantErr error
+	}{
+		{name: "text", payload: textPayload, wantErr: model.ErrInvalidTextPayload},
+		{name: "credentials", payload: credentialsPayload, wantErr: model.ErrInvalidCredentialsPayload},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			records := &recordRepositoryStub{}
+			crypto := &recordPayloadCryptoStub{}
+			service := NewRecordService(records, crypto)
+
+			_, err := service.Create(context.Background(), CreateRecordRequest{
+				UserID:  42,
+				Title:   "private record",
+				Payload: tt.payload,
+			})
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Create() error = %v, want %v", err, tt.wantErr)
+			}
+
+			_, err = service.Update(context.Background(), UpdateRecordRequest{
+				UserID:           42,
+				RecordID:         "550e8400-e29b-41d4-a716-446655440000",
+				ExpectedRevision: 1,
+				Title:            "private record",
+				Payload:          tt.payload,
+			})
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Update() error = %v, want %v", err, tt.wantErr)
+			}
+
+			if records.createCalls != 0 || records.getCalls != 0 || records.updateCalls != 0 ||
+				crypto.encryptCalls != 0 || crypto.decryptCalls != 0 {
+				t.Fatalf(
+					"calls: Create=%d Get=%d Update=%d Encrypt=%d Decrypt=%d, want 0",
+					records.createCalls,
+					records.getCalls,
+					records.updateCalls,
+					crypto.encryptCalls,
+					crypto.decryptCalls,
+				)
+			}
+		})
 	}
 }
 

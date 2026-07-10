@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +9,8 @@ import (
 
 	"golang.org/x/term"
 )
+
+var errPasswordInputNotTerminal = errors.New("password input is not a terminal")
 
 type passwordReader interface {
 	ReadHidden(input io.Reader, output io.Writer, prompt string) (string, error)
@@ -25,7 +26,7 @@ func (terminalPasswordReader) ReadHidden(
 ) (string, error) {
 	file, ok := input.(*os.File)
 	if !ok || !term.IsTerminal(int(file.Fd())) {
-		return "", errors.New("password input is not a terminal; use --password-stdin")
+		return "", fmt.Errorf("%w; use --password-stdin", errPasswordInputNotTerminal)
 	}
 
 	if _, err := fmt.Fprint(output, prompt); err != nil {
@@ -45,13 +46,29 @@ func (terminalPasswordReader) ReadHidden(
 }
 
 func (terminalPasswordReader) ReadLine(input io.Reader) (string, error) {
-	password, err := bufio.NewReader(input).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return "", fmt.Errorf("read password from stdin: %w", err)
-	}
-	if errors.Is(err, io.EOF) && password == "" {
-		return "", errors.New("read password from stdin: no data")
-	}
+	var line strings.Builder
+	var buffer [1]byte
 
-	return strings.TrimSuffix(strings.TrimSuffix(password, "\n"), "\r"), nil
+	for {
+		read, err := input.Read(buffer[:])
+		if read > 0 {
+			if buffer[0] == '\n' {
+				return strings.TrimSuffix(line.String(), "\r"), nil
+			}
+
+			line.WriteByte(buffer[0])
+		}
+
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, io.EOF) {
+			return "", fmt.Errorf("read line from stdin: %w", err)
+		}
+		if line.Len() == 0 {
+			return "", errors.New("read line from stdin: no data")
+		}
+
+		return strings.TrimSuffix(line.String(), "\r"), nil
+	}
 }

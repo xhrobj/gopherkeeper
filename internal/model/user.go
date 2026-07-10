@@ -15,7 +15,12 @@ var (
 
 // User представляет зарегистрированного пользователя GophKeeper.
 type User struct {
-	ID        int64
-	Login     string
+	// ID содержит внутренний идентификатор пользователя.
+	ID int64
+
+	// Login содержит канонический login пользователя.
+	Login string
+
+	// CreatedAt содержит время регистрации пользователя в UTC.
 	CreatedAt time.Time
 }

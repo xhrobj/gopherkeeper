@@ -19,48 +19,72 @@ import (
 const testRecordID = "7b4c2d7d-0e2f-4c4b-8d4b-8f4f7c4d3a21"
 
 type recordManagerStub struct {
-	createText func(context.Context, service.CreateTextRecordRequest) (service.TextRecord, error)
-	list       func(context.Context, int64) ([]model.RecordMetadata, error)
-	getText    func(context.Context, int64, string) (service.TextRecord, error)
-	updateText func(context.Context, service.UpdateTextRecordRequest) (service.TextRecord, error)
-	delete     func(context.Context, service.DeleteRecordRequest) error
+	create func(context.Context, service.CreateRecordRequest) (service.DecryptedRecord, error)
+	list   func(context.Context, int64) ([]model.RecordMetadata, error)
+	get    func(context.Context, int64, string) (service.DecryptedRecord, error)
+	update func(context.Context, service.UpdateRecordRequest) (service.DecryptedRecord, error)
+	delete func(context.Context, service.DeleteRecordRequest) error
 }
 
-func (s recordManagerStub) CreateText(
+func (s recordManagerStub) Create(
 	ctx context.Context,
-	request service.CreateTextRecordRequest,
-) (service.TextRecord, error) {
-	return s.createText(ctx, request)
+	request service.CreateRecordRequest,
+) (service.DecryptedRecord, error) {
+	return s.create(ctx, request)
 }
 
 func (s recordManagerStub) List(ctx context.Context, userID int64) ([]model.RecordMetadata, error) {
 	return s.list(ctx, userID)
 }
 
-func (s recordManagerStub) GetText(ctx context.Context, userID int64, recordID string) (service.TextRecord, error) {
-	return s.getText(ctx, userID, recordID)
+func (s recordManagerStub) Get(
+	ctx context.Context,
+	userID int64,
+	recordID string,
+) (service.DecryptedRecord, error) {
+	return s.get(ctx, userID, recordID)
 }
 
-func (s recordManagerStub) UpdateText(
+func (s recordManagerStub) Update(
 	ctx context.Context,
-	request service.UpdateTextRecordRequest,
-) (service.TextRecord, error) {
-	return s.updateText(ctx, request)
+	request service.UpdateRecordRequest,
+) (service.DecryptedRecord, error) {
+	return s.update(ctx, request)
 }
 
 func (s recordManagerStub) Delete(ctx context.Context, request service.DeleteRecordRequest) error {
 	return s.delete(ctx, request)
 }
 
+type textRecordResponse struct {
+	ID        string            `json:"id"`
+	Type      model.RecordType  `json:"type"`
+	Title     string            `json:"title"`
+	Revision  int64             `json:"revision"`
+	CreatedAt time.Time         `json:"created_at"`
+	UpdatedAt time.Time         `json:"updated_at"`
+	Payload   model.TextPayload `json:"payload"`
+}
+
+type credentialsRecordResponse struct {
+	ID        string                   `json:"id"`
+	Type      model.RecordType         `json:"type"`
+	Title     string                   `json:"title"`
+	Revision  int64                    `json:"revision"`
+	CreatedAt time.Time                `json:"created_at"`
+	UpdatedAt time.Time                `json:"updated_at"`
+	Payload   model.CredentialsPayload `json:"payload"`
+}
+
 func TestCreateRecordHandler_CreatesTextRecord(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 8, 12, 0, 0, 0, time.UTC)
 	updatedAt := time.Date(2026, time.July, 8, 12, 1, 0, 0, time.UTC)
-	var gotRequest service.CreateTextRecordRequest
+	var gotRequest service.CreateRecordRequest
 	records := recordManagerStub{
-		createText: func(_ context.Context, request service.CreateTextRecordRequest) (service.TextRecord, error) {
+		create: func(_ context.Context, request service.CreateRecordRequest) (service.DecryptedRecord, error) {
 			gotRequest = request
 
-			return service.TextRecord{
+			return service.DecryptedRecord{
 				Metadata: model.RecordMetadata{
 					ID:        testRecordID,
 					Type:      model.RecordTypeText,
@@ -84,11 +108,12 @@ func TestCreateRecordHandler_CreatesTextRecord(t *testing.T) {
 	if gotRequest.Title != "my note" {
 		t.Errorf("CreateText() title = %q, want my note", gotRequest.Title)
 	}
-	if gotRequest.Payload.Text != "secret note" {
-		t.Errorf("CreateText() payload text = %q, want secret note", gotRequest.Payload.Text)
+	gotPayload := requireTextPayload(t, gotRequest.Payload)
+	if gotPayload.Text != "secret note" {
+		t.Errorf("Create() payload text = %q, want secret note", gotPayload.Text)
 	}
-	if gotRequest.Payload.Metadata != "private metadata" {
-		t.Errorf("CreateText() metadata = %q, want private metadata", gotRequest.Payload.Metadata)
+	if gotPayload.Metadata != "private metadata" {
+		t.Errorf("Create() metadata = %q, want private metadata", gotPayload.Metadata)
 	}
 	if response.Code != http.StatusCreated {
 		t.Errorf("status code = %d, want %d", response.Code, http.StatusCreated)
@@ -110,6 +135,77 @@ func TestCreateRecordHandler_CreatesTextRecord(t *testing.T) {
 			Text:     "secret note",
 			Metadata: "private metadata",
 		},
+	})
+}
+
+func TestCreateRecordHandler_CreatesCredentialsRecord(t *testing.T) {
+	createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, time.July, 10, 12, 1, 0, 0, time.UTC)
+	payload := model.CredentialsPayload{
+		Login:    "alice",
+		Password: "correct-horse-battery-staple",
+		URL:      "https://github.com",
+		Metadata: "personal account",
+	}
+	var gotRequest service.CreateRecordRequest
+	records := recordManagerStub{
+		create: func(
+			_ context.Context,
+			request service.CreateRecordRequest,
+		) (service.DecryptedRecord, error) {
+			gotRequest = request
+
+			return service.DecryptedRecord{
+				Metadata: model.RecordMetadata{
+					ID:        testRecordID,
+					Type:      model.RecordTypeCredentials,
+					Title:     request.Title,
+					Revision:  model.RecordInitialRevision,
+					CreatedAt: createdAt,
+					UpdatedAt: updatedAt,
+				},
+				Payload: request.Payload,
+			}, nil
+		},
+	}
+	request := newCreateRecordRequest(t, createCredentialsRecordRequestBody(
+		t,
+		"GitHub",
+		payload.Login,
+		payload.Password,
+		payload.URL,
+		payload.Metadata,
+	))
+	response := httptest.NewRecorder()
+
+	serveAuthenticatedRecordHandler(t, createRecordHandler(records), response, request)
+
+	if gotRequest.UserID != 42 {
+		t.Errorf("CreateCredentials() userID = %d, want 42", gotRequest.UserID)
+	}
+	if gotRequest.Title != "GitHub" {
+		t.Errorf("CreateCredentials() title = %q, want GitHub", gotRequest.Title)
+	}
+	if gotPayload := requireCredentialsPayload(t, gotRequest.Payload); gotPayload != payload {
+		t.Errorf("Create() payload = %+v, want %+v", gotPayload, payload)
+	}
+	if response.Code != http.StatusCreated {
+		t.Errorf("status code = %d, want %d", response.Code, http.StatusCreated)
+	}
+	if etag := response.Header().Get("ETag"); etag != `"1"` {
+		t.Errorf("ETag = %q, want %q", etag, `"1"`)
+	}
+
+	var body credentialsRecordResponse
+	decodeJSONResponse(t, response, &body)
+	assertCredentialsRecordResponse(t, body, credentialsRecordResponse{
+		ID:        testRecordID,
+		Type:      model.RecordTypeCredentials,
+		Title:     "GitHub",
+		Revision:  model.RecordInitialRevision,
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+		Payload:   payload,
 	})
 }
 
@@ -154,6 +250,23 @@ func TestCreateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 			wantMessage: errorMessageInvalidRecordRequest,
 		},
 		{
+			name:        "text payload contains credentials field",
+			contentType: "application/json",
+			body:        `{"type":"text","title":"my note","payload":{"text":"secret","login":"alice"}}`,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "credentials payload contains text field",
+			contentType: "application/json",
+			body: `{"type":"credentials","title":"GitHub","payload":` +
+				`{"login":"alice","password":"secret","text":"note"}}`,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
 			name:        "unsupported record type",
 			contentType: "application/json",
 			body:        `{"type":"card","title":"my note","payload":{"text":"secret"}}`,
@@ -175,9 +288,9 @@ func TestCreateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			records := recordManagerStub{
-				createText: func(context.Context, service.CreateTextRecordRequest) (service.TextRecord, error) {
+				create: func(context.Context, service.CreateRecordRequest) (service.DecryptedRecord, error) {
 					t.Fatal("record service must not be called")
-					return service.TextRecord{}, nil
+					return service.DecryptedRecord{}, nil
 				},
 			}
 			request := httptest.NewRequest(http.MethodPost, "/api/v1/records", strings.NewReader(tt.body))
@@ -195,9 +308,9 @@ func TestCreateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 
 func TestCreateRecordHandler_RejectsOversizedBody(t *testing.T) {
 	records := recordManagerStub{
-		createText: func(context.Context, service.CreateTextRecordRequest) (service.TextRecord, error) {
+		create: func(context.Context, service.CreateRecordRequest) (service.DecryptedRecord, error) {
 			t.Fatal("record service must not be called")
-			return service.TextRecord{}, nil
+			return service.DecryptedRecord{}, nil
 		},
 	}
 	body := `{"type":"text","title":"my note","payload":{"text":"` +
@@ -252,8 +365,8 @@ func TestCreateRecordHandler_MapsServiceErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			records := recordManagerStub{
-				createText: func(context.Context, service.CreateTextRecordRequest) (service.TextRecord, error) {
-					return service.TextRecord{}, tt.serviceErr
+				create: func(context.Context, service.CreateRecordRequest) (service.DecryptedRecord, error) {
+					return service.DecryptedRecord{}, tt.serviceErr
 				},
 			}
 			request := newCreateRecordRequest(t, createTextRecordRequestBody(t, "my note", "secret", ""))
@@ -267,6 +380,36 @@ func TestCreateRecordHandler_MapsServiceErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCreateRecordHandler_MapsCredentialsValidationError(t *testing.T) {
+	records := recordManagerStub{
+		create: func(
+			context.Context,
+			service.CreateRecordRequest,
+		) (service.DecryptedRecord, error) {
+			return service.DecryptedRecord{}, model.ErrInvalidCredentialsPayload
+		},
+	}
+	request := newCreateRecordRequest(t, createCredentialsRecordRequestBody(
+		t,
+		"GitHub",
+		"alice",
+		"correct-horse-battery-staple",
+		"https://github.com",
+		"",
+	))
+	response := httptest.NewRecorder()
+
+	serveAuthenticatedRecordHandler(t, createRecordHandler(records), response, request)
+
+	assertErrorResponse(
+		t,
+		response,
+		http.StatusBadRequest,
+		errorCodeInvalidRequest,
+		errorMessageInvalidRecordRequest,
+	)
 }
 
 func TestListRecordsHandler_ReturnsMetadataOnly(t *testing.T) {
@@ -320,14 +463,18 @@ func TestListRecordsHandler_ReturnsMetadataOnly(t *testing.T) {
 func TestGetRecordHandler_ReturnsTextRecord(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 8, 12, 0, 0, 0, time.UTC)
 	updatedAt := time.Date(2026, time.July, 8, 12, 1, 0, 0, time.UTC)
+	payload := model.TextPayload{
+		Text:     "secret note",
+		Metadata: "private metadata",
+	}
 	var gotUserID int64
 	var gotRecordID string
 	records := recordManagerStub{
-		getText: func(_ context.Context, userID int64, recordID string) (service.TextRecord, error) {
+		get: func(_ context.Context, userID int64, recordID string) (service.DecryptedRecord, error) {
 			gotUserID = userID
 			gotRecordID = recordID
 
-			return service.TextRecord{
+			return service.DecryptedRecord{
 				Metadata: model.RecordMetadata{
 					ID:        testRecordID,
 					Type:      model.RecordTypeText,
@@ -336,10 +483,7 @@ func TestGetRecordHandler_ReturnsTextRecord(t *testing.T) {
 					CreatedAt: createdAt,
 					UpdatedAt: updatedAt,
 				},
-				Payload: model.TextPayload{
-					Text:     "secret note",
-					Metadata: "private metadata",
-				},
+				Payload: &payload,
 			}, nil
 		},
 	}
@@ -350,10 +494,10 @@ func TestGetRecordHandler_ReturnsTextRecord(t *testing.T) {
 	serveAuthenticatedRecordHandler(t, getRecordHandler(records), response, request)
 
 	if gotUserID != 42 {
-		t.Errorf("GetText() userID = %d, want 42", gotUserID)
+		t.Errorf("Get() userID = %d, want 42", gotUserID)
 	}
 	if gotRecordID != testRecordID {
-		t.Errorf("GetText() recordID = %q, want %q", gotRecordID, testRecordID)
+		t.Errorf("Get() recordID = %q, want %q", gotRecordID, testRecordID)
 	}
 	if response.Code != http.StatusOK {
 		t.Errorf("status code = %d, want %d", response.Code, http.StatusOK)
@@ -371,22 +515,119 @@ func TestGetRecordHandler_ReturnsTextRecord(t *testing.T) {
 		Revision:  model.RecordInitialRevision,
 		CreatedAt: createdAt,
 		UpdatedAt: updatedAt,
-		Payload: model.TextPayload{
-			Text:     "secret note",
-			Metadata: "private metadata",
-		},
+		Payload:   payload,
 	})
+}
+
+func TestGetRecordHandler_ReturnsCredentialsRecord(t *testing.T) {
+	createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, time.July, 10, 12, 1, 0, 0, time.UTC)
+	payload := model.CredentialsPayload{
+		Login:    "alice",
+		Password: "correct-horse-battery-staple",
+		URL:      "https://github.com",
+		Metadata: "personal account",
+	}
+	records := recordManagerStub{
+		get: func(_ context.Context, userID int64, recordID string) (service.DecryptedRecord, error) {
+			if userID != 42 {
+				t.Fatalf("Get() userID = %d, want 42", userID)
+			}
+			if recordID != testRecordID {
+				t.Fatalf("Get() recordID = %q, want %q", recordID, testRecordID)
+			}
+
+			return service.DecryptedRecord{
+				Metadata: model.RecordMetadata{
+					ID:        testRecordID,
+					Type:      model.RecordTypeCredentials,
+					Title:     "GitHub",
+					Revision:  model.RecordInitialRevision,
+					CreatedAt: createdAt,
+					UpdatedAt: updatedAt,
+				},
+				Payload: &payload,
+			}, nil
+		},
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/records/"+testRecordID, nil)
+	request.SetPathValue("id", testRecordID)
+	response := httptest.NewRecorder()
+
+	serveAuthenticatedRecordHandler(t, getRecordHandler(records), response, request)
+
+	if response.Code != http.StatusOK {
+		t.Errorf("status code = %d, want %d", response.Code, http.StatusOK)
+	}
+	if etag := response.Header().Get("ETag"); etag != `"1"` {
+		t.Errorf("ETag = %q, want %q", etag, `"1"`)
+	}
+
+	var body credentialsRecordResponse
+	decodeJSONResponse(t, response, &body)
+	assertCredentialsRecordResponse(t, body, credentialsRecordResponse{
+		ID:        testRecordID,
+		Type:      model.RecordTypeCredentials,
+		Title:     "GitHub",
+		Revision:  model.RecordInitialRevision,
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+		Payload:   payload,
+	})
+}
+
+func TestGetRecordHandler_RejectsInvalidServiceResult(t *testing.T) {
+	records := recordManagerStub{
+		get: func(context.Context, int64, string) (service.DecryptedRecord, error) {
+			return service.DecryptedRecord{
+				Metadata: model.RecordMetadata{
+					ID:       testRecordID,
+					Type:     model.RecordTypeCredentials,
+					Title:    "GitHub",
+					Revision: model.RecordInitialRevision,
+				},
+			}, nil
+		},
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/records/"+testRecordID, nil)
+	request.SetPathValue("id", testRecordID)
+	response := httptest.NewRecorder()
+
+	serveAuthenticatedRecordHandler(t, getRecordHandler(records), response, request)
+
+	assertErrorResponse(
+		t,
+		response,
+		http.StatusInternalServerError,
+		errorCodeInternal,
+		errorMessageInternal,
+	)
+	if response.Header().Get("ETag") != "" {
+		t.Errorf("ETag = %q, want empty", response.Header().Get("ETag"))
+	}
+}
+
+func TestNewRecordResponse_RejectsNilPayload(t *testing.T) {
+	var payload *model.TextPayload
+
+	_, err := newRecordResponse(service.DecryptedRecord{
+		Metadata: model.RecordMetadata{Type: model.RecordTypeText},
+		Payload:  payload,
+	})
+	if !errors.Is(err, errInvalidRecordResponse) {
+		t.Fatalf("newRecordResponse() error = %v, want %v", err, errInvalidRecordResponse)
+	}
 }
 
 func TestUpdateRecordHandler_UpdatesTextRecord(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 9, 12, 0, 0, 0, time.UTC)
 	updatedAt := time.Date(2026, time.July, 9, 12, 1, 0, 0, time.UTC)
-	var gotRequest service.UpdateTextRecordRequest
+	var gotRequest service.UpdateRecordRequest
 	records := recordManagerStub{
-		updateText: func(_ context.Context, request service.UpdateTextRecordRequest) (service.TextRecord, error) {
+		update: func(_ context.Context, request service.UpdateRecordRequest) (service.DecryptedRecord, error) {
 			gotRequest = request
 
-			return service.TextRecord{
+			return service.DecryptedRecord{
 				Metadata: model.RecordMetadata{
 					ID:        request.RecordID,
 					Type:      model.RecordTypeText,
@@ -417,11 +658,12 @@ func TestUpdateRecordHandler_UpdatesTextRecord(t *testing.T) {
 	if gotRequest.Title != "new note" {
 		t.Errorf("UpdateText() title = %q, want new note", gotRequest.Title)
 	}
-	if gotRequest.Payload.Text != "new secret" {
-		t.Errorf("UpdateText() payload text = %q, want new secret", gotRequest.Payload.Text)
+	gotPayload := requireTextPayload(t, gotRequest.Payload)
+	if gotPayload.Text != "new secret" {
+		t.Errorf("Update() payload text = %q, want new secret", gotPayload.Text)
 	}
-	if gotRequest.Payload.Metadata != "new metadata" {
-		t.Errorf("UpdateText() metadata = %q, want new metadata", gotRequest.Payload.Metadata)
+	if gotPayload.Metadata != "new metadata" {
+		t.Errorf("Update() metadata = %q, want new metadata", gotPayload.Metadata)
 	}
 	if response.Code != http.StatusOK {
 		t.Errorf("status code = %d, want %d", response.Code, http.StatusOK)
@@ -443,6 +685,84 @@ func TestUpdateRecordHandler_UpdatesTextRecord(t *testing.T) {
 			Text:     "new secret",
 			Metadata: "new metadata",
 		},
+	})
+}
+
+func TestUpdateRecordHandler_UpdatesCredentialsRecord(t *testing.T) {
+	createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, time.July, 10, 12, 1, 0, 0, time.UTC)
+	payload := model.CredentialsPayload{
+		Login:    "alice@example.com",
+		Password: "new-secret",
+		URL:      "https://github.com/login",
+		Metadata: "updated account",
+	}
+	var gotRequest service.UpdateRecordRequest
+	records := recordManagerStub{
+		update: func(
+			_ context.Context,
+			request service.UpdateRecordRequest,
+		) (service.DecryptedRecord, error) {
+			gotRequest = request
+
+			return service.DecryptedRecord{
+				Metadata: model.RecordMetadata{
+					ID:        request.RecordID,
+					Type:      model.RecordTypeCredentials,
+					Title:     request.Title,
+					Revision:  2,
+					CreatedAt: createdAt,
+					UpdatedAt: updatedAt,
+				},
+				Payload: request.Payload,
+			}, nil
+		},
+	}
+	request := newUpdateRecordRequest(t, testRecordID, updateCredentialsRecordRequestBody(
+		t,
+		"GitHub updated",
+		payload.Login,
+		payload.Password,
+		payload.URL,
+		payload.Metadata,
+	))
+	request.Header.Set("If-Match", `"1"`)
+	response := httptest.NewRecorder()
+
+	serveAuthenticatedRecordHandler(t, updateRecordHandler(records), response, request)
+
+	if gotRequest.UserID != 42 {
+		t.Errorf("UpdateCredentials() userID = %d, want 42", gotRequest.UserID)
+	}
+	if gotRequest.RecordID != testRecordID {
+		t.Errorf("UpdateCredentials() recordID = %q, want %q", gotRequest.RecordID, testRecordID)
+	}
+	if gotRequest.ExpectedRevision != 1 {
+		t.Errorf("UpdateCredentials() expected revision = %d, want 1", gotRequest.ExpectedRevision)
+	}
+	if gotRequest.Title != "GitHub updated" {
+		t.Errorf("UpdateCredentials() title = %q, want GitHub updated", gotRequest.Title)
+	}
+	if gotPayload := requireCredentialsPayload(t, gotRequest.Payload); gotPayload != payload {
+		t.Errorf("Update() payload = %+v, want %+v", gotPayload, payload)
+	}
+	if response.Code != http.StatusOK {
+		t.Errorf("status code = %d, want %d", response.Code, http.StatusOK)
+	}
+	if etag := response.Header().Get("ETag"); etag != `"2"` {
+		t.Errorf("ETag = %q, want %q", etag, `"2"`)
+	}
+
+	var body credentialsRecordResponse
+	decodeJSONResponse(t, response, &body)
+	assertCredentialsRecordResponse(t, body, credentialsRecordResponse{
+		ID:        testRecordID,
+		Type:      model.RecordTypeCredentials,
+		Title:     "GitHub updated",
+		Revision:  2,
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+		Payload:   payload,
 	})
 }
 
@@ -541,9 +861,9 @@ func TestUpdateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			records := recordManagerStub{
-				updateText: func(context.Context, service.UpdateTextRecordRequest) (service.TextRecord, error) {
+				update: func(context.Context, service.UpdateRecordRequest) (service.DecryptedRecord, error) {
 					t.Fatal("record service must not be called")
-					return service.TextRecord{}, nil
+					return service.DecryptedRecord{}, nil
 				},
 			}
 			request := httptest.NewRequest(http.MethodPut, "/api/v1/records/"+testRecordID, strings.NewReader(tt.body))
@@ -565,9 +885,9 @@ func TestUpdateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 
 func TestUpdateRecordHandler_RejectsOversizedBody(t *testing.T) {
 	records := recordManagerStub{
-		updateText: func(context.Context, service.UpdateTextRecordRequest) (service.TextRecord, error) {
+		update: func(context.Context, service.UpdateRecordRequest) (service.DecryptedRecord, error) {
 			t.Fatal("record service must not be called")
-			return service.TextRecord{}, nil
+			return service.DecryptedRecord{}, nil
 		},
 	}
 	body := `{"type":"text","title":"my note","payload":{"text":"` +
@@ -637,8 +957,8 @@ func TestUpdateRecordHandler_MapsServiceErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			records := recordManagerStub{
-				updateText: func(context.Context, service.UpdateTextRecordRequest) (service.TextRecord, error) {
-					return service.TextRecord{}, tt.serviceErr
+				update: func(context.Context, service.UpdateRecordRequest) (service.DecryptedRecord, error) {
+					return service.DecryptedRecord{}, tt.serviceErr
 				},
 			}
 			request := newUpdateRecordRequest(t, testRecordID, updateTextRecordRequestBody(t, "my note", "secret", ""))
@@ -828,21 +1148,21 @@ func TestParseIfMatchRevision(t *testing.T) {
 
 func TestRecordHandlers_RequireAuthentication(t *testing.T) {
 	records := recordManagerStub{
-		createText: func(context.Context, service.CreateTextRecordRequest) (service.TextRecord, error) {
+		create: func(context.Context, service.CreateRecordRequest) (service.DecryptedRecord, error) {
 			t.Fatal("record service must not be called")
-			return service.TextRecord{}, nil
+			return service.DecryptedRecord{}, nil
 		},
 		list: func(context.Context, int64) ([]model.RecordMetadata, error) {
 			t.Fatal("record service must not be called")
 			return nil, nil
 		},
-		getText: func(context.Context, int64, string) (service.TextRecord, error) {
+		get: func(context.Context, int64, string) (service.DecryptedRecord, error) {
 			t.Fatal("record service must not be called")
-			return service.TextRecord{}, nil
+			return service.DecryptedRecord{}, nil
 		},
-		updateText: func(context.Context, service.UpdateTextRecordRequest) (service.TextRecord, error) {
+		update: func(context.Context, service.UpdateRecordRequest) (service.DecryptedRecord, error) {
 			t.Fatal("record service must not be called")
-			return service.TextRecord{}, nil
+			return service.DecryptedRecord{}, nil
 		},
 		delete: func(context.Context, service.DeleteRecordRequest) error {
 			t.Fatal("record service must not be called")
@@ -894,8 +1214,8 @@ func TestRecordHandlers_RequireAuthentication(t *testing.T) {
 
 func TestRecordHandlers_MapRecordNotFound(t *testing.T) {
 	records := recordManagerStub{
-		getText: func(context.Context, int64, string) (service.TextRecord, error) {
-			return service.TextRecord{}, fmt.Errorf("get record: %w", model.ErrRecordNotFound)
+		get: func(context.Context, int64, string) (service.DecryptedRecord, error) {
+			return service.DecryptedRecord{}, fmt.Errorf("get record: %w", model.ErrRecordNotFound)
 		},
 	}
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/records/"+testRecordID, nil)
@@ -956,34 +1276,63 @@ func newDeleteRecordRequest(recordID string) *http.Request {
 func createTextRecordRequestBody(t *testing.T, title string, text string, metadata string) string {
 	t.Helper()
 
-	body, err := json.Marshal(createRecordRequest{
-		Type:  model.RecordTypeText,
-		Title: title,
-		Payload: model.TextPayload{
-			Text:     text,
-			Metadata: metadata,
-		},
+	return recordRequestBody(t, model.RecordTypeText, title, model.TextPayload{
+		Text:     text,
+		Metadata: metadata,
 	})
-	if err != nil {
-		t.Fatalf("encode create record request: %v", err)
-	}
+}
 
-	return string(body)
+func createCredentialsRecordRequestBody(
+	t *testing.T,
+	title string,
+	login string,
+	password string,
+	url string,
+	metadata string,
+) string {
+	t.Helper()
+
+	return recordRequestBody(t, model.RecordTypeCredentials, title, model.CredentialsPayload{
+		Login:    login,
+		Password: password,
+		URL:      url,
+		Metadata: metadata,
+	})
 }
 
 func updateTextRecordRequestBody(t *testing.T, title string, text string, metadata string) string {
 	t.Helper()
 
-	body, err := json.Marshal(updateRecordRequest{
-		Type:  model.RecordTypeText,
-		Title: title,
-		Payload: model.TextPayload{
-			Text:     text,
-			Metadata: metadata,
-		},
+	return createTextRecordRequestBody(t, title, text, metadata)
+}
+
+func updateCredentialsRecordRequestBody(
+	t *testing.T,
+	title string,
+	login string,
+	password string,
+	url string,
+	metadata string,
+) string {
+	t.Helper()
+
+	return createCredentialsRecordRequestBody(t, title, login, password, url, metadata)
+}
+
+func recordRequestBody(t *testing.T, recordType model.RecordType, title string, payload any) string {
+	t.Helper()
+
+	body, err := json.Marshal(struct {
+		Type    model.RecordType `json:"type"`
+		Title   string           `json:"title"`
+		Payload any              `json:"payload"`
+	}{
+		Type:    recordType,
+		Title:   title,
+		Payload: payload,
 	})
 	if err != nil {
-		t.Fatalf("encode update record request: %v", err)
+		t.Fatalf("encode record request: %v", err)
 	}
 
 	return string(body)
@@ -1023,6 +1372,28 @@ func assertRecordMetadataResponse(t *testing.T, got recordMetadataResponse, want
 	}
 }
 
+func requireTextPayload(t *testing.T, payload model.RecordPayload) model.TextPayload {
+	t.Helper()
+
+	value, ok := payload.(*model.TextPayload)
+	if !ok || value == nil {
+		t.Fatalf("payload type = %T, want non-nil *TextPayload", payload)
+	}
+
+	return *value
+}
+
+func requireCredentialsPayload(t *testing.T, payload model.RecordPayload) model.CredentialsPayload {
+	t.Helper()
+
+	value, ok := payload.(*model.CredentialsPayload)
+	if !ok || value == nil {
+		t.Fatalf("payload type = %T, want non-nil *CredentialsPayload", payload)
+	}
+
+	return *value
+}
+
 func assertTextRecordResponse(t *testing.T, got textRecordResponse, want textRecordResponse) {
 	t.Helper()
 
@@ -1046,5 +1417,32 @@ func assertTextRecordResponse(t *testing.T, got textRecordResponse, want textRec
 	}
 	if got.Payload.Metadata != want.Payload.Metadata {
 		t.Errorf("response payload.metadata = %q, want %q", got.Payload.Metadata, want.Payload.Metadata)
+	}
+}
+
+func assertCredentialsRecordResponse(
+	t *testing.T,
+	got credentialsRecordResponse,
+	want credentialsRecordResponse,
+) {
+	t.Helper()
+
+	assertRecordMetadataResponse(t, recordMetadataResponse{
+		ID:        got.ID,
+		Type:      got.Type,
+		Title:     got.Title,
+		Revision:  got.Revision,
+		CreatedAt: got.CreatedAt,
+		UpdatedAt: got.UpdatedAt,
+	}, recordMetadataResponse{
+		ID:        want.ID,
+		Type:      want.Type,
+		Title:     want.Title,
+		Revision:  want.Revision,
+		CreatedAt: want.CreatedAt,
+		UpdatedAt: want.UpdatedAt,
+	})
+	if got.Payload != want.Payload {
+		t.Errorf("response payload = %+v, want %+v", got.Payload, want.Payload)
 	}
 }

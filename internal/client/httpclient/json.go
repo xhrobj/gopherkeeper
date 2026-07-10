@@ -1,12 +1,9 @@
 package httpclient
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
@@ -52,72 +49,48 @@ type jsonRequest struct {
 }
 
 func (c *Client) doJSON(ctx context.Context, request jsonRequest) error {
-	body, err := encodeRequestBody(request.operation, request.requestBody)
-	if err != nil {
-		return err
-	}
-
-	httpRequest, err := http.NewRequestWithContext(ctx, request.method, c.baseURL+request.path, body)
-	if err != nil {
-		return fmt.Errorf("create %s request: %w", request.operation, err)
-	}
+	restyRequest := c.client.R().SetContext(ctx)
 	if request.requestBody != nil {
-		httpRequest.Header.Set("Content-Type", "application/json")
+		restyRequest.SetBody(request.requestBody)
 	}
 	if request.accessToken != "" {
-		httpRequest.Header.Set("Authorization", "Bearer "+request.accessToken)
+		restyRequest.SetAuthToken(request.accessToken)
 	}
-	for name, value := range request.headers {
-		httpRequest.Header.Set(name, value)
+	if len(request.headers) > 0 {
+		restyRequest.SetHeaders(request.headers)
 	}
 
-	response, err := c.httpClient.Do(httpRequest)
+	response, err := restyRequest.Execute(request.method, request.path)
 	if err != nil {
 		return fmt.Errorf("send %s request: %w", request.operation, err)
 	}
-	defer func() {
-		_ = response.Body.Close()
-	}()
 
-	if response.StatusCode != request.expectedStatus {
-		return decodeAPIError(response)
+	if response.StatusCode() != request.expectedStatus {
+		return decodeAPIError(response.StatusCode(), response.Status(), response.Body())
 	}
 
 	if request.responseBody == nil {
 		return nil
 	}
-	if err := json.NewDecoder(response.Body).Decode(request.responseBody); err != nil {
+	if err := json.Unmarshal(response.Body(), request.responseBody); err != nil {
 		return fmt.Errorf("decode %s response: %w", request.operation, err)
 	}
 
 	return nil
 }
 
-func encodeRequestBody(operation string, requestBody any) (io.Reader, error) {
-	if requestBody == nil {
-		return nil, nil
-	}
-
-	data, err := json.Marshal(requestBody)
-	if err != nil {
-		return nil, fmt.Errorf("encode %s request: %w", operation, err)
-	}
-
-	return bytes.NewReader(data), nil
-}
-
-func decodeAPIError(response *http.Response) error {
+func decodeAPIError(statusCode int, status string, body []byte) error {
 	var responseError errorResponse
-	if err := json.NewDecoder(response.Body).Decode(&responseError); err != nil {
-		return fmt.Errorf("api request returned status %s", response.Status)
+	if err := json.Unmarshal(body, &responseError); err != nil {
+		return fmt.Errorf("api request returned status %s", status)
 	}
 
 	if responseError.Code == "" || responseError.Message == "" {
-		return fmt.Errorf("api request returned status %s", response.Status)
+		return fmt.Errorf("api request returned status %s", status)
 	}
 
 	return &APIError{
-		StatusCode: response.StatusCode,
+		StatusCode: statusCode,
 		Code:       responseError.Code,
 		Message:    responseError.Message,
 	}

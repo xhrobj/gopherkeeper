@@ -14,7 +14,10 @@
 - `client health` — только результат команды;
 - `client register` — регистрация пользователя;
 - `client login` — вход пользователя и сохранение локальной online-сессии;
-- `client whoami` — проверка текущего пользователя по сохранённой online-сессии.
+- `client whoami` — проверка текущего пользователя по сохранённой online-сессии;
+- `client records create-text` / `update-text` — создание и изменение text-записей;
+- `client records create-credentials` / `update-credentials` — создание и изменение credentials-записей;
+- `client records list`, `get`, `delete` — общие операции для всех реализованных типов записей.
 
 ## Локальный запуск с нуля
 
@@ -308,28 +311,64 @@ Created text record <record-id> with revision 1.
 
 Приватный текст передаётся через файл, а не через аргумент команды, чтобы он не попадал в shell history. Для необязательной приватной метаинформации можно использовать `--metadata-file <path>`.
 
-### 13. Получить список записей
+### 13. Создать credentials-запись
+
+В штатном интерактивном режиме передаётся только открытый `title`:
+
+```bash
+gkeep records create-credentials --title 'GitHub'
+```
+
+Клиент запросит приватные поля отдельно:
+
+```text
+Login:
+Password:
+URL (optional):
+```
+
+Password вводится без отображения в терминале. Необязательную приватную метаинформацию можно прочитать из файла через `--metadata-file <path>`.
+
+Для CI и скриптов credentials можно передать одним JSON-значением через stdin:
+
+```bash
+printf '%s' "$GKEEP_CREDENTIALS_JSON" | \
+  gkeep records create-credentials --title 'GitHub' --credentials-stdin
+```
+
+`GKEEP_CREDENTIALS_JSON` должен поступать из безопасного хранилища секретов. Не записывайте JSON с password непосредственно в команду или shell script.
+
+Ожидаемый результат:
+
+```text
+Created credentials record <record-id> with revision 1.
+```
+
+### 14. Получить список записей
 
 ```bash
 gkeep records list
 ```
 
-Ожидаемый результат содержит только открытые metadata без приватного payload:
+Список содержит только открытые metadata записи и не раскрывает приватный payload:
 
 ```text
-ID                                    TYPE  TITLE    REVISION  UPDATED AT
-<record-id>                           text  my note  1         2026-07-08T12:00:00Z
+ID                                    TYPE         TITLE     REVISION  UPDATED AT
+<text-record-id>                      text         my note   1         2026-07-08T12:00:00Z
+<credentials-record-id>               credentials  GitHub    1         2026-07-10T12:01:00Z
 ```
 
-### 14. Получить text-запись
+### 15. Получить запись
 
 ```bash
 gkeep records get <record-id>
 ```
 
-Команда выводит открытую metadata и расшифрованный text payload текущего пользователя.
+Клиент определяет тип записи и выводит расшифрованный `text` или `credentials` payload владельцу.
 
-### 15. Обновить text-запись
+Для credentials вывод содержит login, password, URL и metadata. Это секретный вывод: не запускайте команду в общем терминале и не перенаправляйте результат в небезопасные логи или файлы.
+
+### 16. Обновить text-запись
 
 Подготовить новый файл с приватным текстом:
 
@@ -349,17 +388,33 @@ gkeep records update-text <record-id> --revision 1 --title 'updated note' --text
 Updated text record <record-id> to revision 2.
 ```
 
-`--revision` обязателен: Клиент передаёт его Серверу в HTTP-заголовке `If-Match`, чтобы не перетереть изменения с другого устройства. Если запись уже изменилась и ревизия устарела, команда завершится конфликтом:
+### 17. Обновить credentials-запись
+
+Интерактивное обновление использует те же безопасные prompts, что и создание:
+
+```bash
+gkeep records update-credentials <record-id> --revision 1 --title 'Updated GitHub'
+```
+
+gkeep records update-credentials f07ccc28-cf4b-4027-a1e1-5a5de729f65c --revision 1 --title 'Updated GitHub'
+
+Ожидаемый результат:
+
+```text
+Updated credentials record <record-id> to revision 2.
+```
+
+Для обеих update-команд `--revision` обязателен. Клиент передаёт её Серверу в HTTP-заголовке `If-Match`, чтобы не перетереть изменения с другого устройства. Устаревшая ревизия возвращает:
 
 ```text
 record revision conflict
 ```
 
-Как и при создании, приватный текст и приватная метаинформация передаются через файлы: `--text-file` и необязательный `--metadata-file`.
+Тип записи изменить нельзя: text-запись обновляется только через `update-text`, credentials-запись — только через `update-credentials`.
 
-### 16. Удалить запись
+### 18. Удалить запись
 
-Удалить запись можно только с ожидаемой актуальной ревизией:
+Удалить запись любого реализованного типа можно общей командой с актуальной ревизией:
 
 ```bash
 gkeep records delete <record-id> --revision 2
@@ -373,7 +428,7 @@ Deleted record <record-id>.
 
 Если ревизия устарела, Сервер возвращает конфликт и запись не удаляется. После успешного удаления повторный `gkeep records get <record-id>` вернёт `record not found`.
 
-### 17. Выйти из online-сессии
+### 19. Выйти из online-сессии
 
 ```bash
 gkeep logout

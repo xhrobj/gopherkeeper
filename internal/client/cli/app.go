@@ -23,16 +23,18 @@ const banner = `
 `
 
 type commandRunners struct {
-	health           outputRunner
-	register         passwordRunner
-	login            passwordRunner
-	logout           outputRunner
-	whoami           outputRunner
-	createTextRecord textRecordCreateRunner
-	updateTextRecord textRecordUpdateRunner
-	listRecords      outputRunner
-	getRecord        recordGetRunner
-	deleteRecord     recordDeleteRunner
+	health                  outputRunner
+	register                passwordRunner
+	login                   passwordRunner
+	logout                  outputRunner
+	whoami                  outputRunner
+	createTextRecord        textRecordCreateRunner
+	createCredentialsRecord credentialsRecordCreateRunner
+	updateTextRecord        textRecordUpdateRunner
+	updateCredentialsRecord credentialsRecordUpdateRunner
+	listRecords             outputRunner
+	getRecord               recordGetRunner
+	deleteRecord            recordDeleteRunner
 }
 
 type runOptions struct {
@@ -74,16 +76,18 @@ func RunWithInput(
 
 func defaultCommandRunners() commandRunners {
 	return commandRunners{
-		health:           runHealth,
-		register:         runRegister,
-		login:            runLogin,
-		logout:           runLogout,
-		whoami:           runWhoami,
-		createTextRecord: runCreateTextRecord,
-		updateTextRecord: runUpdateTextRecord,
-		listRecords:      runListRecords,
-		getRecord:        runGetRecord,
-		deleteRecord:     runDeleteRecord,
+		health:                  runHealth,
+		register:                runRegister,
+		login:                   runLogin,
+		logout:                  runLogout,
+		whoami:                  runWhoami,
+		createTextRecord:        runCreateTextRecord,
+		createCredentialsRecord: runCreateCredentialsRecord,
+		updateTextRecord:        runUpdateTextRecord,
+		updateCredentialsRecord: runUpdateCredentialsRecord,
+		listRecords:             runListRecords,
+		getRecord:               runGetRecord,
+		deleteRecord:            runDeleteRecord,
 	}
 }
 
@@ -163,7 +167,7 @@ func newRootCommand(
 			newLoginCommand(input, runners.login),
 			newLogoutCommand(runners.logout),
 			newWhoamiCommand(runners.whoami),
-			newRecordsCommand(runners),
+			newRecordsCommand(input, runners),
 		},
 		Action: func(_ context.Context, command *urfavecli.Command) error {
 			return urfavecli.ShowRootCommandHelp(command)
