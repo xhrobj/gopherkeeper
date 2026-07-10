@@ -7,21 +7,34 @@ import (
 )
 
 var (
+	// ErrInvalidCredentialsPayload сообщает, что credentials payload некорректен.
 	ErrInvalidCredentialsPayload = errors.New("invalid credentials payload")
 )
 
+// CredentialsPayload содержит приватную пару login/password и связанные данные.
 type CredentialsPayload struct {
-	Login    string `json:"login"`
+	// Login содержит имя пользователя или идентификатор учётной записи.
+	Login string `json:"login"`
+
+	// Password содержит секрет аутентификации учётной записи.
 	Password string `json:"password"`
-	URL      string `json:"url,omitempty"`
+
+	// URL содержит необязательный адрес ресурса, к которому относятся credentials.
+	URL string `json:"url,omitempty"`
+
+	// Metadata содержит необязательную произвольную текстовую метаинформацию.
 	Metadata string `json:"metadata,omitempty"`
 }
 
-func (payload CredentialsPayload) Validate() error {
+// Validate проверяет обязательные поля и ограничения credentials payload.
+func (payload *CredentialsPayload) Validate() error {
+	if payload == nil {
+		return ErrInvalidCredentialsPayload
+	}
+
 	if !utf8.ValidString(payload.Login) ||
 		!utf8.ValidString(payload.Password) ||
-		!utf8.ValidString(payload.URL) ||
-		!utf8.ValidString(payload.Metadata) {
+		!utf8.ValidString(payload.URL) {
 		return ErrInvalidCredentialsPayload
 	}
 
@@ -29,9 +42,12 @@ func (payload CredentialsPayload) Validate() error {
 		return ErrInvalidCredentialsPayload
 	}
 
-	if len(payload.Metadata) > MetadataMaxSize {
-		return ErrPayloadTooLarge
-	}
-
-	return nil
+	return validatePayloadMetadata(payload.Metadata, ErrInvalidCredentialsPayload)
 }
+
+// RecordType возвращает тип credentials-записи.
+func (*CredentialsPayload) RecordType() RecordType {
+	return RecordTypeCredentials
+}
+
+func (*CredentialsPayload) recordPayload() {}

@@ -82,46 +82,59 @@ func (recordType RecordType) Validate() error {
 
 // Record описывает приватную запись в серверном хранилище.
 type Record struct {
-	ID            string
-	UserID        int64
-	Type          RecordType
-	Title         string
-	Revision      int64
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	// ID содержит UUID приватной записи.
+	ID string
+
+	// UserID содержит идентификатор владельца записи.
+	UserID int64
+
+	// Type содержит неизменяемый тип payload записи.
+	Type RecordType
+
+	// Title содержит открытое название записи.
+	Title string
+
+	// Revision содержит текущую ревизию записи для оптимистической блокировки.
+	Revision int64
+
+	// CreatedAt содержит время создания записи в UTC.
+	CreatedAt time.Time
+
+	// UpdatedAt содержит время последнего изменения записи в UTC.
+	UpdatedAt time.Time
+
+	// CryptoVersion содержит версию формата серверного шифрования payload.
 	CryptoVersion int
-	KeyID         string
-	Nonce         []byte
-	Ciphertext    []byte
+
+	// KeyID содержит идентификатор мастер-ключа, которым зашифрован payload.
+	KeyID string
+
+	// Nonce содержит уникальный nonce AES-GCM.
+	Nonce []byte
+
+	// Ciphertext содержит зашифрованный приватный payload вместе с authentication tag.
+	Ciphertext []byte
 }
 
 // RecordMetadata содержит открытые поля приватной записи без payload.
 type RecordMetadata struct {
-	ID        string
-	Type      RecordType
-	Title     string
-	Revision  int64
+	// ID содержит UUID приватной записи.
+	ID string
+
+	// Type содержит тип payload записи.
+	Type RecordType
+
+	// Title содержит открытое название записи.
+	Title string
+
+	// Revision содержит текущую ревизию записи.
+	Revision int64
+
+	// CreatedAt содержит время создания записи в UTC.
 	CreatedAt time.Time
+
+	// UpdatedAt содержит время последнего изменения записи в UTC.
 	UpdatedAt time.Time
-}
-
-// TextPayload содержит приватный текстовый payload записи.
-type TextPayload struct {
-	Text     string `json:"text"`
-	Metadata string `json:"metadata,omitempty"`
-}
-
-// Validate проверяет обязательный текст и ограничения размера text payload.
-func (payload TextPayload) Validate() error {
-	if payload.Text == "" || !utf8.ValidString(payload.Text) || !utf8.ValidString(payload.Metadata) {
-		return ErrInvalidTextPayload
-	}
-
-	if len(payload.Text) > TextPayloadMaxSize || len(payload.Metadata) > MetadataMaxSize {
-		return ErrPayloadTooLarge
-	}
-
-	return nil
 }
 
 // Metadata возвращает открытые поля записи без encrypted payload.

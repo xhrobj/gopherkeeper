@@ -200,9 +200,11 @@ func TestRecordService_GetCredentialsRejectsUnexpectedPayload(t *testing.T) {
 		wantDecrypt int
 	}{
 		{
-			name:       "unsupported record type",
-			storedType: model.RecordTypeText,
-			wantErr:    model.ErrRecordTypeUnsupported,
+			name:        "unsupported record type",
+			storedType:  model.RecordTypeText,
+			plaintext:   []byte(`{"text":"secret note"}`),
+			wantErr:     model.ErrRecordTypeUnsupported,
+			wantDecrypt: 0,
 		},
 		{
 			name:        "invalid decrypted payload",

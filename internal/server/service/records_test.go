@@ -228,11 +228,17 @@ func TestRecordService_Get(t *testing.T) {
 			if got.Metadata != stored.Metadata() {
 				t.Errorf("Get() metadata = %+v, want %+v", got.Metadata, stored.Metadata())
 			}
-			if !equalOptionalTextPayload(got.Text, tt.wantText) {
-				t.Errorf("Get() text payload = %+v, want %+v", got.Text, tt.wantText)
-			}
-			if !equalOptionalCredentialsPayload(got.Credentials, tt.wantCredentials) {
-				t.Errorf("Get() credentials payload = %+v, want %+v", got.Credentials, tt.wantCredentials)
+			switch tt.recordType {
+			case model.RecordTypeText:
+				payload, ok := textPayloadValue(got.Payload)
+				if !ok || tt.wantText == nil || payload != *tt.wantText {
+					t.Errorf("Get() text payload = %+v, want %+v", got.Payload, tt.wantText)
+				}
+			case model.RecordTypeCredentials:
+				payload, ok := credentialsPayloadValue(got.Payload)
+				if !ok || tt.wantCredentials == nil || payload != *tt.wantCredentials {
+					t.Errorf("Get() credentials payload = %+v, want %+v", got.Payload, tt.wantCredentials)
+				}
 			}
 		})
 	}
@@ -252,8 +258,8 @@ func TestRecordService_GetRejectsUnsupportedType(t *testing.T) {
 	service := NewRecordService(records, crypto)
 
 	_, err := service.Get(context.Background(), 42, "550e8400-e29b-41d4-a716-446655440000")
-	if !errors.Is(err, model.ErrRecordTypeUnsupported) {
-		t.Fatalf("Get() error = %v, want ErrRecordTypeUnsupported", err)
+	if !errors.Is(err, errInvalidStoredRecord) {
+		t.Fatalf("Get() error = %v, want errInvalidStoredRecord", err)
 	}
 	if crypto.decryptCalls != 0 {
 		t.Fatalf("Decrypt() calls = %d, want 0", crypto.decryptCalls)
@@ -344,7 +350,11 @@ func TestRecordService_GetTextUnsupportedType(t *testing.T) {
 			}, nil
 		},
 	}
-	crypto := &recordPayloadCryptoStub{}
+	crypto := &recordPayloadCryptoStub{
+		decryptFunc: func(recordcrypto.EncryptedPayload, []byte) ([]byte, error) {
+			return []byte(`{"login":"alice","password":"secret"}`), nil
+		},
+	}
 	service := NewRecordService(records, crypto)
 
 	_, err := service.GetText(context.Background(), 42, "550e8400-e29b-41d4-a716-446655440000")
@@ -353,6 +363,60 @@ func TestRecordService_GetTextUnsupportedType(t *testing.T) {
 	}
 	if crypto.decryptCalls != 0 {
 		t.Fatalf("Decrypt() calls = %d, want 0", crypto.decryptCalls)
+	}
+}
+
+func TestRecordService_RejectsNilPayload(t *testing.T) {
+	var textPayload *model.TextPayload
+	var credentialsPayload *model.CredentialsPayload
+
+	tests := []struct {
+		name    string
+		payload model.RecordPayload
+		wantErr error
+	}{
+		{name: "text", payload: textPayload, wantErr: model.ErrInvalidTextPayload},
+		{name: "credentials", payload: credentialsPayload, wantErr: model.ErrInvalidCredentialsPayload},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			records := &recordRepositoryStub{}
+			crypto := &recordPayloadCryptoStub{}
+			service := NewRecordService(records, crypto)
+
+			_, err := service.Create(context.Background(), CreateRecordRequest{
+				UserID:  42,
+				Title:   "private record",
+				Payload: tt.payload,
+			})
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Create() error = %v, want %v", err, tt.wantErr)
+			}
+
+			_, err = service.Update(context.Background(), UpdateRecordRequest{
+				UserID:           42,
+				RecordID:         "550e8400-e29b-41d4-a716-446655440000",
+				ExpectedRevision: 1,
+				Title:            "private record",
+				Payload:          tt.payload,
+			})
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Update() error = %v, want %v", err, tt.wantErr)
+			}
+
+			if records.createCalls != 0 || records.getCalls != 0 || records.updateCalls != 0 ||
+				crypto.encryptCalls != 0 || crypto.decryptCalls != 0 {
+				t.Fatalf(
+					"calls: Create=%d Get=%d Update=%d Encrypt=%d Decrypt=%d, want 0",
+					records.createCalls,
+					records.getCalls,
+					records.updateCalls,
+					crypto.encryptCalls,
+					crypto.decryptCalls,
+				)
+			}
+		})
 	}
 }
 
@@ -1050,20 +1114,4 @@ func (s *recordPayloadCryptoStub) Decrypt(encrypted recordcrypto.EncryptedPayloa
 	}
 
 	return s.decryptFunc(encrypted, aad)
-}
-
-func equalOptionalTextPayload(got, want *model.TextPayload) bool {
-	if got == nil || want == nil {
-		return got == nil && want == nil
-	}
-
-	return *got == *want
-}
-
-func equalOptionalCredentialsPayload(got, want *model.CredentialsPayload) bool {
-	if got == nil || want == nil {
-		return got == nil && want == nil
-	}
-
-	return *got == *want
 }

@@ -2,93 +2,121 @@ package service
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 // CreateCredentialsRecordRequest содержит входные данные для создания credentials-записи.
 type CreateCredentialsRecordRequest struct {
-	UserID  int64
-	Title   string
+	// UserID содержит идентификатор владельца создаваемой записи.
+	UserID int64
+
+	// Title содержит открытое название создаваемой записи.
+	Title string
+
+	// Payload содержит приватные credentials-данные создаваемой записи.
 	Payload model.CredentialsPayload
 }
 
 // UpdateCredentialsRecordRequest содержит входные данные для изменения credentials-записи.
 type UpdateCredentialsRecordRequest struct {
-	UserID           int64
-	RecordID         string
+	// UserID содержит идентификатор владельца изменяемой записи.
+	UserID int64
+
+	// RecordID содержит UUID изменяемой записи.
+	RecordID string
+
+	// ExpectedRevision содержит ревизию, ожидаемую Клиентом.
 	ExpectedRevision int64
-	Title            string
-	Payload          model.CredentialsPayload
+
+	// Title содержит новое открытое название записи.
+	Title string
+
+	// Payload содержит новые приватные credentials-данные записи.
+	Payload model.CredentialsPayload
 }
 
 // CredentialsRecord содержит открытую metadata и расшифрованный credentials payload.
 type CredentialsRecord struct {
+	// Metadata содержит открытые поля credentials-записи.
 	Metadata model.RecordMetadata
-	Payload  model.CredentialsPayload
+
+	// Payload содержит расшифрованные приватные credentials-данные.
+	Payload model.CredentialsPayload
 }
 
-// CreateCredentials создаёт credentials-запись, шифрует payload и сохраняет encrypted record.
+// CreateCredentials создаёт credentials-запись через единый сценарий создания записей.
 func (s *RecordService) CreateCredentials(
 	ctx context.Context,
 	request CreateCredentialsRecordRequest,
 ) (CredentialsRecord, error) {
-	record, err := s.createRecord(
-		ctx,
-		request.UserID,
-		request.Title,
-		model.RecordTypeCredentials,
-		request.Payload,
-	)
+	record, err := s.Create(ctx, CreateRecordRequest{
+		UserID:  request.UserID,
+		Title:   request.Title,
+		Payload: &request.Payload,
+	})
 	if err != nil {
 		return CredentialsRecord{}, err
 	}
 
-	return CredentialsRecord{
-		Metadata: record.Metadata(),
-		Payload:  request.Payload,
-	}, nil
+	payload, ok := credentialsPayloadValue(record.Payload)
+	if !ok {
+		return CredentialsRecord{}, fmt.Errorf("%w: credentials payload", errInvalidStoredRecord)
+	}
+
+	return CredentialsRecord{Metadata: record.Metadata, Payload: payload}, nil
 }
 
-// GetCredentials возвращает credentials-запись пользователя и расшифровывает её payload.
+// GetCredentials возвращает credentials-запись через единый сценарий чтения записей.
 func (s *RecordService) GetCredentials(
 	ctx context.Context,
 	userID int64,
 	recordID string,
 ) (CredentialsRecord, error) {
-	var payload model.CredentialsPayload
-
-	record, err := s.getRecord(ctx, userID, recordID, model.RecordTypeCredentials, &payload)
+	expectedType := model.RecordTypeCredentials
+	record, err := s.getRecord(ctx, userID, recordID, &expectedType)
 	if err != nil {
 		return CredentialsRecord{}, err
 	}
 
-	return CredentialsRecord{
-		Metadata: record.Metadata(),
-		Payload:  payload,
-	}, nil
+	payload, ok := credentialsPayloadValue(record.Payload)
+	if !ok {
+		return CredentialsRecord{}, model.ErrRecordTypeUnsupported
+	}
+
+	return CredentialsRecord{Metadata: record.Metadata, Payload: payload}, nil
 }
 
-// UpdateCredentials изменяет credentials-запись при совпадении ожидаемой ревизии.
+// UpdateCredentials изменяет credentials-запись через единый сценарий изменения записей.
 func (s *RecordService) UpdateCredentials(
 	ctx context.Context,
 	request UpdateCredentialsRecordRequest,
 ) (CredentialsRecord, error) {
-	updated, err := s.updateRecord(
-		ctx,
-		request.UserID,
-		request.RecordID,
-		request.ExpectedRevision,
-		request.Title,
-		model.RecordTypeCredentials,
-		request.Payload,
-	)
+	record, err := s.Update(ctx, UpdateRecordRequest{
+		UserID:           request.UserID,
+		RecordID:         request.RecordID,
+		ExpectedRevision: request.ExpectedRevision,
+		Title:            request.Title,
+		Payload:          &request.Payload,
+	})
 	if err != nil {
 		return CredentialsRecord{}, err
 	}
 
-	return CredentialsRecord{
-		Metadata: updated.Metadata(),
-		Payload:  request.Payload,
-	}, nil
+	payload, ok := credentialsPayloadValue(record.Payload)
+	if !ok {
+		return CredentialsRecord{}, fmt.Errorf("%w: credentials payload", errInvalidStoredRecord)
+	}
+
+	return CredentialsRecord{Metadata: record.Metadata, Payload: payload}, nil
+}
+
+func credentialsPayloadValue(payload model.RecordPayload) (model.CredentialsPayload, bool) {
+	value, ok := payload.(*model.CredentialsPayload)
+	if !ok || value == nil {
+		return model.CredentialsPayload{}, false
+	}
+
+	return *value, true
 }

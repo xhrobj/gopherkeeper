@@ -265,8 +265,8 @@ func TestNewHandler_RoutesRecords(t *testing.T) {
 			})
 			tt.request.Header.Set("If-Match", `"1"`)
 			deps.Records = recordManagerStub{
-				createText: func(_ context.Context, request service.CreateTextRecordRequest) (service.TextRecord, error) {
-					return service.TextRecord{
+				create: func(_ context.Context, request service.CreateRecordRequest) (service.DecryptedRecord, error) {
+					return service.DecryptedRecord{
 						Metadata: model.RecordMetadata{
 							ID:        testRecordID,
 							Type:      model.RecordTypeText,
@@ -299,11 +299,11 @@ func TestNewHandler_RoutesRecords(t *testing.T) {
 							CreatedAt: createdAt,
 							UpdatedAt: createdAt,
 						},
-						Text: &payload,
+						Payload: &payload,
 					}, nil
 				},
-				updateText: func(_ context.Context, request service.UpdateTextRecordRequest) (service.TextRecord, error) {
-					return service.TextRecord{
+				update: func(_ context.Context, request service.UpdateRecordRequest) (service.DecryptedRecord, error) {
+					return service.DecryptedRecord{
 						Metadata: model.RecordMetadata{
 							ID:        request.RecordID,
 							Type:      model.RecordTypeText,
@@ -395,16 +395,9 @@ func unusedRecordManager(t *testing.T) RecordManager {
 	t.Helper()
 
 	return recordManagerStub{
-		createText: func(context.Context, service.CreateTextRecordRequest) (service.TextRecord, error) {
+		create: func(context.Context, service.CreateRecordRequest) (service.DecryptedRecord, error) {
 			t.Fatal("record manager must not be called")
-			return service.TextRecord{}, nil
-		},
-		createCredentials: func(
-			context.Context,
-			service.CreateCredentialsRecordRequest,
-		) (service.CredentialsRecord, error) {
-			t.Fatal("record manager must not be called")
-			return service.CredentialsRecord{}, nil
+			return service.DecryptedRecord{}, nil
 		},
 		list: func(context.Context, int64) ([]model.RecordMetadata, error) {
 			t.Fatal("record manager must not be called")
@@ -414,16 +407,9 @@ func unusedRecordManager(t *testing.T) RecordManager {
 			t.Fatal("record manager must not be called")
 			return service.DecryptedRecord{}, nil
 		},
-		updateText: func(context.Context, service.UpdateTextRecordRequest) (service.TextRecord, error) {
+		update: func(context.Context, service.UpdateRecordRequest) (service.DecryptedRecord, error) {
 			t.Fatal("record manager must not be called")
-			return service.TextRecord{}, nil
-		},
-		updateCredentials: func(
-			context.Context,
-			service.UpdateCredentialsRecordRequest,
-		) (service.CredentialsRecord, error) {
-			t.Fatal("record manager must not be called")
-			return service.CredentialsRecord{}, nil
+			return service.DecryptedRecord{}, nil
 		},
 		delete: func(context.Context, service.DeleteRecordRequest) error {
 			t.Fatal("record manager must not be called")

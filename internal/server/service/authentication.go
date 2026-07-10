@@ -32,9 +32,14 @@ type TokenIssuer interface {
 
 // AuthenticationResult содержит результат успешной аутентификации.
 type AuthenticationResult struct {
-	User        model.User
+	// User содержит публичные данные аутентифицированного пользователя.
+	User model.User
+
+	// AccessToken содержит выпущенный bearer token.
 	AccessToken string
-	ExpiresAt   time.Time
+
+	// ExpiresAt содержит время истечения bearer token.
+	ExpiresAt time.Time
 }
 
 // AuthenticationService реализует сценарий аутентификации пользователя.

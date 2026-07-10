@@ -138,6 +138,14 @@ func TestCredentialsPayload_Validate(t *testing.T) {
 	}
 }
 
+func TestCredentialsPayload_ValidateNil(t *testing.T) {
+	var payload *CredentialsPayload
+
+	if err := payload.Validate(); !errors.Is(err, ErrInvalidCredentialsPayload) {
+		t.Fatalf("Validate() error = %v, want %v", err, ErrInvalidCredentialsPayload)
+	}
+}
+
 func TestCredentialsPayload_ValidatePreservesValues(t *testing.T) {
 	payload := CredentialsPayload{
 		Login:    " alice ",
