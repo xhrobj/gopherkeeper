@@ -42,6 +42,15 @@ var (
 
 	// ErrInvalidTextPayload сообщает, что text payload некорректен.
 	ErrInvalidTextPayload = errors.New("invalid text payload")
+
+	// ErrRecordRevisionConflict сообщает, что ожидаемая ревизия записи устарела.
+	ErrRecordRevisionConflict = errors.New("record revision conflict")
+
+	// ErrRecordPreconditionRequired сообщает, что операция над записью требует ожидаемую ревизию.
+	ErrRecordPreconditionRequired = errors.New("record precondition required")
+
+	// ErrInvalidRecordRevision сообщает, что ревизия записи некорректна.
+	ErrInvalidRecordRevision = errors.New("invalid record revision")
 )
 
 // RecordType описывает тип приватной записи.
@@ -150,6 +159,15 @@ func NewRecordID() (string, error) {
 func ValidateRecordID(id string) error {
 	if _, err := uuid.Parse(id); err != nil {
 		return ErrInvalidRecordID
+	}
+
+	return nil
+}
+
+// ValidateRecordRevision проверяет, что ревизия записи является положительным числом.
+func ValidateRecordRevision(revision int64) error {
+	if revision <= 0 {
+		return ErrInvalidRecordRevision
 	}
 
 	return nil

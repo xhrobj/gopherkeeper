@@ -29,8 +29,10 @@ type commandRunners struct {
 	logout           outputRunner
 	whoami           outputRunner
 	createTextRecord textRecordCreateRunner
+	updateTextRecord textRecordUpdateRunner
 	listRecords      outputRunner
 	getRecord        recordGetRunner
+	deleteRecord     recordDeleteRunner
 }
 
 type runOptions struct {
@@ -78,8 +80,10 @@ func defaultCommandRunners() commandRunners {
 		logout:           runLogout,
 		whoami:           runWhoami,
 		createTextRecord: runCreateTextRecord,
+		updateTextRecord: runUpdateTextRecord,
 		listRecords:      runListRecords,
 		getRecord:        runGetRecord,
+		deleteRecord:     runDeleteRecord,
 	}
 }
 

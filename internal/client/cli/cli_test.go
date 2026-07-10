@@ -58,11 +58,17 @@ func runTestCommand(
 	if runners.createTextRecord == nil {
 		runners.createTextRecord = unexpectedCreateTextRecordRunner(t)
 	}
+	if runners.updateTextRecord == nil {
+		runners.updateTextRecord = unexpectedUpdateTextRecordRunner(t)
+	}
 	if runners.listRecords == nil {
 		runners.listRecords = unexpectedListRecordsRunner(t)
 	}
 	if runners.getRecord == nil {
 		runners.getRecord = unexpectedGetRecordRunner(t)
+	}
+	if runners.deleteRecord == nil {
+		runners.deleteRecord = unexpectedDeleteRecordRunner(t)
 	}
 
 	return run(context.Background(), args, runOptions{
@@ -134,6 +140,16 @@ func unexpectedCreateTextRecordRunner(t *testing.T) textRecordCreateRunner {
 	}
 }
 
+func unexpectedUpdateTextRecordRunner(t *testing.T) textRecordUpdateRunner {
+	t.Helper()
+
+	return func(context.Context, config.Config, io.Writer, textRecordUpdateCommandRequest) error {
+		t.Helper()
+		t.Fatal("records update-text command must not run")
+		return nil
+	}
+}
+
 func unexpectedListRecordsRunner(t *testing.T) outputRunner {
 	t.Helper()
 
@@ -150,6 +166,16 @@ func unexpectedGetRecordRunner(t *testing.T) recordGetRunner {
 	return func(context.Context, config.Config, io.Writer, string) error {
 		t.Helper()
 		t.Fatal("records get command must not run")
+		return nil
+	}
+}
+
+func unexpectedDeleteRecordRunner(t *testing.T) recordDeleteRunner {
+	t.Helper()
+
+	return func(context.Context, config.Config, io.Writer, string, int64) error {
+		t.Helper()
+		t.Fatal("records delete command must not run")
 		return nil
 	}
 }

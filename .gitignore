@@ -42,6 +42,9 @@ __MACOSX/
 # каталог для локальной сессии Клиента
 /.session/
 
+# TODO: перейти на .local/
+/.tmp/
+
 # JSON-конфиг Клиента (разрешен только example-конфиг)
 /configs/*
 !/configs/client.example.json

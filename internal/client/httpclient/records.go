@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
@@ -20,6 +21,15 @@ type CreateTextRecordRequest struct {
 	Payload model.TextPayload
 }
 
+// UpdateTextRecordRequest содержит данные для изменения text-записи через HTTP API.
+type UpdateTextRecordRequest struct {
+	// Title содержит новое открытое название записи.
+	Title string
+
+	// Payload содержит новый приватный text payload.
+	Payload model.TextPayload
+}
+
 // TextRecord содержит открытую metadata и расшифрованный text payload, возвращённые Сервером.
 type TextRecord struct {
 	// Metadata содержит открытые поля записи.
@@ -30,6 +40,12 @@ type TextRecord struct {
 }
 
 type createRecordRequest struct {
+	Type    model.RecordType  `json:"type"`
+	Title   string            `json:"title"`
+	Payload model.TextPayload `json:"payload"`
+}
+
+type updateRecordRequest struct {
 	Type    model.RecordType  `json:"type"`
 	Title   string            `json:"title"`
 	Payload model.TextPayload `json:"payload"`
@@ -124,6 +140,61 @@ func (c *Client) GetTextRecord(ctx context.Context, accessToken string, recordID
 	}
 
 	return textRecordFromResponse(record), nil
+}
+
+// UpdateTextRecord изменяет text-запись на Сервере с проверкой ожидаемой ревизии.
+func (c *Client) UpdateTextRecord(
+	ctx context.Context,
+	accessToken string,
+	recordID string,
+	expectedRevision int64,
+	request UpdateTextRecordRequest,
+) (TextRecord, error) {
+	var updated textRecordResponse
+
+	if err := c.doJSON(ctx, jsonRequest{
+		operation:   "update text record",
+		method:      http.MethodPut,
+		path:        recordsPath + "/" + url.PathEscape(recordID),
+		accessToken: accessToken,
+		headers: map[string]string{
+			"If-Match": recordRevisionETag(expectedRevision),
+		},
+		requestBody: updateRecordRequest{
+			Type:    model.RecordTypeText,
+			Title:   request.Title,
+			Payload: request.Payload,
+		},
+		expectedStatus: http.StatusOK,
+		responseBody:   &updated,
+	}); err != nil {
+		return TextRecord{}, err
+	}
+
+	return textRecordFromResponse(updated), nil
+}
+
+// DeleteRecord удаляет запись на Сервере с проверкой ожидаемой ревизии.
+func (c *Client) DeleteRecord(
+	ctx context.Context,
+	accessToken string,
+	recordID string,
+	expectedRevision int64,
+) error {
+	return c.doJSON(ctx, jsonRequest{
+		operation:   "delete record",
+		method:      http.MethodDelete,
+		path:        recordsPath + "/" + url.PathEscape(recordID),
+		accessToken: accessToken,
+		headers: map[string]string{
+			"If-Match": recordRevisionETag(expectedRevision),
+		},
+		expectedStatus: http.StatusNoContent,
+	})
+}
+
+func recordRevisionETag(revision int64) string {
+	return strconv.Quote(strconv.FormatInt(revision, 10))
 }
 
 func textRecordFromResponse(response textRecordResponse) TextRecord {

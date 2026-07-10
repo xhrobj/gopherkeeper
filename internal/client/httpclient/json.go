@@ -45,6 +45,7 @@ type jsonRequest struct {
 	method         string
 	path           string
 	accessToken    string
+	headers        map[string]string
 	requestBody    any
 	expectedStatus int
 	responseBody   any
@@ -65,6 +66,9 @@ func (c *Client) doJSON(ctx context.Context, request jsonRequest) error {
 	}
 	if request.accessToken != "" {
 		httpRequest.Header.Set("Authorization", "Bearer "+request.accessToken)
+	}
+	for name, value := range request.headers {
+		httpRequest.Header.Set(name, value)
 	}
 
 	response, err := c.httpClient.Do(httpRequest)

@@ -176,3 +176,24 @@ func TestValidateRecordID(t *testing.T) {
 		t.Fatalf("ValidateRecordID() error = %v, want ErrInvalidRecordID", err)
 	}
 }
+
+func TestValidateRecordRevision(t *testing.T) {
+	tests := []struct {
+		name     string
+		revision int64
+		wantErr  error
+	}{
+		{name: "valid", revision: 42},
+		{name: "zero", revision: 0, wantErr: ErrInvalidRecordRevision},
+		{name: "negative", revision: -1, wantErr: ErrInvalidRecordRevision},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateRecordRevision(tt.revision)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("ValidateRecordRevision() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}

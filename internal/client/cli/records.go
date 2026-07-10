@@ -16,13 +16,19 @@ import (
 )
 
 const (
-	titleFlag        = "title"
-	textFileFlag     = "text-file"
-	metadataFileFlag = "metadata-file"
+	titleFlag         = "title"
+	textFileFlag      = "text-file"
+	metadataFileFlag  = "metadata-file"
+	revisionFlag      = "revision"
+	recordIDArgsUsage = "<record-id>"
 )
 
 type textRecordCreator interface {
 	CreateTextRecord(ctx context.Context, request usecase.CreateTextRecordRequest) (usecase.TextRecord, error)
+}
+
+type textRecordUpdater interface {
+	UpdateTextRecord(ctx context.Context, request usecase.UpdateTextRecordRequest) (usecase.TextRecord, error)
 }
 
 type recordLister interface {
@@ -33,14 +39,20 @@ type textRecordGetter interface {
 	GetTextRecord(ctx context.Context, recordID string) (usecase.TextRecord, error)
 }
 
+type recordDeleter interface {
+	DeleteRecord(ctx context.Context, request usecase.DeleteRecordRequest) error
+}
+
 func newRecordsCommand(runners commandRunners) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "records",
 		Usage: "manage private records",
 		Commands: []*urfavecli.Command{
 			newCreateTextRecordCommand(runners.createTextRecord),
+			newUpdateTextRecordCommand(runners.updateTextRecord),
 			newListRecordsCommand(runners.listRecords),
 			newGetRecordCommand(runners.getRecord),
+			newDeleteRecordCommand(runners.deleteRecord),
 		},
 	}
 }
@@ -78,6 +90,55 @@ func newCreateTextRecordCommand(create textRecordCreateRunner) *urfavecli.Comman
 	}
 }
 
+func newUpdateTextRecordCommand(update textRecordUpdateRunner) *urfavecli.Command {
+	return &urfavecli.Command{
+		Name:      "update-text",
+		Usage:     "update a private text record",
+		ArgsUsage: recordIDArgsUsage,
+		Flags: []urfavecli.Flag{
+			&urfavecli.Int64Flag{
+				Name:     revisionFlag,
+				Aliases:  []string{"r"},
+				Usage:    "expected record revision",
+				Required: true,
+			},
+			&urfavecli.StringFlag{
+				Name:     titleFlag,
+				Usage:    "new record title",
+				Required: true,
+			},
+			&urfavecli.StringFlag{
+				Name:     textFileFlag,
+				Usage:    "path to file with new private text payload",
+				Required: true,
+			},
+			&urfavecli.StringFlag{
+				Name:  metadataFileFlag,
+				Usage: "path to optional file with new private metadata",
+			},
+		},
+		Action: func(ctx context.Context, command *urfavecli.Command) error {
+			recordID := command.Args().First()
+			if recordID == "" {
+				return errors.New("record id is required")
+			}
+
+			return update(
+				ctx,
+				configFromCommand(command),
+				command.Root().Writer,
+				textRecordUpdateCommandRequest{
+					recordID:         recordID,
+					expectedRevision: command.Int64(revisionFlag),
+					title:            command.String(titleFlag),
+					textFile:         command.String(textFileFlag),
+					metadataFile:     command.String(metadataFileFlag),
+				},
+			)
+		},
+	}
+}
+
 func newListRecordsCommand(list outputRunner) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "list",
@@ -92,7 +153,7 @@ func newGetRecordCommand(get recordGetRunner) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:      "get",
 		Usage:     "get a private text record",
-		ArgsUsage: "<record-id>",
+		ArgsUsage: recordIDArgsUsage,
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			recordID := command.Args().First()
 			if recordID == "" {
@@ -100,6 +161,36 @@ func newGetRecordCommand(get recordGetRunner) *urfavecli.Command {
 			}
 
 			return get(ctx, configFromCommand(command), command.Root().Writer, recordID)
+		},
+	}
+}
+
+func newDeleteRecordCommand(delete recordDeleteRunner) *urfavecli.Command {
+	return &urfavecli.Command{
+		Name:      "delete",
+		Usage:     "delete a private record",
+		ArgsUsage: recordIDArgsUsage,
+		Flags: []urfavecli.Flag{
+			&urfavecli.Int64Flag{
+				Name:     revisionFlag,
+				Aliases:  []string{"r"},
+				Usage:    "expected record revision",
+				Required: true,
+			},
+		},
+		Action: func(ctx context.Context, command *urfavecli.Command) error {
+			recordID := command.Args().First()
+			if recordID == "" {
+				return errors.New("record id is required")
+			}
+
+			return delete(
+				ctx,
+				configFromCommand(command),
+				command.Root().Writer,
+				recordID,
+				command.Int64(revisionFlag),
+			)
 		},
 	}
 }
@@ -131,6 +222,35 @@ func runListRecords(
 	}
 
 	return executeListRecords(ctx, application, output)
+}
+
+func runUpdateTextRecord(
+	ctx context.Context,
+	cfg config.Config,
+	output io.Writer,
+	request textRecordUpdateCommandRequest,
+) error {
+	application, err := usecase.New(cfg)
+	if err != nil {
+		return err
+	}
+
+	return executeUpdateTextRecord(ctx, application, output, request)
+}
+
+func runDeleteRecord(
+	ctx context.Context,
+	cfg config.Config,
+	output io.Writer,
+	recordID string,
+	expectedRevision int64,
+) error {
+	application, err := usecase.New(cfg)
+	if err != nil {
+		return err
+	}
+
+	return executeDeleteRecord(ctx, application, output, recordID, expectedRevision)
 }
 
 func runGetRecord(
@@ -181,6 +301,66 @@ func executeCreateTextRecord(
 		record.Metadata.Revision,
 	); err != nil {
 		return fmt.Errorf("write created text record: %w", err)
+	}
+
+	return nil
+}
+
+func executeUpdateTextRecord(
+	ctx context.Context,
+	updater textRecordUpdater,
+	output io.Writer,
+	request textRecordUpdateCommandRequest,
+) error {
+	text, err := readRequiredTextFile(request.textFile)
+	if err != nil {
+		return err
+	}
+
+	metadata, err := readOptionalTextFile(request.metadataFile)
+	if err != nil {
+		return err
+	}
+
+	record, err := updater.UpdateTextRecord(ctx, usecase.UpdateTextRecordRequest{
+		RecordID:         request.recordID,
+		ExpectedRevision: request.expectedRevision,
+		Title:            request.title,
+		Text:             text,
+		Metadata:         metadata,
+	})
+	if err != nil {
+		return err
+	}
+
+	if _, err := fmt.Fprintf(
+		output,
+		"Updated text record %s to revision %d.\n",
+		record.Metadata.ID,
+		record.Metadata.Revision,
+	); err != nil {
+		return fmt.Errorf("write updated text record: %w", err)
+	}
+
+	return nil
+}
+
+func executeDeleteRecord(
+	ctx context.Context,
+	deleter recordDeleter,
+	output io.Writer,
+	recordID string,
+	expectedRevision int64,
+) error {
+	if err := deleter.DeleteRecord(ctx, usecase.DeleteRecordRequest{
+		RecordID:         recordID,
+		ExpectedRevision: expectedRevision,
+	}); err != nil {
+		return err
+	}
+
+	if _, err := fmt.Fprintf(output, "Deleted record %s.\n", recordID); err != nil {
+		return fmt.Errorf("write deleted record: %w", err)
 	}
 
 	return nil
