@@ -58,8 +58,14 @@ func runTestCommand(
 	if runners.createTextRecord == nil {
 		runners.createTextRecord = unexpectedCreateTextRecordRunner(t)
 	}
+	if runners.createCredentialsRecord == nil {
+		runners.createCredentialsRecord = unexpectedCreateCredentialsRecordRunner(t)
+	}
 	if runners.updateTextRecord == nil {
 		runners.updateTextRecord = unexpectedUpdateTextRecordRunner(t)
+	}
+	if runners.updateCredentialsRecord == nil {
+		runners.updateCredentialsRecord = unexpectedUpdateCredentialsRecordRunner(t)
 	}
 	if runners.listRecords == nil {
 		runners.listRecords = unexpectedListRecordsRunner(t)
@@ -146,6 +152,40 @@ func unexpectedUpdateTextRecordRunner(t *testing.T) textRecordUpdateRunner {
 	return func(context.Context, config.Config, io.Writer, textRecordUpdateCommandRequest) error {
 		t.Helper()
 		t.Fatal("records update-text command must not run")
+		return nil
+	}
+}
+
+func unexpectedCreateCredentialsRecordRunner(t *testing.T) credentialsRecordCreateRunner {
+	t.Helper()
+
+	return func(
+		context.Context,
+		config.Config,
+		io.Reader,
+		io.Writer,
+		io.Writer,
+		credentialsRecordCreateCommandRequest,
+	) error {
+		t.Helper()
+		t.Fatal("records create-credentials command must not run")
+		return nil
+	}
+}
+
+func unexpectedUpdateCredentialsRecordRunner(t *testing.T) credentialsRecordUpdateRunner {
+	t.Helper()
+
+	return func(
+		context.Context,
+		config.Config,
+		io.Reader,
+		io.Writer,
+		io.Writer,
+		credentialsRecordUpdateCommandRequest,
+	) error {
+		t.Helper()
+		t.Fatal("records update-credentials command must not run")
 		return nil
 	}
 }

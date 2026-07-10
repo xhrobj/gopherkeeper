@@ -35,21 +35,23 @@ type recordLister interface {
 	ListRecords(ctx context.Context) ([]model.RecordMetadata, error)
 }
 
-type textRecordGetter interface {
-	GetTextRecord(ctx context.Context, recordID string) (usecase.TextRecord, error)
+type recordGetter interface {
+	GetRecord(ctx context.Context, recordID string) (usecase.Record, error)
 }
 
 type recordDeleter interface {
 	DeleteRecord(ctx context.Context, request usecase.DeleteRecordRequest) error
 }
 
-func newRecordsCommand(runners commandRunners) *urfavecli.Command {
+func newRecordsCommand(input io.Reader, runners commandRunners) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "records",
 		Usage: "manage private records",
 		Commands: []*urfavecli.Command{
 			newCreateTextRecordCommand(runners.createTextRecord),
+			newCreateCredentialsRecordCommand(input, runners.createCredentialsRecord),
 			newUpdateTextRecordCommand(runners.updateTextRecord),
+			newUpdateCredentialsRecordCommand(input, runners.updateCredentialsRecord),
 			newListRecordsCommand(runners.listRecords),
 			newGetRecordCommand(runners.getRecord),
 			newDeleteRecordCommand(runners.deleteRecord),
@@ -152,7 +154,7 @@ func newListRecordsCommand(list outputRunner) *urfavecli.Command {
 func newGetRecordCommand(get recordGetRunner) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:      "get",
-		Usage:     "get a private text record",
+		Usage:     "get a private record",
 		ArgsUsage: recordIDArgsUsage,
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			recordID := command.Args().First()
@@ -404,30 +406,77 @@ func executeListRecords(ctx context.Context, lister recordLister, output io.Writ
 	return nil
 }
 
-func executeGetRecord(ctx context.Context, getter textRecordGetter, output io.Writer, recordID string) error {
-	record, err := getter.GetTextRecord(ctx, recordID)
+func executeGetRecord(ctx context.Context, getter recordGetter, output io.Writer, recordID string) error {
+	record, err := getter.GetRecord(ctx, recordID)
 	if err != nil {
 		return err
 	}
 
 	if _, err := fmt.Fprintf(
 		output,
-		"ID: %s\nType: %s\nTitle: %s\nRevision: %d\nCreated at: %s\nUpdated at: %s\n\nText:\n%s\n",
+		"ID: %s\nType: %s\nTitle: %s\nRevision: %d\nCreated at: %s\nUpdated at: %s\n",
 		record.Metadata.ID,
 		record.Metadata.Type,
 		record.Metadata.Title,
 		record.Metadata.Revision,
 		formatRecordTime(record.Metadata.CreatedAt),
 		formatRecordTime(record.Metadata.UpdatedAt),
-		record.Payload.Text,
 	); err != nil {
+		return fmt.Errorf("write record metadata: %w", err)
+	}
+
+	switch payload := record.Payload.(type) {
+	case *model.TextPayload:
+		if payload == nil {
+			return errors.New("unexpected nil text payload")
+		}
+
+		return writeTextRecordPayload(output, payload)
+	case *model.CredentialsPayload:
+		if payload == nil {
+			return errors.New("unexpected nil credentials payload")
+		}
+
+		return writeCredentialsRecordPayload(output, payload)
+	default:
+		return errors.New("unsupported record payload")
+	}
+}
+
+func writeTextRecordPayload(output io.Writer, payload *model.TextPayload) error {
+	if _, err := fmt.Fprintf(output, "\nText:\n%s\n", payload.Text); err != nil {
 		return fmt.Errorf("write text record: %w", err)
 	}
 
-	if record.Payload.Metadata != "" {
-		if _, err := fmt.Fprintf(output, "\nMetadata:\n%s\n", record.Payload.Metadata); err != nil {
-			return fmt.Errorf("write text record metadata: %w", err)
+	return writeRecordMetadataPayload(output, payload.Metadata, "text record")
+}
+
+func writeCredentialsRecordPayload(output io.Writer, payload *model.CredentialsPayload) error {
+	if _, err := fmt.Fprintf(
+		output,
+		"\nLogin: %s\nPassword: %s\n",
+		payload.Login,
+		payload.Password,
+	); err != nil {
+		return fmt.Errorf("write credentials record: %w", err)
+	}
+
+	if payload.URL != "" {
+		if _, err := fmt.Fprintf(output, "URL: %s\n", payload.URL); err != nil {
+			return fmt.Errorf("write credentials record URL: %w", err)
 		}
+	}
+
+	return writeRecordMetadataPayload(output, payload.Metadata, "credentials record")
+}
+
+func writeRecordMetadataPayload(output io.Writer, metadata string, description string) error {
+	if metadata == "" {
+		return nil
+	}
+
+	if _, err := fmt.Fprintf(output, "\nMetadata:\n%s\n", metadata); err != nil {
+		return fmt.Errorf("write %s metadata: %w", description, err)
 	}
 
 	return nil
