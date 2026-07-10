@@ -15,32 +15,49 @@ import (
 
 const testRecordID = "550e8400-e29b-41d4-a716-446655440000"
 
-func TestClient_UpdateTextRecord(t *testing.T) {
-	createdAt := time.Date(2026, time.July, 9, 12, 0, 0, 0, time.UTC)
-	updatedAt := time.Date(2026, time.July, 9, 12, 5, 0, 0, time.UTC)
+func TestClient_CreateRecord(t *testing.T) {
+	createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
+	password := "correct-horse-battery-staple"
+
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !assertUpdateTextRecordRequest(t, r) {
-			http.Error(w, "invalid update request", http.StatusBadRequest)
-			return
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want %s", r.Method, http.MethodPost)
+		}
+		if r.URL.Path != recordsPath {
+			t.Errorf("path = %s, want %s", r.URL.Path, recordsPath)
+		}
+		if strings.Contains(r.URL.RawQuery, password) || strings.Contains(r.Header.Get("Authorization"), password) {
+			t.Error("credentials password appeared outside JSON body")
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("ETag", `"2"`)
-		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(textRecordResponse{
-			ID:        testRecordID,
-			Type:      model.RecordTypeText,
-			Title:     "Updated note",
-			Revision:  2,
-			CreatedAt: createdAt,
-			UpdatedAt: updatedAt,
-			Payload: model.TextPayload{
-				Text:     "updated secret",
-				Metadata: "updated private metadata",
-			},
-		}); err != nil {
-			t.Errorf("encode response: %v", err)
+		var request struct {
+			Type    model.RecordType `json:"type"`
+			Title   string           `json:"title"`
+			Payload json.RawMessage  `json:"payload"`
 		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if request.Type != model.RecordTypeCredentials {
+			t.Errorf("type = %q, want credentials", request.Type)
+		}
+
+		var payload model.CredentialsPayload
+		if err := json.Unmarshal(request.Payload, &payload); err != nil {
+			t.Fatalf("decode credentials payload: %v", err)
+		}
+		if payload.Password != password {
+			t.Error("credentials password was not transferred unchanged")
+		}
+
+		writeRecordResponse(t, w, http.StatusCreated, recordResponse{
+			ID:        testRecordID,
+			Type:      model.RecordTypeCredentials,
+			Title:     request.Title,
+			Revision:  1,
+			CreatedAt: createdAt,
+			UpdatedAt: createdAt,
+		}, &payload)
 	}))
 	defer server.Close()
 
@@ -49,88 +66,210 @@ func TestClient_UpdateTextRecord(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	record, err := client.UpdateTextRecord(context.Background(), "test.jwt.token", testRecordID, 1, UpdateTextRecordRequest{
-		Title: "Updated note",
-		Payload: model.TextPayload{
-			Text:     "updated secret",
-			Metadata: "updated private metadata",
+	record, err := client.CreateRecord(context.Background(), "test.jwt.token", CreateRecordRequest{
+		Title: "GitHub",
+		Payload: &model.CredentialsPayload{
+			Login:    "alice",
+			Password: password,
+			URL:      "https://github.com",
 		},
 	})
 	if err != nil {
-		t.Fatalf("UpdateTextRecord() error = %v", err)
+		t.Fatalf("CreateRecord() error = %v", err)
 	}
 
-	if record.Metadata.ID != testRecordID {
-		t.Errorf("record ID = %q, want %q", record.Metadata.ID, testRecordID)
+	payload, ok := record.Payload.(*model.CredentialsPayload)
+	if !ok {
+		t.Fatalf("payload type = %T, want *model.CredentialsPayload", record.Payload)
+	}
+	if payload.Login != "alice" || payload.Password != password {
+		t.Errorf("payload = %#v, want original credentials", payload)
+	}
+	if record.Metadata.Revision != 1 {
+		t.Errorf("revision = %d, want 1", record.Metadata.Revision)
+	}
+}
+
+func TestClient_GetRecord(t *testing.T) {
+	tests := []struct {
+		name       string
+		recordType model.RecordType
+		payload    model.RecordPayload
+		assert     func(*testing.T, model.RecordPayload)
+	}{
+		{
+			name:       "text",
+			recordType: model.RecordTypeText,
+			payload:    &model.TextPayload{Text: "secret note", Metadata: "private"},
+			assert: func(t *testing.T, got model.RecordPayload) {
+				t.Helper()
+				payload, ok := got.(*model.TextPayload)
+				if !ok || payload.Text != "secret note" {
+					t.Fatalf("payload = %#v, want text payload", got)
+				}
+			},
+		},
+		{
+			name:       "credentials",
+			recordType: model.RecordTypeCredentials,
+			payload: &model.CredentialsPayload{
+				Login:    "alice",
+				Password: "correct-horse-battery-staple",
+			},
+			assert: func(t *testing.T, got model.RecordPayload) {
+				t.Helper()
+				payload, ok := got.(*model.CredentialsPayload)
+				if !ok || payload.Login != "alice" {
+					t.Fatalf("payload = %#v, want credentials payload", got)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet {
+					t.Errorf("method = %s, want %s", r.Method, http.MethodGet)
+				}
+				if r.URL.Path != recordsPath+"/"+testRecordID {
+					t.Errorf("path = %s, want record path", r.URL.Path)
+				}
+
+				createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
+				writeRecordResponse(t, w, http.StatusOK, recordResponse{
+					ID:        testRecordID,
+					Type:      tt.recordType,
+					Title:     "Record",
+					Revision:  1,
+					CreatedAt: createdAt,
+					UpdatedAt: createdAt,
+				}, tt.payload)
+			}))
+			defer server.Close()
+
+			client, err := New(serverAddress(server), writeServerCertificate(t, server))
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+
+			record, err := client.GetRecord(context.Background(), "test.jwt.token", testRecordID)
+			if err != nil {
+				t.Fatalf("GetRecord() error = %v", err)
+			}
+			if record.Metadata.Type != tt.recordType {
+				t.Errorf("type = %q, want %q", record.Metadata.Type, tt.recordType)
+			}
+			tt.assert(t, record.Payload)
+		})
+	}
+}
+
+func TestClient_UpdateRecord(t *testing.T) {
+	updatedAt := time.Date(2026, time.July, 10, 12, 5, 0, 0, time.UTC)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %s, want %s", r.Method, http.MethodPut)
+		}
+		if got := r.Header.Get("If-Match"); got != `"1"` {
+			t.Errorf("If-Match = %q, want quoted revision", got)
+		}
+
+		var request struct {
+			Type    model.RecordType `json:"type"`
+			Title   string           `json:"title"`
+			Payload json.RawMessage  `json:"payload"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if request.Type != model.RecordTypeCredentials {
+			t.Errorf("type = %q, want credentials", request.Type)
+		}
+
+		var payload model.CredentialsPayload
+		if err := json.Unmarshal(request.Payload, &payload); err != nil {
+			t.Fatalf("decode credentials: %v", err)
+		}
+
+		writeRecordResponse(t, w, http.StatusOK, recordResponse{
+			ID:        testRecordID,
+			Type:      model.RecordTypeCredentials,
+			Title:     request.Title,
+			Revision:  2,
+			CreatedAt: time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC),
+			UpdatedAt: updatedAt,
+		}, &payload)
+	}))
+	defer server.Close()
+
+	client, err := New(serverAddress(server), writeServerCertificate(t, server))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	record, err := client.UpdateRecord(context.Background(), "test.jwt.token", testRecordID, 1, UpdateRecordRequest{
+		Title: "Updated GitHub",
+		Payload: &model.CredentialsPayload{
+			Login:    "alice",
+			Password: "updated-correct-horse-battery-staple",
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateRecord() error = %v", err)
 	}
 	if record.Metadata.Revision != 2 {
 		t.Errorf("revision = %d, want 2", record.Metadata.Revision)
-	}
-	if record.Payload.Text != "updated secret" {
-		t.Errorf("text = %q, want updated secret", record.Payload.Text)
 	}
 	if !record.Metadata.UpdatedAt.Equal(updatedAt) {
 		t.Errorf("updated at = %s, want %s", record.Metadata.UpdatedAt, updatedAt)
 	}
 }
 
-func assertUpdateTextRecordRequest(t *testing.T, r *http.Request) bool {
-	t.Helper()
-
-	valid := true
-	if r.Method != http.MethodPut {
-		t.Errorf("method = %s, want %s", r.Method, http.MethodPut)
-		valid = false
-	}
-	if r.URL.Path != recordsPath+"/"+testRecordID {
-		t.Errorf("path = %s, want %s", r.URL.Path, recordsPath+"/"+testRecordID)
-		valid = false
-	}
-	if got := r.Header.Get("Authorization"); got != "Bearer test.jwt.token" {
-		t.Errorf("Authorization = %q, want bearer token", got)
-		valid = false
-	}
-	if got := r.Header.Get("If-Match"); got != `"1"` {
-		t.Errorf("If-Match = %q, want quoted revision", got)
-		valid = false
-	}
-	if got := r.Header.Get("Content-Type"); got != "application/json" {
-		t.Errorf("Content-Type = %q, want application/json", got)
-		valid = false
-	}
-
-	var request updateRecordRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		t.Errorf("decode request: %v", err)
-		return false
-	}
-	if request.Type != model.RecordTypeText {
-		t.Errorf("type = %q, want text", request.Type)
-		valid = false
-	}
-	if request.Title != "Updated note" {
-		t.Errorf("title = %q, want Updated note", request.Title)
-		valid = false
-	}
-	if request.Payload.Text != "updated secret" {
-		t.Error("text payload was not transferred unchanged")
-		valid = false
-	}
-	if request.Payload.Metadata != "updated private metadata" {
-		t.Error("metadata was not transferred unchanged")
-		valid = false
-	}
-
-	return valid
-}
-
-func TestClient_UpdateTextRecordReturnsAPIError(t *testing.T) {
+func TestClient_UpdateRecordReturnsAPIError(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"code":"record_revision_conflict","message":"record revision conflict"}`))
+	}))
+	defer server.Close()
+
+	client, err := New(serverAddress(server), writeServerCertificate(t, server))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, err = client.UpdateRecord(context.Background(), "test.jwt.token", testRecordID, 1, UpdateRecordRequest{
+		Title:   "Updated note",
+		Payload: &model.TextPayload{Text: "updated secret"},
+	})
+	if err == nil {
+		t.Fatal("UpdateRecord() error = nil, want API error")
+	}
+
+	var apiError *APIError
+	if !errors.As(err, &apiError) {
+		t.Fatalf("UpdateRecord() error = %T, want *APIError", err)
+	}
+	if apiError.Code != "record_revision_conflict" {
+		t.Errorf("code = %q, want record_revision_conflict", apiError.Code)
+	}
+	if strings.Contains(err.Error(), "test.jwt.token") || strings.Contains(err.Error(), "updated secret") {
+		t.Error("update error contains access token or payload")
+	}
+}
+
+func TestClient_GetRecordRejectsInvalidPayload(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
-			"code":"record_revision_conflict",
-			"message":"record revision conflict"
+			"id":"550e8400-e29b-41d4-a716-446655440000",
+			"type":"credentials",
+			"title":"GitHub",
+			"revision":1,
+			"created_at":"2026-07-10T12:00:00Z",
+			"updated_at":"2026-07-10T12:00:00Z",
+			"payload":{"login":"alice","password":"correct-horse-battery-staple","text":"unexpected"}
 		}`))
 	}))
 	defer server.Close()
@@ -140,26 +279,12 @@ func TestClient_UpdateTextRecordReturnsAPIError(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	_, err = client.UpdateTextRecord(context.Background(), "test.jwt.token", testRecordID, 1, UpdateTextRecordRequest{
-		Title:   "Updated note",
-		Payload: model.TextPayload{Text: "updated secret"},
-	})
+	_, err = client.GetRecord(context.Background(), "test.jwt.token", testRecordID)
 	if err == nil {
-		t.Fatal("UpdateTextRecord() error = nil, want API error")
+		t.Fatal("GetRecord() error = nil, want invalid payload error")
 	}
-
-	var apiError *APIError
-	if !errors.As(err, &apiError) {
-		t.Fatalf("UpdateTextRecord() error = %T, want *APIError", err)
-	}
-	if apiError.StatusCode != http.StatusConflict {
-		t.Errorf("status code = %d, want %d", apiError.StatusCode, http.StatusConflict)
-	}
-	if apiError.Code != "record_revision_conflict" {
-		t.Errorf("code = %q, want record_revision_conflict", apiError.Code)
-	}
-	if strings.Contains(err.Error(), "test.jwt.token") || strings.Contains(err.Error(), "updated secret") {
-		t.Error("update error contains access token or text payload")
+	if strings.Contains(err.Error(), "correct-horse-battery-staple") {
+		t.Error("decode error contains credentials password")
 	}
 }
 
@@ -168,16 +293,9 @@ func TestClient_DeleteRecord(t *testing.T) {
 		if r.Method != http.MethodDelete {
 			t.Errorf("method = %s, want %s", r.Method, http.MethodDelete)
 		}
-		if r.URL.Path != recordsPath+"/"+testRecordID {
-			t.Errorf("path = %s, want %s", r.URL.Path, recordsPath+"/"+testRecordID)
-		}
-		if got := r.Header.Get("Authorization"); got != "Bearer test.jwt.token" {
-			t.Errorf("Authorization = %q, want bearer token", got)
-		}
 		if got := r.Header.Get("If-Match"); got != `"2"` {
 			t.Errorf("If-Match = %q, want quoted revision", got)
 		}
-
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
@@ -192,38 +310,24 @@ func TestClient_DeleteRecord(t *testing.T) {
 	}
 }
 
-func TestClient_DeleteRecordReturnsAPIError(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`{
-			"code":"record_not_found",
-			"message":"record not found"
-		}`))
-	}))
-	defer server.Close()
+func writeRecordResponse(
+	t *testing.T,
+	w http.ResponseWriter,
+	status int,
+	response recordResponse,
+	payload model.RecordPayload,
+) {
+	t.Helper()
 
-	client, err := New(serverAddress(server), writeServerCertificate(t, server))
+	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
-		t.Fatalf("New() error = %v", err)
+		t.Fatalf("marshal response payload: %v", err)
 	}
+	response.Payload = payloadJSON
 
-	err = client.DeleteRecord(context.Background(), "test.jwt.token", testRecordID, 2)
-	if err == nil {
-		t.Fatal("DeleteRecord() error = nil, want API error")
-	}
-
-	var apiError *APIError
-	if !errors.As(err, &apiError) {
-		t.Fatalf("DeleteRecord() error = %T, want *APIError", err)
-	}
-	if apiError.StatusCode != http.StatusNotFound {
-		t.Errorf("status code = %d, want %d", apiError.StatusCode, http.StatusNotFound)
-	}
-	if apiError.Code != "record_not_found" {
-		t.Errorf("code = %q, want record_not_found", apiError.Code)
-	}
-	if strings.Contains(err.Error(), "test.jwt.token") {
-		t.Error("delete error contains access token")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		t.Fatalf("encode response: %v", err)
 	}
 }

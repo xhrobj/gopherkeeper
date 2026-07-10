@@ -1,7 +1,12 @@
 package httpclient
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -12,43 +17,40 @@ import (
 
 const recordsPath = "/api/v1/records"
 
-// CreateTextRecordRequest содержит данные для создания text-записи через HTTP API.
-type CreateTextRecordRequest struct {
+var errRecordPayloadRequired = errors.New("record payload is required")
+
+// CreateRecordRequest содержит данные для создания записи через HTTP API.
+type CreateRecordRequest struct {
 	// Title содержит открытое название записи.
 	Title string
 
-	// Payload содержит приватный text payload.
-	Payload model.TextPayload
+	// Payload содержит типизированный приватный payload.
+	Payload model.RecordPayload
 }
 
-// UpdateTextRecordRequest содержит данные для изменения text-записи через HTTP API.
-type UpdateTextRecordRequest struct {
+// UpdateRecordRequest содержит данные для изменения записи через HTTP API.
+type UpdateRecordRequest struct {
 	// Title содержит новое открытое название записи.
 	Title string
 
-	// Payload содержит новый приватный text payload.
-	Payload model.TextPayload
+	// Payload содержит новый типизированный приватный payload.
+	Payload model.RecordPayload
 }
 
-// TextRecord содержит открытую metadata и расшифрованный text payload, возвращённые Сервером.
-type TextRecord struct {
+// Record содержит открытую metadata и расшифрованный типизированный payload,
+// возвращённые Сервером.
+type Record struct {
 	// Metadata содержит открытые поля записи.
 	Metadata model.RecordMetadata
 
-	// Payload содержит приватный text payload.
-	Payload model.TextPayload
+	// Payload содержит приватный payload согласно типу записи.
+	Payload model.RecordPayload
 }
 
-type createRecordRequest struct {
-	Type    model.RecordType  `json:"type"`
-	Title   string            `json:"title"`
-	Payload model.TextPayload `json:"payload"`
-}
-
-type updateRecordRequest struct {
-	Type    model.RecordType  `json:"type"`
-	Title   string            `json:"title"`
-	Payload model.TextPayload `json:"payload"`
+type recordRequest struct {
+	Type    model.RecordType    `json:"type"`
+	Title   string              `json:"title"`
+	Payload model.RecordPayload `json:"payload"`
 }
 
 type recordMetadataResponse struct {
@@ -60,45 +62,45 @@ type recordMetadataResponse struct {
 	UpdatedAt time.Time        `json:"updated_at"`
 }
 
-type textRecordResponse struct {
-	ID        string            `json:"id"`
-	Type      model.RecordType  `json:"type"`
-	Title     string            `json:"title"`
-	Revision  int64             `json:"revision"`
-	CreatedAt time.Time         `json:"created_at"`
-	UpdatedAt time.Time         `json:"updated_at"`
-	Payload   model.TextPayload `json:"payload"`
+type recordResponse struct {
+	ID        string           `json:"id"`
+	Type      model.RecordType `json:"type"`
+	Title     string           `json:"title"`
+	Revision  int64            `json:"revision"`
+	CreatedAt time.Time        `json:"created_at"`
+	UpdatedAt time.Time        `json:"updated_at"`
+	Payload   json.RawMessage  `json:"payload"`
 }
 
 type listRecordsResponse struct {
 	Records []recordMetadataResponse `json:"records"`
 }
 
-// CreateTextRecord создаёт text-запись на Сервере.
-func (c *Client) CreateTextRecord(
+// CreateRecord создаёт запись выбранного типа на Сервере.
+func (c *Client) CreateRecord(
 	ctx context.Context,
 	accessToken string,
-	request CreateTextRecordRequest,
-) (TextRecord, error) {
-	var created textRecordResponse
+	request CreateRecordRequest,
+) (Record, error) {
+	body, err := newRecordRequest(request.Title, request.Payload)
+	if err != nil {
+		return Record{}, err
+	}
 
+	var created recordResponse
 	if err := c.doJSON(ctx, jsonRequest{
-		operation:   "create text record",
-		method:      http.MethodPost,
-		path:        recordsPath,
-		accessToken: accessToken,
-		requestBody: createRecordRequest{
-			Type:    model.RecordTypeText,
-			Title:   request.Title,
-			Payload: request.Payload,
-		},
+		operation:      "create record",
+		method:         http.MethodPost,
+		path:           recordsPath,
+		accessToken:    accessToken,
+		requestBody:    body,
 		expectedStatus: http.StatusCreated,
 		responseBody:   &created,
 	}); err != nil {
-		return TextRecord{}, err
+		return Record{}, err
 	}
 
-	return textRecordFromResponse(created), nil
+	return recordFromResponse(created)
 }
 
 // ListRecords возвращает metadata приватных записей текущего пользователя.
@@ -124,54 +126,54 @@ func (c *Client) ListRecords(ctx context.Context, accessToken string) ([]model.R
 	return records, nil
 }
 
-// GetTextRecord возвращает text-запись текущего пользователя.
-func (c *Client) GetTextRecord(ctx context.Context, accessToken string, recordID string) (TextRecord, error) {
-	var record textRecordResponse
+// GetRecord возвращает запись текущего пользователя с payload согласно её типу.
+func (c *Client) GetRecord(ctx context.Context, accessToken string, recordID string) (Record, error) {
+	var record recordResponse
 
 	if err := c.doJSON(ctx, jsonRequest{
-		operation:      "get text record",
+		operation:      "get record",
 		method:         http.MethodGet,
 		path:           recordsPath + "/" + url.PathEscape(recordID),
 		accessToken:    accessToken,
 		expectedStatus: http.StatusOK,
 		responseBody:   &record,
 	}); err != nil {
-		return TextRecord{}, err
+		return Record{}, err
 	}
 
-	return textRecordFromResponse(record), nil
+	return recordFromResponse(record)
 }
 
-// UpdateTextRecord изменяет text-запись на Сервере с проверкой ожидаемой ревизии.
-func (c *Client) UpdateTextRecord(
+// UpdateRecord изменяет запись на Сервере с проверкой ожидаемой ревизии.
+func (c *Client) UpdateRecord(
 	ctx context.Context,
 	accessToken string,
 	recordID string,
 	expectedRevision int64,
-	request UpdateTextRecordRequest,
-) (TextRecord, error) {
-	var updated textRecordResponse
+	request UpdateRecordRequest,
+) (Record, error) {
+	body, err := newRecordRequest(request.Title, request.Payload)
+	if err != nil {
+		return Record{}, err
+	}
 
+	var updated recordResponse
 	if err := c.doJSON(ctx, jsonRequest{
-		operation:   "update text record",
+		operation:   "update record",
 		method:      http.MethodPut,
 		path:        recordsPath + "/" + url.PathEscape(recordID),
 		accessToken: accessToken,
 		headers: map[string]string{
 			"If-Match": recordRevisionETag(expectedRevision),
 		},
-		requestBody: updateRecordRequest{
-			Type:    model.RecordTypeText,
-			Title:   request.Title,
-			Payload: request.Payload,
-		},
+		requestBody:    body,
 		expectedStatus: http.StatusOK,
 		responseBody:   &updated,
 	}); err != nil {
-		return TextRecord{}, err
+		return Record{}, err
 	}
 
-	return textRecordFromResponse(updated), nil
+	return recordFromResponse(updated)
 }
 
 // DeleteRecord удаляет запись на Сервере с проверкой ожидаемой ревизии.
@@ -193,12 +195,34 @@ func (c *Client) DeleteRecord(
 	})
 }
 
-func recordRevisionETag(revision int64) string {
-	return strconv.Quote(strconv.FormatInt(revision, 10))
+func newRecordRequest(title string, payload model.RecordPayload) (recordRequest, error) {
+	if payload == nil {
+		return recordRequest{}, errRecordPayloadRequired
+	}
+	if err := payload.Validate(); err != nil {
+		return recordRequest{}, err
+	}
+
+	return recordRequest{
+		Type:    payload.RecordType(),
+		Title:   title,
+		Payload: payload,
+	}, nil
 }
 
-func textRecordFromResponse(response textRecordResponse) TextRecord {
-	return TextRecord{
+func recordFromResponse(response recordResponse) (Record, error) {
+	payload, err := model.NewRecordPayload(response.Type)
+	if err != nil {
+		return Record{}, fmt.Errorf("select record payload: %w", err)
+	}
+	if err := decodeRecordPayload(response.Payload, payload); err != nil {
+		return Record{}, fmt.Errorf("decode record payload: %w", err)
+	}
+	if err := payload.Validate(); err != nil {
+		return Record{}, fmt.Errorf("validate record payload: %w", err)
+	}
+
+	return Record{
 		Metadata: recordMetadataFromResponse(recordMetadataResponse{
 			ID:        response.ID,
 			Type:      response.Type,
@@ -207,8 +231,31 @@ func textRecordFromResponse(response textRecordResponse) TextRecord {
 			CreatedAt: response.CreatedAt,
 			UpdatedAt: response.UpdatedAt,
 		}),
-		Payload: response.Payload,
+		Payload: payload,
+	}, nil
+}
+
+func decodeRecordPayload(data json.RawMessage, payload model.RecordPayload) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(payload); err != nil {
+		return err
 	}
+
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("record payload must contain one JSON value")
+		}
+
+		return err
+	}
+
+	return nil
+}
+
+func recordRevisionETag(revision int64) string {
+	return strconv.Quote(strconv.FormatInt(revision, 10))
 }
 
 func recordMetadataFromResponse(response recordMetadataResponse) model.RecordMetadata {
