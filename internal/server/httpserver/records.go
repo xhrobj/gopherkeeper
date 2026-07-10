@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"regexp"
@@ -24,36 +25,52 @@ const (
 	errorMessagePreconditionRequired = "record revision is required"
 )
 
-var revisionETagPattern = regexp.MustCompile(`^[1-9][0-9]*$`)
+var (
+	revisionETagPattern      = regexp.MustCompile(`^[1-9][0-9]*$`)
+	errInvalidRecordResponse = errors.New("invalid record response")
+)
 
 // RecordManager выполняет серверные сценарии приватных записей.
 type RecordManager interface {
 	// CreateText создаёт text-запись пользователя.
 	CreateText(ctx context.Context, request service.CreateTextRecordRequest) (service.TextRecord, error)
 
+	// CreateCredentials создаёт credentials-запись пользователя.
+	CreateCredentials(
+		ctx context.Context,
+		request service.CreateCredentialsRecordRequest,
+	) (service.CredentialsRecord, error)
+
 	// List возвращает открытые поля записей пользователя.
 	List(ctx context.Context, userID int64) ([]model.RecordMetadata, error)
 
-	// GetText возвращает text-запись пользователя.
-	GetText(ctx context.Context, userID int64, recordID string) (service.TextRecord, error)
+	// Get возвращает запись пользователя с расшифрованным payload согласно её типу.
+	Get(ctx context.Context, userID int64, recordID string) (service.DecryptedRecord, error)
 
 	// UpdateText изменяет text-запись пользователя.
 	UpdateText(ctx context.Context, request service.UpdateTextRecordRequest) (service.TextRecord, error)
+
+	// UpdateCredentials изменяет credentials-запись пользователя.
+	UpdateCredentials(
+		ctx context.Context,
+		request service.UpdateCredentialsRecordRequest,
+	) (service.CredentialsRecord, error)
 
 	// Delete удаляет приватную запись пользователя.
 	Delete(ctx context.Context, request service.DeleteRecordRequest) error
 }
 
-type createRecordRequest struct {
-	Type    model.RecordType  `json:"type"`
-	Title   string            `json:"title"`
-	Payload model.TextPayload `json:"payload"`
+type recordRequestEnvelope struct {
+	Type    model.RecordType `json:"type"`
+	Title   string           `json:"title"`
+	Payload json.RawMessage  `json:"payload"`
 }
 
-type updateRecordRequest struct {
-	Type    model.RecordType  `json:"type"`
-	Title   string            `json:"title"`
-	Payload model.TextPayload `json:"payload"`
+type decodedRecordRequest struct {
+	Type        model.RecordType
+	Title       string
+	Text        *model.TextPayload
+	Credentials *model.CredentialsPayload
 }
 
 type recordMetadataResponse struct {
@@ -73,6 +90,16 @@ type textRecordResponse struct {
 	CreatedAt time.Time         `json:"created_at"`
 	UpdatedAt time.Time         `json:"updated_at"`
 	Payload   model.TextPayload `json:"payload"`
+}
+
+type credentialsRecordResponse struct {
+	ID        string                   `json:"id"`
+	Type      model.RecordType         `json:"type"`
+	Title     string                   `json:"title"`
+	Revision  int64                    `json:"revision"`
+	CreatedAt time.Time                `json:"created_at"`
+	UpdatedAt time.Time                `json:"updated_at"`
+	Payload   model.CredentialsPayload `json:"payload"`
 }
 
 type listRecordsResponse struct {
@@ -97,7 +124,7 @@ func createRecordHandler(records RecordManager) http.Handler {
 			return
 		}
 
-		request, err := decodeCreateRecordRequest(w, r)
+		request, err := decodeRecordRequest(w, r)
 		if err != nil {
 			if isRequestBodyTooLarge(err) {
 				writeErrorResponse(
@@ -113,18 +140,35 @@ func createRecordHandler(records RecordManager) http.Handler {
 			return
 		}
 
-		record, err := records.CreateText(r.Context(), service.CreateTextRecordRequest{
-			UserID:  userID,
-			Title:   request.Title,
-			Payload: request.Payload,
-		})
-		if err != nil {
-			writeRecordError(w, err)
-			return
-		}
+		switch request.Type {
+		case model.RecordTypeText:
+			record, err := records.CreateText(r.Context(), service.CreateTextRecordRequest{
+				UserID:  userID,
+				Title:   request.Title,
+				Payload: *request.Text,
+			})
+			if err != nil {
+				writeRecordError(w, err)
+				return
+			}
 
-		w.Header().Set("ETag", revisionETag(record.Metadata.Revision))
-		writeJSONResponse(w, http.StatusCreated, newTextRecordResponse(record))
+			w.Header().Set("ETag", revisionETag(record.Metadata.Revision))
+			writeJSONResponse(w, http.StatusCreated, newTextRecordResponse(record))
+
+		case model.RecordTypeCredentials:
+			record, err := records.CreateCredentials(r.Context(), service.CreateCredentialsRecordRequest{
+				UserID:  userID,
+				Title:   request.Title,
+				Payload: *request.Credentials,
+			})
+			if err != nil {
+				writeRecordError(w, err)
+				return
+			}
+
+			w.Header().Set("ETag", revisionETag(record.Metadata.Revision))
+			writeJSONResponse(w, http.StatusCreated, newCredentialsRecordResponse(record))
+		}
 	})
 }
 
@@ -161,15 +205,20 @@ func getRecordHandler(records RecordManager) http.Handler {
 			return
 		}
 
-		recordID := r.PathValue("id")
-		record, err := records.GetText(r.Context(), userID, recordID)
+		record, err := records.Get(r.Context(), userID, r.PathValue("id"))
+		if err != nil {
+			writeRecordError(w, err)
+			return
+		}
+
+		response, err := newDecryptedRecordResponse(record)
 		if err != nil {
 			writeRecordError(w, err)
 			return
 		}
 
 		w.Header().Set("ETag", revisionETag(record.Metadata.Revision))
-		writeJSONResponse(w, http.StatusOK, newTextRecordResponse(record))
+		writeJSONResponse(w, http.StatusOK, response)
 	})
 }
 
@@ -197,7 +246,7 @@ func updateRecordHandler(records RecordManager) http.Handler {
 			return
 		}
 
-		request, err := decodeUpdateRecordRequest(w, r)
+		request, err := decodeRecordRequest(w, r)
 		if err != nil {
 			if isRequestBodyTooLarge(err) {
 				writeErrorResponse(
@@ -213,20 +262,39 @@ func updateRecordHandler(records RecordManager) http.Handler {
 			return
 		}
 
-		record, err := records.UpdateText(r.Context(), service.UpdateTextRecordRequest{
-			UserID:           userID,
-			RecordID:         r.PathValue("id"),
-			ExpectedRevision: expectedRevision,
-			Title:            request.Title,
-			Payload:          request.Payload,
-		})
-		if err != nil {
-			writeRecordError(w, err)
-			return
-		}
+		switch request.Type {
+		case model.RecordTypeText:
+			record, err := records.UpdateText(r.Context(), service.UpdateTextRecordRequest{
+				UserID:           userID,
+				RecordID:         r.PathValue("id"),
+				ExpectedRevision: expectedRevision,
+				Title:            request.Title,
+				Payload:          *request.Text,
+			})
+			if err != nil {
+				writeRecordError(w, err)
+				return
+			}
 
-		w.Header().Set("ETag", revisionETag(record.Metadata.Revision))
-		writeJSONResponse(w, http.StatusOK, newTextRecordResponse(record))
+			w.Header().Set("ETag", revisionETag(record.Metadata.Revision))
+			writeJSONResponse(w, http.StatusOK, newTextRecordResponse(record))
+
+		case model.RecordTypeCredentials:
+			record, err := records.UpdateCredentials(r.Context(), service.UpdateCredentialsRecordRequest{
+				UserID:           userID,
+				RecordID:         r.PathValue("id"),
+				ExpectedRevision: expectedRevision,
+				Title:            request.Title,
+				Payload:          *request.Credentials,
+			})
+			if err != nil {
+				writeRecordError(w, err)
+				return
+			}
+
+			w.Header().Set("ETag", revisionETag(record.Metadata.Revision))
+			writeJSONResponse(w, http.StatusOK, newCredentialsRecordResponse(record))
+		}
 	})
 }
 
@@ -257,27 +325,34 @@ func deleteRecordHandler(records RecordManager) http.Handler {
 	})
 }
 
-func decodeCreateRecordRequest(w http.ResponseWriter, r *http.Request) (createRecordRequest, error) {
-	var request createRecordRequest
-	if err := decodeJSONRequest(w, r, &request); err != nil {
-		return createRecordRequest{}, err
+func decodeRecordRequest(w http.ResponseWriter, r *http.Request) (decodedRecordRequest, error) {
+	var envelope recordRequestEnvelope
+	if err := decodeJSONRequest(w, r, &envelope); err != nil {
+		return decodedRecordRequest{}, err
 	}
 
-	if request.Type != model.RecordTypeText {
-		return createRecordRequest{}, model.ErrRecordTypeUnsupported
+	request := decodedRecordRequest{
+		Type:  envelope.Type,
+		Title: envelope.Title,
 	}
 
-	return request, nil
-}
+	switch envelope.Type {
+	case model.RecordTypeText:
+		var payload model.TextPayload
+		if err := decodeJSONPayload(envelope.Payload, &payload); err != nil {
+			return decodedRecordRequest{}, err
+		}
+		request.Text = &payload
 
-func decodeUpdateRecordRequest(w http.ResponseWriter, r *http.Request) (updateRecordRequest, error) {
-	var request updateRecordRequest
-	if err := decodeJSONRequest(w, r, &request); err != nil {
-		return updateRecordRequest{}, err
-	}
+	case model.RecordTypeCredentials:
+		var payload model.CredentialsPayload
+		if err := decodeJSONPayload(envelope.Payload, &payload); err != nil {
+			return decodedRecordRequest{}, err
+		}
+		request.Credentials = &payload
 
-	if request.Type != model.RecordTypeText {
-		return updateRecordRequest{}, model.ErrRecordTypeUnsupported
+	default:
+		return decodedRecordRequest{}, model.ErrRecordTypeUnsupported
 	}
 
 	return request, nil
@@ -339,6 +414,7 @@ func writeRecordError(w http.ResponseWriter, err error) {
 		errors.Is(err, model.ErrInvalidRecordRevision),
 		errors.Is(err, model.ErrInvalidRecordTitle),
 		errors.Is(err, model.ErrInvalidTextPayload),
+		errors.Is(err, model.ErrInvalidCredentialsPayload),
 		errors.Is(err, model.ErrRecordTypeUnsupported):
 		writeInvalidRecordRequest(w)
 
@@ -387,5 +463,46 @@ func newTextRecordResponse(record service.TextRecord) textRecordResponse {
 		CreatedAt: metadata.CreatedAt,
 		UpdatedAt: metadata.UpdatedAt,
 		Payload:   record.Payload,
+	}
+}
+
+func newCredentialsRecordResponse(record service.CredentialsRecord) credentialsRecordResponse {
+	metadata := record.Metadata
+
+	return credentialsRecordResponse{
+		ID:        metadata.ID,
+		Type:      metadata.Type,
+		Title:     metadata.Title,
+		Revision:  metadata.Revision,
+		CreatedAt: metadata.CreatedAt,
+		UpdatedAt: metadata.UpdatedAt,
+		Payload:   record.Payload,
+	}
+}
+
+func newDecryptedRecordResponse(record service.DecryptedRecord) (any, error) {
+	switch record.Metadata.Type {
+	case model.RecordTypeText:
+		if record.Text == nil || record.Credentials != nil {
+			return nil, errInvalidRecordResponse
+		}
+
+		return newTextRecordResponse(service.TextRecord{
+			Metadata: record.Metadata,
+			Payload:  *record.Text,
+		}), nil
+
+	case model.RecordTypeCredentials:
+		if record.Credentials == nil || record.Text != nil {
+			return nil, errInvalidRecordResponse
+		}
+
+		return newCredentialsRecordResponse(service.CredentialsRecord{
+			Metadata: record.Metadata,
+			Payload:  *record.Credentials,
+		}), nil
+
+	default:
+		return nil, model.ErrRecordTypeUnsupported
 	}
 }

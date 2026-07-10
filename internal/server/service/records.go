@@ -85,6 +85,13 @@ type TextRecord struct {
 	Payload  model.TextPayload
 }
 
+// DecryptedRecord содержит открытую metadata и один расшифрованный payload согласно типу записи.
+type DecryptedRecord struct {
+	Metadata    model.RecordMetadata
+	Text        *model.TextPayload
+	Credentials *model.CredentialsPayload
+}
+
 // RecordService реализует серверные сценарии приватных записей.
 type RecordService struct {
 	records RecordRepository
@@ -170,6 +177,43 @@ func (s *RecordService) List(ctx context.Context, userID int64) ([]model.RecordM
 	}
 
 	return metadata, nil
+}
+
+// Get возвращает запись пользователя и расшифровывает payload согласно её типу.
+func (s *RecordService) Get(ctx context.Context, userID int64, recordID string) (DecryptedRecord, error) {
+	if err := validateRecordOwner(userID); err != nil {
+		return DecryptedRecord{}, err
+	}
+	if err := model.ValidateRecordID(recordID); err != nil {
+		return DecryptedRecord{}, err
+	}
+
+	record, err := s.records.Get(ctx, userID, recordID)
+	if err != nil {
+		return DecryptedRecord{}, fmt.Errorf("get record: %w", err)
+	}
+
+	result := DecryptedRecord{Metadata: record.Metadata()}
+	switch record.Type {
+	case model.RecordTypeText:
+		var payload model.TextPayload
+		if err := s.decryptRecordPayload(record, &payload); err != nil {
+			return DecryptedRecord{}, err
+		}
+		result.Text = &payload
+
+	case model.RecordTypeCredentials:
+		var payload model.CredentialsPayload
+		if err := s.decryptRecordPayload(record, &payload); err != nil {
+			return DecryptedRecord{}, err
+		}
+		result.Credentials = &payload
+
+	default:
+		return DecryptedRecord{}, model.ErrRecordTypeUnsupported
+	}
+
+	return result, nil
 }
 
 // GetText возвращает text-запись пользователя и расшифровывает её payload.

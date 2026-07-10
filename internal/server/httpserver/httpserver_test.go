@@ -288,8 +288,9 @@ func TestNewHandler_RoutesRecords(t *testing.T) {
 						UpdatedAt: createdAt,
 					}}, nil
 				},
-				getText: func(context.Context, int64, string) (service.TextRecord, error) {
-					return service.TextRecord{
+				get: func(context.Context, int64, string) (service.DecryptedRecord, error) {
+					payload := model.TextPayload{Text: "secret"}
+					return service.DecryptedRecord{
 						Metadata: model.RecordMetadata{
 							ID:        testRecordID,
 							Type:      model.RecordTypeText,
@@ -298,7 +299,7 @@ func TestNewHandler_RoutesRecords(t *testing.T) {
 							CreatedAt: createdAt,
 							UpdatedAt: createdAt,
 						},
-						Payload: model.TextPayload{Text: "secret"},
+						Text: &payload,
 					}, nil
 				},
 				updateText: func(_ context.Context, request service.UpdateTextRecordRequest) (service.TextRecord, error) {
@@ -398,17 +399,31 @@ func unusedRecordManager(t *testing.T) RecordManager {
 			t.Fatal("record manager must not be called")
 			return service.TextRecord{}, nil
 		},
+		createCredentials: func(
+			context.Context,
+			service.CreateCredentialsRecordRequest,
+		) (service.CredentialsRecord, error) {
+			t.Fatal("record manager must not be called")
+			return service.CredentialsRecord{}, nil
+		},
 		list: func(context.Context, int64) ([]model.RecordMetadata, error) {
 			t.Fatal("record manager must not be called")
 			return nil, nil
 		},
-		getText: func(context.Context, int64, string) (service.TextRecord, error) {
+		get: func(context.Context, int64, string) (service.DecryptedRecord, error) {
 			t.Fatal("record manager must not be called")
-			return service.TextRecord{}, nil
+			return service.DecryptedRecord{}, nil
 		},
 		updateText: func(context.Context, service.UpdateTextRecordRequest) (service.TextRecord, error) {
 			t.Fatal("record manager must not be called")
 			return service.TextRecord{}, nil
+		},
+		updateCredentials: func(
+			context.Context,
+			service.UpdateCredentialsRecordRequest,
+		) (service.CredentialsRecord, error) {
+			t.Fatal("record manager must not be called")
+			return service.CredentialsRecord{}, nil
 		},
 		delete: func(context.Context, service.DeleteRecordRequest) error {
 			t.Fatal("record manager must not be called")
