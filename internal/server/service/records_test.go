@@ -24,7 +24,7 @@ func TestRecordService_CreateText(t *testing.T) {
 	}
 
 	crypto := &recordPayloadCryptoStub{
-		encryptFunc: func(plaintext []byte, aad []byte) (recordcrypto.EncryptedPayload, error) {
+		encryptFunc: func(plaintext, aad []byte) (recordcrypto.EncryptedPayload, error) {
 			var payload model.TextPayload
 			if err := json.Unmarshal(plaintext, &payload); err != nil {
 				t.Fatalf("Encrypt() plaintext is not TextPayload JSON: %v", err)
@@ -236,101 +236,183 @@ func TestRecordService_GetTextUnsupportedType(t *testing.T) {
 }
 
 func TestRecordService_UpdateText(t *testing.T) {
+	fixture := newUpdateTextRecordFixture()
+	crypto := newUpdateTextCryptoStub(t, fixture)
+	records := newUpdateTextRepositoryStub(t, fixture)
+	service := NewRecordService(records, crypto)
+
+	updated, err := service.UpdateText(context.Background(), UpdateTextRecordRequest{
+		UserID:           42,
+		RecordID:         fixture.recordID,
+		ExpectedRevision: 1,
+		Title:            "Updated Alice note",
+		Payload:          fixture.payload,
+	})
+	if err != nil {
+		t.Fatalf("UpdateText() error = %v", err)
+	}
+
+	assertUpdatedTextRecord(t, updated, fixture)
+	assertRecordServiceCalls(t, records, crypto, recordServiceCallCounts{
+		get:     1,
+		update:  1,
+		encrypt: 1,
+	})
+}
+
+type updateTextRecordFixture struct {
+	recordID  string
+	createdAt time.Time
+	updatedAt time.Time
+	current   model.Record
+	encrypted recordcrypto.EncryptedPayload
+	payload   model.TextPayload
+}
+
+func newUpdateTextRecordFixture() updateTextRecordFixture {
 	recordID := "550e8400-e29b-41d4-a716-446655440000"
 	createdAt := time.Date(2026, time.July, 9, 12, 0, 0, 0, time.UTC)
 	updatedAt := time.Date(2026, time.July, 9, 12, 5, 0, 0, time.UTC)
-	current := model.Record{
-		ID:            recordID,
-		UserID:        42,
-		Type:          model.RecordTypeText,
-		Title:         "Alice note",
-		Revision:      1,
-		CreatedAt:     createdAt,
-		UpdatedAt:     createdAt,
-		CryptoVersion: recordcrypto.CryptoVersion,
-		KeyID:         recordcrypto.DefaultKeyID,
-		Nonce:         []byte("old nonce"),
-		Ciphertext:    []byte("old ciphertext"),
-	}
-	encrypted := recordcrypto.EncryptedPayload{
-		CryptoVersion: recordcrypto.CryptoVersion,
-		KeyID:         recordcrypto.DefaultKeyID,
-		Nonce:         []byte("new nonce"),
-		Ciphertext:    []byte("new ciphertext"),
-	}
-	payload := model.TextPayload{Text: "updated secret note", Metadata: "updated private metadata"}
 
-	crypto := &recordPayloadCryptoStub{
-		encryptFunc: func(plaintext []byte, aad []byte) (recordcrypto.EncryptedPayload, error) {
-			var gotPayload model.TextPayload
-			if err := json.Unmarshal(plaintext, &gotPayload); err != nil {
-				t.Fatalf("Encrypt() plaintext is not TextPayload JSON: %v", err)
-			}
-			if gotPayload != payload {
-				t.Fatalf("Encrypt() payload = %+v, want %+v", gotPayload, payload)
-			}
+	return updateTextRecordFixture{
+		recordID:  recordID,
+		createdAt: createdAt,
+		updatedAt: updatedAt,
+		current: model.Record{
+			ID:            recordID,
+			UserID:        42,
+			Type:          model.RecordTypeText,
+			Title:         "Alice note",
+			Revision:      1,
+			CreatedAt:     createdAt,
+			UpdatedAt:     createdAt,
+			CryptoVersion: recordcrypto.CryptoVersion,
+			KeyID:         recordcrypto.DefaultKeyID,
+			Nonce:         []byte("old nonce"),
+			Ciphertext:    []byte("old ciphertext"),
+		},
+		encrypted: recordcrypto.EncryptedPayload{
+			CryptoVersion: recordcrypto.CryptoVersion,
+			KeyID:         recordcrypto.DefaultKeyID,
+			Nonce:         []byte("new nonce"),
+			Ciphertext:    []byte("new ciphertext"),
+		},
+		payload: model.TextPayload{Text: "updated secret note", Metadata: "updated private metadata"},
+	}
+}
+
+func newUpdateTextCryptoStub(t *testing.T, fixture updateTextRecordFixture) *recordPayloadCryptoStub {
+	t.Helper()
+
+	return &recordPayloadCryptoStub{
+		encryptFunc: func(plaintext, aad []byte) (recordcrypto.EncryptedPayload, error) {
+			assertEncryptedTextPayload(t, plaintext, fixture.payload)
 			wantAAD := "gopherkeeper:v1:user:42:record:550e8400-e29b-41d4-a716-446655440000:type:text"
 			if string(aad) != wantAAD {
 				t.Fatalf("Encrypt() AAD = %q, want %q", aad, wantAAD)
 			}
 
-			return encrypted, nil
+			return fixture.encrypted, nil
 		},
 	}
-	records := &recordRepositoryStub{
-		getFunc: func(_ context.Context, userID int64, gotRecordID string) (model.Record, error) {
-			if userID != 42 || gotRecordID != recordID {
-				t.Fatalf("Get() args = %d, %q", userID, gotRecordID)
-			}
+}
 
-			return current, nil
+func assertEncryptedTextPayload(t *testing.T, plaintext []byte, want model.TextPayload) {
+	t.Helper()
+
+	var got model.TextPayload
+	if err := json.Unmarshal(plaintext, &got); err != nil {
+		t.Fatalf("Encrypt() plaintext is not TextPayload JSON: %v", err)
+	}
+	if got != want {
+		t.Fatalf("Encrypt() payload = %+v, want %+v", got, want)
+	}
+}
+
+func newUpdateTextRepositoryStub(t *testing.T, fixture updateTextRecordFixture) *recordRepositoryStub {
+	t.Helper()
+
+	return &recordRepositoryStub{
+		getFunc: func(_ context.Context, userID int64, recordID string) (model.Record, error) {
+			assertUpdateTextGetArgs(t, userID, recordID, fixture)
+			return fixture.current, nil
 		},
 		updateFunc: func(_ context.Context, record model.Record, expectedRevision int64) (model.Record, error) {
-			if expectedRevision != 1 {
-				t.Fatalf("Update() expectedRevision = %d, want 1", expectedRevision)
-			}
-			if record.ID != recordID || record.UserID != 42 || record.Type != model.RecordTypeText {
-				t.Fatalf("Update() record identity = %+v", record)
-			}
-			if record.Title != "Updated Alice note" {
-				t.Fatalf("Update() title = %q, want Updated Alice note", record.Title)
-			}
-			if bytes.Equal(record.Nonce, current.Nonce) || bytes.Equal(record.Ciphertext, current.Ciphertext) {
-				t.Fatalf("Update() reused old encrypted payload: %+v", record)
-			}
-			if record.CryptoVersion != encrypted.CryptoVersion || record.KeyID != encrypted.KeyID ||
-				!bytes.Equal(record.Nonce, encrypted.Nonce) || !bytes.Equal(record.Ciphertext, encrypted.Ciphertext) {
-				t.Fatalf("Update() encrypted record = %+v", record)
-			}
-
+			assertUpdateTextRecordPatch(t, record, expectedRevision, fixture)
 			updated := record
 			updated.Revision = 2
-			updated.CreatedAt = createdAt
-			updated.UpdatedAt = updatedAt
+			updated.CreatedAt = fixture.createdAt
+			updated.UpdatedAt = fixture.updatedAt
 			return updated, nil
 		},
 	}
-	service := NewRecordService(records, crypto)
+}
 
-	updated, err := service.UpdateText(context.Background(), UpdateTextRecordRequest{
-		UserID:           42,
-		RecordID:         recordID,
-		ExpectedRevision: 1,
-		Title:            "Updated Alice note",
-		Payload:          payload,
-	})
-	if err != nil {
-		t.Fatalf("UpdateText() error = %v", err)
+func assertUpdateTextGetArgs(t *testing.T, userID int64, recordID string, fixture updateTextRecordFixture) {
+	t.Helper()
+
+	if userID != 42 || recordID != fixture.recordID {
+		t.Fatalf("Get() args = %d, %q", userID, recordID)
 	}
-	if updated.Metadata.ID != recordID || updated.Metadata.Title != "Updated Alice note" ||
-		updated.Metadata.Revision != 2 || updated.Metadata.CreatedAt != createdAt ||
-		updated.Metadata.UpdatedAt != updatedAt {
-		t.Fatalf("UpdateText() metadata = %+v", updated.Metadata)
+}
+
+func assertUpdateTextRecordPatch(
+	t *testing.T,
+	record model.Record,
+	expectedRevision int64,
+	fixture updateTextRecordFixture,
+) {
+	t.Helper()
+
+	if expectedRevision != 1 {
+		t.Fatalf("Update() expectedRevision = %d, want 1", expectedRevision)
 	}
-	if updated.Payload != payload {
-		t.Fatalf("UpdateText() payload = %+v, want %+v", updated.Payload, payload)
+	if record.ID != fixture.recordID || record.UserID != 42 || record.Type != model.RecordTypeText {
+		t.Fatalf("Update() record identity = %+v", record)
 	}
-	if records.getCalls != 1 || records.updateCalls != 1 || crypto.encryptCalls != 1 || crypto.decryptCalls != 0 {
+	if record.Title != "Updated Alice note" {
+		t.Fatalf("Update() title = %q, want Updated Alice note", record.Title)
+	}
+	if bytes.Equal(record.Nonce, fixture.current.Nonce) || bytes.Equal(record.Ciphertext, fixture.current.Ciphertext) {
+		t.Fatalf("Update() reused old encrypted payload: %+v", record)
+	}
+	if record.CryptoVersion != fixture.encrypted.CryptoVersion || record.KeyID != fixture.encrypted.KeyID ||
+		!bytes.Equal(record.Nonce, fixture.encrypted.Nonce) ||
+		!bytes.Equal(record.Ciphertext, fixture.encrypted.Ciphertext) {
+		t.Fatalf("Update() encrypted record = %+v", record)
+	}
+}
+
+func assertUpdatedTextRecord(t *testing.T, got TextRecord, fixture updateTextRecordFixture) {
+	t.Helper()
+
+	if got.Metadata.ID != fixture.recordID || got.Metadata.Title != "Updated Alice note" ||
+		got.Metadata.Revision != 2 || got.Metadata.CreatedAt != fixture.createdAt ||
+		got.Metadata.UpdatedAt != fixture.updatedAt {
+		t.Fatalf("UpdateText() metadata = %+v", got.Metadata)
+	}
+	if got.Payload != fixture.payload {
+		t.Fatalf("UpdateText() payload = %+v, want %+v", got.Payload, fixture.payload)
+	}
+}
+
+type recordServiceCallCounts struct {
+	get     int
+	update  int
+	encrypt int
+	decrypt int
+}
+
+func assertRecordServiceCalls(
+	t *testing.T,
+	records *recordRepositoryStub,
+	crypto *recordPayloadCryptoStub,
+	want recordServiceCallCounts,
+) {
+	t.Helper()
+
+	if records.getCalls != want.get || records.updateCalls != want.update ||
+		crypto.encryptCalls != want.encrypt || crypto.decryptCalls != want.decrypt {
 		t.Fatalf(
 			"calls: Get=%d Update=%d Encrypt=%d Decrypt=%d",
 			records.getCalls,

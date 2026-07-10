@@ -143,7 +143,7 @@ func unexpectedCreateTextRecordRunner(t *testing.T) textRecordCreateRunner {
 func unexpectedUpdateTextRecordRunner(t *testing.T) textRecordUpdateRunner {
 	t.Helper()
 
-	return func(context.Context, config.Config, io.Writer, string, int64, string, string, string) error {
+	return func(context.Context, config.Config, io.Writer, textRecordUpdateCommandRequest) error {
 		t.Helper()
 		t.Fatal("records update-text command must not run")
 		return nil

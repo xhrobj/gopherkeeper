@@ -22,26 +22,100 @@ import (
 var createdRecordPattern = regexp.MustCompile(`^Created text record ([0-9a-f-]+) with revision ([0-9]+)\.$`)
 
 func TestIntegration_CLITextRecordUpdateDeleteFlow(t *testing.T) {
+	flow := newCLITextRecordFlow(t)
+	recordID := flow.createInitialRecord()
+
+	flow.loginSecondAliceClient()
+	flow.updateRecord(recordID)
+	flow.assertUpdatedRecord(recordID)
+	flow.assertStaleConflicts(recordID)
+	flow.loginEve()
+	flow.assertForeignAccessHidden(recordID)
+	flow.deleteRecord(recordID)
+	flow.assertDeleted(recordID)
+	flow.assertHTTPLogsDoNotContainSecrets()
+}
+
+type cliTextRecordFlow struct {
+	t                      *testing.T
+	ctx                    context.Context
+	serverAddress          string
+	caCertFile             string
+	pool                   *pgxpool.Pool
+	httpLogs               *bytes.Buffer
+	aliceSessionFile       string
+	aliceSecondSessionFile string
+	eveSessionFile         string
+	updatedTextFile        string
+	updatedMetadataFile    string
+}
+
+func newCLITextRecordFlow(t *testing.T) *cliTextRecordFlow {
+	t.Helper()
+
+	ctx, pool, httpLogs, serverAddress, caCertFile := startCLITextRecordTestServer(t)
+	if _, _, err := runRegisterCommand(ctx, serverAddress, caCertFile, " Alice ", testRegistrationPassword); err != nil {
+		t.Fatalf("register Alice: %v", err)
+	}
+
+	aliceSessionFile := filepath.Join(t.TempDir(), "alice-session.json")
+	loginTestUser(t, ctx, serverAddress, caCertFile, aliceSessionFile, " Alice ")
+
+	return &cliTextRecordFlow{
+		t:                   t,
+		ctx:                 ctx,
+		serverAddress:       serverAddress,
+		caCertFile:          caCertFile,
+		pool:                pool,
+		httpLogs:            httpLogs,
+		aliceSessionFile:    aliceSessionFile,
+		updatedTextFile:     writeIntegrationFile(t, "updated-note.txt", "updated secret"),
+		updatedMetadataFile: writeIntegrationFile(t, "updated-metadata.txt", "updated private metadata"),
+	}
+}
+
+func startCLITextRecordTestServer(
+	t *testing.T,
+) (context.Context, *pgxpool.Pool, *bytes.Buffer, string, string) {
+	t.Helper()
+
 	dsn := os.Getenv("DATABASE_DSN")
 	if dsn == "" {
 		t.Fatal("DATABASE_DSN is not set")
 	}
-
 	isolateClientConfig(t)
 	t.Setenv("ADDRESS", "")
 	t.Setenv("CA_CERT_FILE", "")
 	t.Setenv("SESSION_FILE", "")
 
 	ctx, cancel := context.WithTimeout(context.Background(), integrationTestTimeout)
-	defer cancel()
+	t.Cleanup(cancel)
+
+	pool := openIsolatedMigratedDatabase(t, ctx, dsn)
+	httpLogs := &bytes.Buffer{}
+	logger := newIntegrationLogger(httpLogs)
+	t.Cleanup(func() { _ = logger.Sync() })
+
+	caCertFile, serverCertFile, serverKeyFile := generateTLSFiles(t)
+	serverAddress, stopServer := startHTTPSServer(
+		t,
+		middleware.WithLogging(newAuthenticatedServerHandler(t, pool), logger),
+		serverCertFile,
+		serverKeyFile,
+	)
+	t.Cleanup(stopServer)
+
+	return ctx, pool, httpLogs, serverAddress, caCertFile
+}
+
+func openIsolatedMigratedDatabase(t *testing.T, ctx context.Context, dsn string) *pgxpool.Pool {
+	t.Helper()
 
 	adminPool := openPostgres(t, ctx, dsn)
 	t.Cleanup(adminPool.Close)
 
 	databaseName := createTestDatabase(t, ctx, adminPool)
-	t.Cleanup(func() {
-		dropTestDatabase(t, adminPool, databaseName)
-	})
+	t.Cleanup(func() { dropTestDatabase(t, adminPool, databaseName) })
 
 	testPool := openTestPostgres(t, ctx, dsn, databaseName)
 	t.Cleanup(testPool.Close)
@@ -50,159 +124,180 @@ func TestIntegration_CLITextRecordUpdateDeleteFlow(t *testing.T) {
 		t.Fatalf("migration.Run() error = %v", err)
 	}
 
-	var httpLogs bytes.Buffer
-	logger := newIntegrationLogger(&httpLogs)
-	defer func() {
-		_ = logger.Sync()
-	}()
+	return testPool
+}
 
-	caCertFile, serverCertFile, serverKeyFile := generateTLSFiles(t)
-	serverAddress, stopServer := startHTTPSServer(
-		t,
-		middleware.WithLogging(newAuthenticatedServerHandler(t, testPool), logger),
-		serverCertFile,
-		serverKeyFile,
-	)
-	defer stopServer()
+func loginTestUser(
+	t *testing.T,
+	ctx context.Context,
+	serverAddress, caCertFile, sessionFile, login string,
+) {
+	t.Helper()
 
-	if _, _, err := runRegisterCommand(ctx, serverAddress, caCertFile, " Alice ", testRegistrationPassword); err != nil {
-		t.Fatalf("register Alice: %v", err)
+	if _, _, err := runLoginCommand(ctx, serverAddress, caCertFile, sessionFile, login, testRegistrationPassword); err != nil {
+		t.Fatalf("login %s: %v", strings.TrimSpace(login), err)
 	}
-	aliceSessionFile := filepath.Join(t.TempDir(), "alice-session.json")
-	if _, _, err := runLoginCommand(
-		ctx,
-		serverAddress,
-		caCertFile,
-		aliceSessionFile,
-		" Alice ",
-		testRegistrationPassword,
-	); err != nil {
-		t.Fatalf("login Alice: %v", err)
-	}
+}
 
-	initialTextFile := writeIntegrationFile(t, "initial-note.txt", "initial secret")
-	initialMetadataFile := writeIntegrationFile(t, "initial-metadata.txt", "initial private metadata")
+func (f *cliTextRecordFlow) createInitialRecord() string {
+	f.t.Helper()
+
+	initialTextFile := writeIntegrationFile(f.t, "initial-note.txt", "initial secret")
+	initialMetadataFile := writeIntegrationFile(f.t, "initial-metadata.txt", "initial private metadata")
 	stdout, stderr, err := runCreateTextRecordCommand(
-		ctx,
-		serverAddress,
-		caCertFile,
-		aliceSessionFile,
+		f.ctx,
+		f.serverAddress,
+		f.caCertFile,
+		f.aliceSessionFile,
 		"Alice note",
 		initialTextFile,
 		initialMetadataFile,
 	)
 	if err != nil {
-		t.Fatalf("create text record: %v", err)
+		f.t.Fatalf("create text record: %v", err)
 	}
 	if stderr != "" {
-		t.Errorf("create stderr = %q, want empty output", stderr)
-	}
-	recordID, revision := parseCreatedTextRecordOutput(t, stdout)
-	if revision != 1 {
-		t.Fatalf("created revision = %d, want 1", revision)
-	}
-	aliceSecondSessionFile := filepath.Join(t.TempDir(), "alice-second-session.json")
-	if _, _, err := runLoginCommand(
-		ctx,
-		serverAddress,
-		caCertFile,
-		aliceSecondSessionFile,
-		" Alice ",
-		testRegistrationPassword,
-	); err != nil {
-		t.Fatalf("login Alice second client: %v", err)
+		f.t.Errorf("create stderr = %q, want empty output", stderr)
 	}
 
-	updatedTextFile := writeIntegrationFile(t, "updated-note.txt", "updated secret")
-	updatedMetadataFile := writeIntegrationFile(t, "updated-metadata.txt", "updated private metadata")
-	stdout, stderr, err = runUpdateTextRecordCommand(
-		ctx,
-		serverAddress,
-		caCertFile,
-		aliceSessionFile,
-		recordID,
-		1,
-		"Updated Alice note",
-		updatedTextFile,
-		updatedMetadataFile,
+	recordID, revision := parseCreatedTextRecordOutput(f.t, stdout)
+	if revision != 1 {
+		f.t.Fatalf("created revision = %d, want 1", revision)
+	}
+
+	return recordID
+}
+
+func (f *cliTextRecordFlow) loginSecondAliceClient() {
+	f.t.Helper()
+
+	f.aliceSecondSessionFile = filepath.Join(f.t.TempDir(), "alice-second-session.json")
+	loginTestUser(f.t, f.ctx, f.serverAddress, f.caCertFile, f.aliceSecondSessionFile, " Alice ")
+}
+
+func (f *cliTextRecordFlow) updateRecord(recordID string) {
+	f.t.Helper()
+
+	stdout, stderr, err := runUpdateTextRecordCommand(
+		f.ctx,
+		f.serverAddress,
+		f.caCertFile,
+		f.aliceSessionFile,
+		textRecordUpdateCLIRequest{
+			recordID:     recordID,
+			revision:     1,
+			title:        "Updated Alice note",
+			textFile:     f.updatedTextFile,
+			metadataFile: f.updatedMetadataFile,
+		},
 	)
 	if err != nil {
-		t.Fatalf("update text record: %v", err)
+		f.t.Fatalf("update text record: %v", err)
 	}
 	wantUpdate := fmt.Sprintf("Updated text record %s to revision 2.\n", recordID)
 	if stdout != wantUpdate {
-		t.Errorf("update stdout = %q, want %q", stdout, wantUpdate)
+		f.t.Errorf("update stdout = %q, want %q", stdout, wantUpdate)
 	}
 	if stderr != "" {
-		t.Errorf("update stderr = %q, want empty output", stderr)
+		f.t.Errorf("update stderr = %q, want empty output", stderr)
 	}
-	assertPlaintextAbsentFromPostgres(t, ctx, testPool, recordID, "updated secret", "updated private metadata")
+	assertPlaintextAbsentFromPostgres(f.t, f.ctx, f.pool, recordID, "updated secret", "updated private metadata")
+}
 
-	stdout, stderr, err = runGetRecordCommand(ctx, serverAddress, caCertFile, aliceSessionFile, recordID)
+func (f *cliTextRecordFlow) assertUpdatedRecord(recordID string) {
+	f.t.Helper()
+
+	stdout, stderr, err := runGetRecordCommand(f.ctx, f.serverAddress, f.caCertFile, f.aliceSessionFile, recordID)
 	if err != nil {
-		t.Fatalf("get updated text record: %v", err)
+		f.t.Fatalf("get updated text record: %v", err)
 	}
 	if !strings.Contains(stdout, "Revision: 2") || !strings.Contains(stdout, "updated secret") {
-		t.Errorf("get stdout = %q, want updated revision and text", stdout)
+		f.t.Errorf("get stdout = %q, want updated revision and text", stdout)
 	}
 	if stderr != "" {
-		t.Errorf("get stderr = %q, want empty output", stderr)
+		f.t.Errorf("get stderr = %q, want empty output", stderr)
 	}
+}
 
-	_, _, err = runUpdateTextRecordCommand(
-		ctx,
-		serverAddress,
-		caCertFile,
-		aliceSecondSessionFile,
-		recordID,
-		1,
-		"Stale Alice note",
-		updatedTextFile,
-		updatedMetadataFile,
+func (f *cliTextRecordFlow) assertStaleConflicts(recordID string) {
+	f.t.Helper()
+
+	_, _, err := runUpdateTextRecordCommand(
+		f.ctx,
+		f.serverAddress,
+		f.caCertFile,
+		f.aliceSecondSessionFile,
+		textRecordUpdateCLIRequest{
+			recordID:     recordID,
+			revision:     1,
+			title:        "Stale Alice note",
+			textFile:     f.updatedTextFile,
+			metadataFile: f.updatedMetadataFile,
+		},
 	)
-	assertCLIErrorContains(t, "stale update", err, "record revision conflict")
+	assertCLIErrorContains(f.t, "stale update", err, "record revision conflict")
 
-	_, _, err = runDeleteRecordCommand(ctx, serverAddress, caCertFile, aliceSessionFile, recordID, 1)
-	assertCLIErrorContains(t, "stale delete", err, "record revision conflict")
+	_, _, err = runDeleteRecordCommand(f.ctx, f.serverAddress, f.caCertFile, f.aliceSessionFile, recordID, 1)
+	assertCLIErrorContains(f.t, "stale delete", err, "record revision conflict")
+}
 
-	if _, _, err := runRegisterCommand(ctx, serverAddress, caCertFile, " Eve ", testRegistrationPassword); err != nil {
-		t.Fatalf("register Eve: %v", err)
+func (f *cliTextRecordFlow) loginEve() {
+	f.t.Helper()
+
+	if _, _, err := runRegisterCommand(f.ctx, f.serverAddress, f.caCertFile, " Eve ", testRegistrationPassword); err != nil {
+		f.t.Fatalf("register Eve: %v", err)
 	}
-	eveSessionFile := filepath.Join(t.TempDir(), "eve-session.json")
-	if _, _, err := runLoginCommand(ctx, serverAddress, caCertFile, eveSessionFile, " Eve ", testRegistrationPassword); err != nil {
-		t.Fatalf("login Eve: %v", err)
-	}
+	f.eveSessionFile = filepath.Join(f.t.TempDir(), "eve-session.json")
+	loginTestUser(f.t, f.ctx, f.serverAddress, f.caCertFile, f.eveSessionFile, " Eve ")
+}
 
-	_, _, err = runUpdateTextRecordCommand(
-		ctx,
-		serverAddress,
-		caCertFile,
-		eveSessionFile,
-		recordID,
-		2,
-		"Eve note",
-		updatedTextFile,
-		updatedMetadataFile,
+func (f *cliTextRecordFlow) assertForeignAccessHidden(recordID string) {
+	f.t.Helper()
+
+	_, _, err := runUpdateTextRecordCommand(
+		f.ctx,
+		f.serverAddress,
+		f.caCertFile,
+		f.eveSessionFile,
+		textRecordUpdateCLIRequest{
+			recordID:     recordID,
+			revision:     2,
+			title:        "Eve note",
+			textFile:     f.updatedTextFile,
+			metadataFile: f.updatedMetadataFile,
+		},
 	)
-	assertCLIErrorContains(t, "foreign update", err, "record not found")
+	assertCLIErrorContains(f.t, "foreign update", err, "record not found")
 
-	_, _, err = runDeleteRecordCommand(ctx, serverAddress, caCertFile, eveSessionFile, recordID, 2)
-	assertCLIErrorContains(t, "foreign delete", err, "record not found")
+	_, _, err = runDeleteRecordCommand(f.ctx, f.serverAddress, f.caCertFile, f.eveSessionFile, recordID, 2)
+	assertCLIErrorContains(f.t, "foreign delete", err, "record not found")
+}
 
-	stdout, stderr, err = runDeleteRecordCommand(ctx, serverAddress, caCertFile, aliceSessionFile, recordID, 2)
+func (f *cliTextRecordFlow) deleteRecord(recordID string) {
+	f.t.Helper()
+
+	stdout, stderr, err := runDeleteRecordCommand(f.ctx, f.serverAddress, f.caCertFile, f.aliceSessionFile, recordID, 2)
 	if err != nil {
-		t.Fatalf("delete text record: %v", err)
+		f.t.Fatalf("delete text record: %v", err)
 	}
 	wantDelete := fmt.Sprintf("Deleted record %s.\n", recordID)
 	if stdout != wantDelete {
-		t.Errorf("delete stdout = %q, want %q", stdout, wantDelete)
+		f.t.Errorf("delete stdout = %q, want %q", stdout, wantDelete)
 	}
 	if stderr != "" {
-		t.Errorf("delete stderr = %q, want empty output", stderr)
+		f.t.Errorf("delete stderr = %q, want empty output", stderr)
 	}
+}
 
-	_, _, err = runGetRecordCommand(ctx, serverAddress, caCertFile, aliceSessionFile, recordID)
-	assertCLIErrorContains(t, "get deleted record", err, "record not found")
+func (f *cliTextRecordFlow) assertDeleted(recordID string) {
+	f.t.Helper()
+
+	_, _, err := runGetRecordCommand(f.ctx, f.serverAddress, f.caCertFile, f.aliceSessionFile, recordID)
+	assertCLIErrorContains(f.t, "get deleted record", err, "record not found")
+}
+
+func (f *cliTextRecordFlow) assertHTTPLogsDoNotContainSecrets() {
+	f.t.Helper()
 
 	for _, secret := range []string{
 		testRegistrationPassword,
@@ -211,20 +306,16 @@ func TestIntegration_CLITextRecordUpdateDeleteFlow(t *testing.T) {
 		"updated secret",
 		"updated private metadata",
 	} {
-		if strings.Contains(httpLogs.String(), secret) {
-			t.Errorf("HTTP logs contain secret %q", secret)
+		if strings.Contains(f.httpLogs.String(), secret) {
+			f.t.Errorf("HTTP logs contain secret %q", secret)
 		}
 	}
 }
 
 func runCreateTextRecordCommand(
 	ctx context.Context,
-	address string,
-	caCertFile string,
-	sessionFile string,
-	title string,
-	textFile string,
-	metadataFile string,
+	address, caCertFile, sessionFile string,
+	title, textFile, metadataFile string,
 ) (string, string, error) {
 	args := []string{
 		"gkeep",
@@ -242,29 +333,31 @@ func runCreateTextRecordCommand(
 	return runClientCommand(ctx, args)
 }
 
+type textRecordUpdateCLIRequest struct {
+	recordID     string
+	revision     int64
+	title        string
+	textFile     string
+	metadataFile string
+}
+
 func runUpdateTextRecordCommand(
 	ctx context.Context,
-	address string,
-	caCertFile string,
-	sessionFile string,
-	recordID string,
-	revision int64,
-	title string,
-	textFile string,
-	metadataFile string,
+	address, caCertFile, sessionFile string,
+	request textRecordUpdateCLIRequest,
 ) (string, string, error) {
 	args := []string{
 		"gkeep",
 		"--address", address,
 		"--ca-cert", caCertFile,
 		"--session-file", sessionFile,
-		"records", "update-text", recordID,
-		"--revision", fmt.Sprintf("%d", revision),
-		"--title", title,
-		"--text-file", textFile,
+		"records", "update-text", request.recordID,
+		"--revision", fmt.Sprintf("%d", request.revision),
+		"--title", request.title,
+		"--text-file", request.textFile,
 	}
-	if metadataFile != "" {
-		args = append(args, "--metadata-file", metadataFile)
+	if request.metadataFile != "" {
+		args = append(args, "--metadata-file", request.metadataFile)
 	}
 
 	return runClientCommand(ctx, args)
@@ -272,10 +365,7 @@ func runUpdateTextRecordCommand(
 
 func runGetRecordCommand(
 	ctx context.Context,
-	address string,
-	caCertFile string,
-	sessionFile string,
-	recordID string,
+	address, caCertFile, sessionFile, recordID string,
 ) (string, string, error) {
 	return runClientCommand(ctx, []string{
 		"gkeep",
@@ -288,10 +378,7 @@ func runGetRecordCommand(
 
 func runDeleteRecordCommand(
 	ctx context.Context,
-	address string,
-	caCertFile string,
-	sessionFile string,
-	recordID string,
+	address, caCertFile, sessionFile, recordID string,
 	revision int64,
 ) (string, string, error) {
 	return runClientCommand(ctx, []string{
@@ -372,7 +459,7 @@ func assertPlaintextAbsentFromPostgres(
 	}
 }
 
-func writeIntegrationFile(t *testing.T, filename string, content string) string {
+func writeIntegrationFile(t *testing.T, filename, content string) string {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), filename)

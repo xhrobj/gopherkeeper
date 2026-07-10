@@ -41,16 +41,14 @@ func (s recordClientStub) ListRecords(ctx context.Context, accessToken string) (
 
 func (s recordClientStub) GetTextRecord(
 	ctx context.Context,
-	accessToken string,
-	recordID string,
+	accessToken, recordID string,
 ) (httpclient.TextRecord, error) {
 	return s.get(ctx, accessToken, recordID)
 }
 
 func (s recordClientStub) UpdateTextRecord(
 	ctx context.Context,
-	accessToken string,
-	recordID string,
+	accessToken, recordID string,
 	expectedRevision int64,
 	request httpclient.UpdateTextRecordRequest,
 ) (httpclient.TextRecord, error) {
@@ -59,8 +57,7 @@ func (s recordClientStub) UpdateTextRecord(
 
 func (s recordClientStub) DeleteRecord(
 	ctx context.Context,
-	accessToken string,
-	recordID string,
+	accessToken, recordID string,
 	expectedRevision int64,
 ) error {
 	return s.delete(ctx, accessToken, recordID, expectedRevision)
@@ -78,24 +75,7 @@ func TestApplication_UpdateTextRecord(t *testing.T) {
 				expectedRevision int64,
 				request httpclient.UpdateTextRecordRequest,
 			) (httpclient.TextRecord, error) {
-				if accessToken != "test.jwt.token" {
-					t.Errorf("access token = %q, want test.jwt.token", accessToken)
-				}
-				if recordID != testRecordID {
-					t.Errorf("record ID = %q, want %q", recordID, testRecordID)
-				}
-				if expectedRevision != 1 {
-					t.Errorf("expected revision = %d, want 1", expectedRevision)
-				}
-				if request.Title != "Updated note" {
-					t.Errorf("title = %q, want Updated note", request.Title)
-				}
-				if request.Payload.Text != "updated secret" {
-					t.Errorf("text = %q, want updated secret", request.Payload.Text)
-				}
-				if request.Payload.Metadata != "updated private metadata" {
-					t.Errorf("metadata = %q, want updated private metadata", request.Payload.Metadata)
-				}
+				assertUpdateTextHTTPClientRequest(t, accessToken, recordID, expectedRevision, request)
 
 				return httpclient.TextRecord{
 					Metadata: model.RecordMetadata{
@@ -135,6 +115,34 @@ func TestApplication_UpdateTextRecord(t *testing.T) {
 	}
 	if record.Payload.Text != "updated secret" {
 		t.Errorf("text = %q, want updated secret", record.Payload.Text)
+	}
+}
+
+func assertUpdateTextHTTPClientRequest(
+	t *testing.T,
+	accessToken, recordID string,
+	expectedRevision int64,
+	request httpclient.UpdateTextRecordRequest,
+) {
+	t.Helper()
+
+	if accessToken != "test.jwt.token" {
+		t.Errorf("access token = %q, want test.jwt.token", accessToken)
+	}
+	if recordID != testRecordID {
+		t.Errorf("record ID = %q, want %q", recordID, testRecordID)
+	}
+	if expectedRevision != 1 {
+		t.Errorf("expected revision = %d, want 1", expectedRevision)
+	}
+	if request.Title != "Updated note" {
+		t.Errorf("title = %q, want Updated note", request.Title)
+	}
+	if request.Payload.Text != "updated secret" {
+		t.Errorf("text = %q, want updated secret", request.Payload.Text)
+	}
+	if request.Payload.Metadata != "updated private metadata" {
+		t.Errorf("metadata = %q, want updated private metadata", request.Payload.Metadata)
 	}
 }
 

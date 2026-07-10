@@ -44,34 +44,9 @@ func TestRecordsUpdateTextCommand(t *testing.T) {
 				_ context.Context,
 				cfg config.Config,
 				output io.Writer,
-				recordID string,
-				expectedRevision int64,
-				title string,
-				textFile string,
-				metadataFile string,
+				request textRecordUpdateCommandRequest,
 			) error {
-				if cfg.Address != "localhost:9090" {
-					t.Errorf("address = %q, want localhost:9090", cfg.Address)
-				}
-				if output != &stdout {
-					t.Error("output writer was not passed to runner")
-				}
-				if recordID != testRecordID {
-					t.Errorf("record ID = %q, want %q", recordID, testRecordID)
-				}
-				if expectedRevision != 1 {
-					t.Errorf("expected revision = %d, want 1", expectedRevision)
-				}
-				if title != "Updated note" {
-					t.Errorf("title = %q, want Updated note", title)
-				}
-				if got, err := os.ReadFile(textFile); err != nil || string(got) != "updated secret" {
-					t.Errorf("text file = %q, %v; want updated secret", got, err)
-				}
-				if got, err := os.ReadFile(metadataFile); err != nil || string(got) != "updated private metadata" {
-					t.Errorf("metadata file = %q, %v; want updated private metadata", got, err)
-				}
-
+				assertUpdateTextCommandRequest(t, cfg, output, &stdout, request)
 				return nil
 			},
 		},
@@ -207,11 +182,13 @@ func TestExecuteUpdateTextRecord(t *testing.T) {
 		context.Background(),
 		updater,
 		&output,
-		testRecordID,
-		1,
-		"Updated note",
-		textFile,
-		metadataFile,
+		textRecordUpdateCommandRequest{
+			recordID:         testRecordID,
+			expectedRevision: 1,
+			title:            "Updated note",
+			textFile:         textFile,
+			metadataFile:     metadataFile,
+		},
 	); err != nil {
 		t.Fatalf("executeUpdateTextRecord() error = %v", err)
 	}
@@ -232,11 +209,12 @@ func TestExecuteUpdateTextRecordReturnsReadError(t *testing.T) {
 		context.Background(),
 		updater,
 		&bytes.Buffer{},
-		testRecordID,
-		1,
-		"Updated note",
-		"missing.txt",
-		"",
+		textRecordUpdateCommandRequest{
+			recordID:         testRecordID,
+			expectedRevision: 1,
+			title:            "Updated note",
+			textFile:         "missing.txt",
+		},
 	)
 	if err == nil || !strings.Contains(err.Error(), "stat text file") {
 		t.Fatalf("executeUpdateTextRecord() error = %v, want text file stat error", err)
@@ -277,6 +255,45 @@ func TestExecuteDeleteRecordReturnsUsecaseError(t *testing.T) {
 	}
 }
 
+func assertUpdateTextCommandRequest(
+	t *testing.T,
+	cfg config.Config,
+	output, wantOutput io.Writer,
+	request textRecordUpdateCommandRequest,
+) {
+	t.Helper()
+
+	if cfg.Address != "localhost:9090" {
+		t.Errorf("address = %q, want localhost:9090", cfg.Address)
+	}
+	if output != wantOutput {
+		t.Error("output writer was not passed to runner")
+	}
+	if request.recordID != testRecordID {
+		t.Errorf("record ID = %q, want %q", request.recordID, testRecordID)
+	}
+	if request.expectedRevision != 1 {
+		t.Errorf("expected revision = %d, want 1", request.expectedRevision)
+	}
+	if request.title != "Updated note" {
+		t.Errorf("title = %q, want Updated note", request.title)
+	}
+	assertFileContent(t, request.textFile, "updated secret")
+	assertFileContent(t, request.metadataFile, "updated private metadata")
+}
+
+func assertFileContent(t *testing.T, path string, want string) {
+	t.Helper()
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read file %q: %v", path, err)
+	}
+	if string(got) != want {
+		t.Errorf("file %q = %q, want %q", path, got, want)
+	}
+}
+
 type textRecordUpdaterFunc func(context.Context, usecase.UpdateTextRecordRequest) (usecase.TextRecord, error)
 
 func (f textRecordUpdaterFunc) UpdateTextRecord(
@@ -292,7 +309,7 @@ func (f recordDeleterFunc) DeleteRecord(ctx context.Context, request usecase.Del
 	return f(ctx, request)
 }
 
-func writeTestFile(t *testing.T, filename string, content string) string {
+func writeTestFile(t *testing.T, filename, content string) string {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), filename)

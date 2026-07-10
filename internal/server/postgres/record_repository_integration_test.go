@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 	"github.com/xhrobj/gopherkeeper/internal/server/postgres"
 	"github.com/xhrobj/gopherkeeper/internal/server/recordcrypto"
@@ -43,9 +44,6 @@ func TestIntegration_RecordRepositoryCreateListGet(t *testing.T) {
 		t.Fatalf("Create() first error = %v", err)
 	}
 
-	// Make ordering deterministic: second record is newer.
-	time.Sleep(time.Millisecond)
-
 	second := newTestRecord("550e8400-e29b-41d4-a716-446655440001", alice.ID, "second")
 	createdSecond, err := records.Create(ctx, second)
 	if err != nil {
@@ -55,6 +53,8 @@ func TestIntegration_RecordRepositoryCreateListGet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create() Bob record error = %v", err)
 	}
+	setRecordUpdatedAt(t, ctx, pool, alice.ID, createdFirst.ID, time.Date(2026, time.July, 9, 12, 0, 0, 0, time.UTC))
+	setRecordUpdatedAt(t, ctx, pool, alice.ID, createdSecond.ID, time.Date(2026, time.July, 9, 12, 1, 0, 0, time.UTC))
 
 	metadata, err := records.ListMetadata(ctx, alice.ID)
 	if err != nil {
@@ -92,13 +92,52 @@ func TestIntegration_RecordRepositoryCreateListGet(t *testing.T) {
 }
 
 func TestIntegration_RecordRepositoryUpdate(t *testing.T) {
+	fixture := newRecordRepositoryIntegrationFixture(t)
+	created := fixture.createRecord("550e8400-e29b-41d4-a716-446655440010", fixture.alice.ID, "original")
+	created = setRecordTimestamps(
+		fixture.t,
+		fixture.ctx,
+		fixture.pool,
+		fixture.records,
+		fixture.alice.ID,
+		created.ID,
+		time.Date(2026, time.July, 9, 12, 0, 0, 0, time.UTC),
+	)
+
+	patch := newTestRecord(created.ID, fixture.alice.ID, "updated")
+	patch.Nonce = []byte("updated nonce")
+	patch.Ciphertext = []byte("updated ciphertext")
+
+	updated, err := fixture.records.Update(fixture.ctx, patch, created.Revision)
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	assertUpdatedRecord(t, updated, created, patch)
+	assertStoredCiphertextEncrypted(t, fixture.ctx, fixture.pool, fixture.alice.ID, created.ID)
+	assertStaleUpdateDoesNotChangeRecord(t, fixture, created, updated)
+	assertForeignAndMissingUpdateReturnNotFound(t, fixture, created, updated)
+	assertInvalidUpdateRevision(t, fixture, patch)
+}
+
+type recordRepositoryIntegrationFixture struct {
+	t       *testing.T
+	ctx     context.Context
+	pool    *pgxpool.Pool
+	records *postgres.RecordRepository
+	alice   model.User
+	bob     model.User
+}
+
+func newRecordRepositoryIntegrationFixture(t *testing.T) recordRepositoryIntegrationFixture {
+	t.Helper()
+
 	dsn := os.Getenv("DATABASE_DSN")
 	if dsn == "" {
 		t.Fatal("DATABASE_DSN is not set")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), repositoryIntegrationTestTimeout)
-	defer cancel()
+	t.Cleanup(cancel)
 
 	pool := openMigratedTestDatabase(t, ctx, dsn)
 	users := postgres.NewUserRepository(pool)
@@ -113,23 +152,81 @@ func TestIntegration_RecordRepositoryUpdate(t *testing.T) {
 		t.Fatalf("create Bob: %v", err)
 	}
 
-	created, err := records.Create(ctx, newTestRecord("550e8400-e29b-41d4-a716-446655440010", alice.ID, "original"))
+	return recordRepositoryIntegrationFixture{
+		t:       t,
+		ctx:     ctx,
+		pool:    pool,
+		records: records,
+		alice:   alice,
+		bob:     bob,
+	}
+}
+
+func (f recordRepositoryIntegrationFixture) createRecord(id string, userID int64, title string) model.Record {
+	f.t.Helper()
+
+	created, err := f.records.Create(f.ctx, newTestRecord(id, userID, title))
 	if err != nil {
-		t.Fatalf("Create() error = %v", err)
+		f.t.Fatalf("Create() error = %v", err)
 	}
 
-	// Make updated_at comparison deterministic on PostgreSQL timestamp precision.
-	time.Sleep(time.Millisecond)
+	return created
+}
 
-	patch := newTestRecord(created.ID, alice.ID, "updated")
-	patch.Nonce = []byte("updated nonce")
-	patch.Ciphertext = []byte("updated ciphertext")
+func setRecordUpdatedAt(
+	t *testing.T,
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	userID int64,
+	recordID string,
+	updatedAt time.Time,
+) {
+	t.Helper()
 
-	updated, err := records.Update(ctx, patch, created.Revision)
-	if err != nil {
-		t.Fatalf("Update() error = %v", err)
+	if _, err := pool.Exec(
+		ctx,
+		"UPDATE gopherkeeper.records SET updated_at = $3 WHERE user_id = $1 AND id = $2",
+		userID,
+		recordID,
+		updatedAt,
+	); err != nil {
+		t.Fatalf("set record updated_at: %v", err)
 	}
-	if updated.ID != created.ID || updated.UserID != alice.ID || updated.Type != model.RecordTypeText {
+}
+
+func setRecordTimestamps(
+	t *testing.T,
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	records *postgres.RecordRepository,
+	userID int64,
+	recordID string,
+	value time.Time,
+) model.Record {
+	t.Helper()
+
+	if _, err := pool.Exec(
+		ctx,
+		"UPDATE gopherkeeper.records SET created_at = $3, updated_at = $3 WHERE user_id = $1 AND id = $2",
+		userID,
+		recordID,
+		value,
+	); err != nil {
+		t.Fatalf("set record timestamps: %v", err)
+	}
+
+	record, err := records.Get(ctx, userID, recordID)
+	if err != nil {
+		t.Fatalf("Get() after timestamp normalization error = %v", err)
+	}
+
+	return record
+}
+
+func assertUpdatedRecord(t *testing.T, updated model.Record, created model.Record, patch model.Record) {
+	t.Helper()
+
+	if updated.ID != created.ID || updated.UserID != created.UserID || updated.Type != model.RecordTypeText {
 		t.Fatalf("Update() record identity = %+v", updated)
 	}
 	if updated.Title != "updated" {
@@ -147,27 +244,46 @@ func TestIntegration_RecordRepositoryUpdate(t *testing.T) {
 	if !bytes.Equal(updated.Nonce, patch.Nonce) || !bytes.Equal(updated.Ciphertext, patch.Ciphertext) {
 		t.Fatalf("Update() encrypted fields = nonce %q ciphertext %q", updated.Nonce, updated.Ciphertext)
 	}
+}
+
+func assertStoredCiphertextEncrypted(
+	t *testing.T,
+	ctx context.Context,
+	pool *pgxpool.Pool,
+	userID int64,
+	recordID string,
+) {
+	t.Helper()
 
 	var storedCiphertext []byte
 	if err := pool.QueryRow(
 		ctx,
 		"SELECT ciphertext FROM gopherkeeper.records WHERE user_id = $1 AND id = $2",
-		alice.ID,
-		created.ID,
+		userID,
+		recordID,
 	).Scan(&storedCiphertext); err != nil {
 		t.Fatalf("read updated ciphertext: %v", err)
 	}
 	if bytes.Contains(storedCiphertext, []byte("updated secret note")) {
 		t.Fatal("stored ciphertext contains plaintext payload")
 	}
+}
 
-	stalePatch := newTestRecord(created.ID, alice.ID, "stale update")
-	_, err = records.Update(ctx, stalePatch, created.Revision)
+func assertStaleUpdateDoesNotChangeRecord(
+	t *testing.T,
+	fixture recordRepositoryIntegrationFixture,
+	created model.Record,
+	updated model.Record,
+) {
+	t.Helper()
+
+	stalePatch := newTestRecord(created.ID, fixture.alice.ID, "stale update")
+	_, err := fixture.records.Update(fixture.ctx, stalePatch, created.Revision)
 	if !errors.Is(err, model.ErrRecordRevisionConflict) {
 		t.Fatalf("stale Update() error = %v, want ErrRecordRevisionConflict", err)
 	}
 
-	afterStale, err := records.Get(ctx, alice.ID, created.ID)
+	afterStale, err := fixture.records.Get(fixture.ctx, fixture.alice.ID, created.ID)
 	if err != nil {
 		t.Fatalf("Get() after stale update error = %v", err)
 	}
@@ -175,22 +291,43 @@ func TestIntegration_RecordRepositoryUpdate(t *testing.T) {
 		!bytes.Equal(afterStale.Ciphertext, updated.Ciphertext) {
 		t.Fatalf("record changed after stale update: %+v, want %+v", afterStale, updated)
 	}
+}
 
-	_, err = records.Update(ctx, newTestRecord(created.ID, bob.ID, "foreign update"), updated.Revision)
+func assertForeignAndMissingUpdateReturnNotFound(
+	t *testing.T,
+	fixture recordRepositoryIntegrationFixture,
+	created model.Record,
+	updated model.Record,
+) {
+	t.Helper()
+
+	_, err := fixture.records.Update(
+		fixture.ctx,
+		newTestRecord(created.ID, fixture.bob.ID, "foreign update"),
+		updated.Revision,
+	)
 	if !errors.Is(err, model.ErrRecordNotFound) {
 		t.Fatalf("foreign Update() error = %v, want ErrRecordNotFound", err)
 	}
 
-	_, err = records.Update(
-		ctx,
-		newTestRecord("550e8400-e29b-41d4-a716-446655440069", alice.ID, "missing update"),
+	_, err = fixture.records.Update(
+		fixture.ctx,
+		newTestRecord("550e8400-e29b-41d4-a716-446655440069", fixture.alice.ID, "missing update"),
 		model.RecordInitialRevision,
 	)
 	if !errors.Is(err, model.ErrRecordNotFound) {
 		t.Fatalf("missing Update() error = %v, want ErrRecordNotFound", err)
 	}
+}
 
-	_, err = records.Update(ctx, patch, 0)
+func assertInvalidUpdateRevision(
+	t *testing.T,
+	fixture recordRepositoryIntegrationFixture,
+	patch model.Record,
+) {
+	t.Helper()
+
+	_, err := fixture.records.Update(fixture.ctx, patch, 0)
 	if !errors.Is(err, model.ErrInvalidRecordRevision) {
 		t.Fatalf("invalid revision Update() error = %v, want ErrInvalidRecordRevision", err)
 	}

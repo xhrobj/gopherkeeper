@@ -16,10 +16,11 @@ import (
 )
 
 const (
-	titleFlag        = "title"
-	textFileFlag     = "text-file"
-	metadataFileFlag = "metadata-file"
-	revisionFlag     = "revision"
+	titleFlag         = "title"
+	textFileFlag      = "text-file"
+	metadataFileFlag  = "metadata-file"
+	revisionFlag      = "revision"
+	recordIDArgsUsage = "<record-id>"
 )
 
 type textRecordCreator interface {
@@ -93,7 +94,7 @@ func newUpdateTextRecordCommand(update textRecordUpdateRunner) *urfavecli.Comman
 	return &urfavecli.Command{
 		Name:      "update-text",
 		Usage:     "update a private text record",
-		ArgsUsage: "<record-id>",
+		ArgsUsage: recordIDArgsUsage,
 		Flags: []urfavecli.Flag{
 			&urfavecli.Int64Flag{
 				Name:     revisionFlag,
@@ -126,11 +127,13 @@ func newUpdateTextRecordCommand(update textRecordUpdateRunner) *urfavecli.Comman
 				ctx,
 				configFromCommand(command),
 				command.Root().Writer,
-				recordID,
-				command.Int64(revisionFlag),
-				command.String(titleFlag),
-				command.String(textFileFlag),
-				command.String(metadataFileFlag),
+				textRecordUpdateCommandRequest{
+					recordID:         recordID,
+					expectedRevision: command.Int64(revisionFlag),
+					title:            command.String(titleFlag),
+					textFile:         command.String(textFileFlag),
+					metadataFile:     command.String(metadataFileFlag),
+				},
 			)
 		},
 	}
@@ -150,7 +153,7 @@ func newGetRecordCommand(get recordGetRunner) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:      "get",
 		Usage:     "get a private text record",
-		ArgsUsage: "<record-id>",
+		ArgsUsage: recordIDArgsUsage,
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			recordID := command.Args().First()
 			if recordID == "" {
@@ -166,7 +169,7 @@ func newDeleteRecordCommand(delete recordDeleteRunner) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:      "delete",
 		Usage:     "delete a private record",
-		ArgsUsage: "<record-id>",
+		ArgsUsage: recordIDArgsUsage,
 		Flags: []urfavecli.Flag{
 			&urfavecli.Int64Flag{
 				Name:     revisionFlag,
@@ -225,18 +228,14 @@ func runUpdateTextRecord(
 	ctx context.Context,
 	cfg config.Config,
 	output io.Writer,
-	recordID string,
-	expectedRevision int64,
-	title string,
-	textFile string,
-	metadataFile string,
+	request textRecordUpdateCommandRequest,
 ) error {
 	application, err := usecase.New(cfg)
 	if err != nil {
 		return err
 	}
 
-	return executeUpdateTextRecord(ctx, application, output, recordID, expectedRevision, title, textFile, metadataFile)
+	return executeUpdateTextRecord(ctx, application, output, request)
 }
 
 func runDeleteRecord(
@@ -311,26 +310,22 @@ func executeUpdateTextRecord(
 	ctx context.Context,
 	updater textRecordUpdater,
 	output io.Writer,
-	recordID string,
-	expectedRevision int64,
-	title string,
-	textFile string,
-	metadataFile string,
+	request textRecordUpdateCommandRequest,
 ) error {
-	text, err := readRequiredTextFile(textFile)
+	text, err := readRequiredTextFile(request.textFile)
 	if err != nil {
 		return err
 	}
 
-	metadata, err := readOptionalTextFile(metadataFile)
+	metadata, err := readOptionalTextFile(request.metadataFile)
 	if err != nil {
 		return err
 	}
 
 	record, err := updater.UpdateTextRecord(ctx, usecase.UpdateTextRecordRequest{
-		RecordID:         recordID,
-		ExpectedRevision: expectedRevision,
-		Title:            title,
+		RecordID:         request.recordID,
+		ExpectedRevision: request.expectedRevision,
+		Title:            request.title,
 		Text:             text,
 		Metadata:         metadata,
 	})

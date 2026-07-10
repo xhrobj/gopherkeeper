@@ -22,12 +22,16 @@ type textRecordUpdateRunner func(
 	context.Context,
 	config.Config,
 	io.Writer,
-	string,
-	int64,
-	string,
-	string,
-	string,
+	textRecordUpdateCommandRequest,
 ) error
+
+type textRecordUpdateCommandRequest struct {
+	recordID         string
+	expectedRevision int64
+	title            string
+	textFile         string
+	metadataFile     string
+}
 
 type recordGetRunner func(context.Context, config.Config, io.Writer, string) error
 
