@@ -140,154 +140,107 @@ func TestRecordService_List(t *testing.T) {
 	}
 }
 
-type recordServiceGetTestCase struct {
-	name       string
-	recordType model.RecordType
-	payload    model.RecordPayload
-}
-
 func TestRecordService_Get(t *testing.T) {
-	tests := []recordServiceGetTestCase{
+	recordID := "550e8400-e29b-41d4-a716-446655440000"
+	createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, time.July, 10, 12, 1, 0, 0, time.UTC)
+	textPayload := model.TextPayload{Text: "secret note", Metadata: "private metadata"}
+	credentialsPayload := model.CredentialsPayload{
+		Login:    "alice",
+		Password: "correct-horse-battery-staple",
+		URL:      "https://github.com",
+		Metadata: "personal account",
+	}
+	tests := []struct {
+		name            string
+		recordType      model.RecordType
+		payload         any
+		wantText        *model.TextPayload
+		wantCredentials *model.CredentialsPayload
+	}{
 		{
 			name:       "text record",
 			recordType: model.RecordTypeText,
-			payload: &model.TextPayload{
-				Text:     "secret note",
-				Metadata: "private metadata",
-			},
+			payload:    textPayload,
+			wantText:   &textPayload,
 		},
 		{
-			name:       "credentials record",
-			recordType: model.RecordTypeCredentials,
-			payload: &model.CredentialsPayload{
-				Login:    "alice",
-				Password: "correct-horse-battery-staple",
-				URL:      "https://github.com",
-				Metadata: "personal account",
-			},
+			name:            "credentials record",
+			recordType:      model.RecordTypeCredentials,
+			payload:         credentialsPayload,
+			wantCredentials: &credentialsPayload,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testRecordServiceGet(t, tt)
-		})
-	}
-}
-
-func testRecordServiceGet(t *testing.T, tt recordServiceGetTestCase) {
-	t.Helper()
-
-	const recordID = "550e8400-e29b-41d4-a716-446655440000"
-	createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
-	updatedAt := time.Date(2026, time.July, 10, 12, 1, 0, 0, time.UTC)
-	plaintext, err := json.Marshal(tt.payload)
-	if err != nil {
-		t.Fatalf("json.Marshal() error = %v", err)
-	}
-	stored := model.Record{
-		ID:            recordID,
-		UserID:        42,
-		Type:          tt.recordType,
-		Title:         "Alice record",
-		Revision:      model.RecordInitialRevision,
-		CreatedAt:     createdAt,
-		UpdatedAt:     updatedAt,
-		CryptoVersion: recordcrypto.CryptoVersion,
-		KeyID:         recordcrypto.DefaultKeyID,
-		Nonce:         []byte("nonce"),
-		Ciphertext:    []byte("ciphertext"),
-	}
-	service := NewRecordService(
-		newGetRecordRepositoryStub(t, stored),
-		newGetRecordCryptoStub(t, stored, plaintext),
-	)
-
-	got, err := service.Get(context.Background(), 42, recordID)
-	if err != nil {
-		t.Fatalf("Get() error = %v", err)
-	}
-	if got.Metadata != stored.Metadata() {
-		t.Errorf("Get() metadata = %+v, want %+v", got.Metadata, stored.Metadata())
-	}
-	assertRecordPayloadEqual(t, got.Payload, tt.payload)
-}
-
-func newGetRecordRepositoryStub(t *testing.T, stored model.Record) *recordRepositoryStub {
-	t.Helper()
-
-	return &recordRepositoryStub{
-		getFunc: func(_ context.Context, userID int64, recordID string) (model.Record, error) {
-			if userID != stored.UserID || recordID != stored.ID {
-				t.Fatalf("Get() args = %d, %q", userID, recordID)
+			plaintext, err := json.Marshal(tt.payload)
+			if err != nil {
+				t.Fatalf("json.Marshal() error = %v", err)
 			}
+			stored := model.Record{
+				ID:            recordID,
+				UserID:        42,
+				Type:          tt.recordType,
+				Title:         "Alice record",
+				Revision:      model.RecordInitialRevision,
+				CreatedAt:     createdAt,
+				UpdatedAt:     updatedAt,
+				CryptoVersion: recordcrypto.CryptoVersion,
+				KeyID:         recordcrypto.DefaultKeyID,
+				Nonce:         []byte("nonce"),
+				Ciphertext:    []byte("ciphertext"),
+			}
+			records := &recordRepositoryStub{
+				getFunc: func(_ context.Context, userID int64, gotRecordID string) (model.Record, error) {
+					if userID != 42 || gotRecordID != recordID {
+						t.Fatalf("Get() args = %d, %q", userID, gotRecordID)
+					}
 
-			return stored, nil
-		},
-	}
-}
+					return stored, nil
+				},
+			}
+			crypto := &recordPayloadCryptoStub{
+				decryptFunc: func(encrypted recordcrypto.EncryptedPayload, aad []byte) ([]byte, error) {
+					if encrypted.CryptoVersion != stored.CryptoVersion || encrypted.KeyID != stored.KeyID ||
+						!bytes.Equal(encrypted.Nonce, stored.Nonce) ||
+						!bytes.Equal(encrypted.Ciphertext, stored.Ciphertext) {
+						t.Fatalf("Decrypt() encrypted payload = %+v", encrypted)
+					}
+					wantAAD := fmt.Sprintf(
+						"gopherkeeper:v1:user:42:record:%s:type:%s",
+						recordID,
+						tt.recordType,
+					)
+					if string(aad) != wantAAD {
+						t.Fatalf("Decrypt() AAD = %q, want %q", aad, wantAAD)
+					}
 
-func newGetRecordCryptoStub(
-	t *testing.T,
-	stored model.Record,
-	plaintext []byte,
-) *recordPayloadCryptoStub {
-	t.Helper()
+					return plaintext, nil
+				},
+			}
+			service := NewRecordService(records, crypto)
 
-	return &recordPayloadCryptoStub{
-		decryptFunc: func(encrypted recordcrypto.EncryptedPayload, aad []byte) ([]byte, error) {
-			assertStoredEncryptedPayload(t, encrypted, stored)
-			assertStoredRecordAAD(t, aad, stored)
-
-			return plaintext, nil
-		},
-	}
-}
-
-func assertStoredEncryptedPayload(
-	t *testing.T,
-	encrypted recordcrypto.EncryptedPayload,
-	stored model.Record,
-) {
-	t.Helper()
-
-	if encrypted.CryptoVersion != stored.CryptoVersion || encrypted.KeyID != stored.KeyID ||
-		!bytes.Equal(encrypted.Nonce, stored.Nonce) ||
-		!bytes.Equal(encrypted.Ciphertext, stored.Ciphertext) {
-		t.Fatalf("Decrypt() encrypted payload = %+v", encrypted)
-	}
-}
-
-func assertStoredRecordAAD(t *testing.T, aad []byte, stored model.Record) {
-	t.Helper()
-
-	want := fmt.Sprintf(
-		"gopherkeeper:v1:user:%d:record:%s:type:%s",
-		stored.UserID,
-		stored.ID,
-		stored.Type,
-	)
-	if string(aad) != want {
-		t.Fatalf("Decrypt() AAD = %q, want %q", aad, want)
-	}
-}
-
-func assertRecordPayloadEqual(t *testing.T, got, want model.RecordPayload) {
-	t.Helper()
-
-	switch want := want.(type) {
-	case *model.TextPayload:
-		payload, ok := got.(*model.TextPayload)
-		if !ok || *payload != *want {
-			t.Errorf("Get() text payload = %+v, want %+v", got, want)
-		}
-	case *model.CredentialsPayload:
-		payload, ok := got.(*model.CredentialsPayload)
-		if !ok || *payload != *want {
-			t.Errorf("Get() credentials payload = %+v, want %+v", got, want)
-		}
-	default:
-		t.Fatalf("unsupported expected payload type %T", want)
+			got, err := service.Get(context.Background(), 42, recordID)
+			if err != nil {
+				t.Fatalf("Get() error = %v", err)
+			}
+			if got.Metadata != stored.Metadata() {
+				t.Errorf("Get() metadata = %+v, want %+v", got.Metadata, stored.Metadata())
+			}
+			switch tt.recordType {
+			case model.RecordTypeText:
+				payload, ok := textPayloadValue(got.Payload)
+				if !ok || tt.wantText == nil || payload != *tt.wantText {
+					t.Errorf("Get() text payload = %+v, want %+v", got.Payload, tt.wantText)
+				}
+			case model.RecordTypeCredentials:
+				payload, ok := credentialsPayloadValue(got.Payload)
+				if !ok || tt.wantCredentials == nil || payload != *tt.wantCredentials {
+					t.Errorf("Get() credentials payload = %+v, want %+v", got.Payload, tt.wantCredentials)
+				}
+			}
+		})
 	}
 }
 
@@ -297,7 +250,7 @@ func TestRecordService_GetRejectsUnsupportedType(t *testing.T) {
 			return model.Record{
 				ID:     "550e8400-e29b-41d4-a716-446655440000",
 				UserID: 42,
-				Type:   model.RecordTypeCard,
+				Type:   model.RecordTypeBinary,
 			}, nil
 		},
 	}
