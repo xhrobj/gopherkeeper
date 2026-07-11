@@ -9,7 +9,26 @@ import (
 
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
+	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 )
+
+type recordCreatorFunc func(context.Context, usecase.CreateRecordRequest) (usecase.Record, error)
+
+func (f recordCreatorFunc) CreateRecord(
+	ctx context.Context,
+	request usecase.CreateRecordRequest,
+) (usecase.Record, error) {
+	return f(ctx, request)
+}
+
+type recordUpdaterFunc func(context.Context, usecase.UpdateRecordRequest) (usecase.Record, error)
+
+func (f recordUpdaterFunc) UpdateRecord(
+	ctx context.Context,
+	request usecase.UpdateRecordRequest,
+) (usecase.Record, error) {
+	return f(ctx, request)
+}
 
 var testBuildInfo = buildinfo.Info{
 	Version: "v0.4.2",

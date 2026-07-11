@@ -148,7 +148,7 @@ func TestExecuteUpdateTextRecord(t *testing.T) {
 	textFile := writeTestFile(t, "note.txt", "updated secret")
 	metadataFile := writeTestFile(t, "metadata.txt", "updated private metadata")
 	updatedAt := time.Date(2026, time.July, 9, 12, 5, 0, 0, time.UTC)
-	updater := textRecordUpdaterFunc(func(_ context.Context, request usecase.UpdateTextRecordRequest) (usecase.TextRecord, error) {
+	updater := recordUpdaterFunc(func(_ context.Context, request usecase.UpdateRecordRequest) (usecase.Record, error) {
 		if request.RecordID != testRecordID {
 			t.Errorf("record ID = %q, want %q", request.RecordID, testRecordID)
 		}
@@ -158,14 +158,18 @@ func TestExecuteUpdateTextRecord(t *testing.T) {
 		if request.Title != "Updated note" {
 			t.Errorf("title = %q, want Updated note", request.Title)
 		}
-		if request.Text != "updated secret" {
-			t.Errorf("text = %q, want updated secret", request.Text)
+		payload, ok := request.Payload.(*model.TextPayload)
+		if !ok {
+			t.Fatalf("payload type = %T, want *model.TextPayload", request.Payload)
 		}
-		if request.Metadata != "updated private metadata" {
-			t.Errorf("metadata = %q, want updated private metadata", request.Metadata)
+		if payload.Text != "updated secret" {
+			t.Errorf("text = %q, want updated secret", payload.Text)
+		}
+		if payload.Metadata != "updated private metadata" {
+			t.Errorf("metadata = %q, want updated private metadata", payload.Metadata)
 		}
 
-		return usecase.TextRecord{
+		return usecase.Record{
 			Metadata: model.RecordMetadata{
 				ID:        testRecordID,
 				Type:      model.RecordTypeText,
@@ -173,7 +177,7 @@ func TestExecuteUpdateTextRecord(t *testing.T) {
 				Revision:  2,
 				UpdatedAt: updatedAt,
 			},
-			Payload: model.TextPayload{Text: request.Text, Metadata: request.Metadata},
+			Payload: payload,
 		}, nil
 	})
 
@@ -200,9 +204,9 @@ func TestExecuteUpdateTextRecord(t *testing.T) {
 }
 
 func TestExecuteUpdateTextRecordReturnsReadError(t *testing.T) {
-	updater := textRecordUpdaterFunc(func(context.Context, usecase.UpdateTextRecordRequest) (usecase.TextRecord, error) {
+	updater := recordUpdaterFunc(func(context.Context, usecase.UpdateRecordRequest) (usecase.Record, error) {
 		t.Fatal("updater must not be called")
-		return usecase.TextRecord{}, nil
+		return usecase.Record{}, nil
 	})
 
 	err := executeUpdateTextRecord(
@@ -292,15 +296,6 @@ func assertFileContent(t *testing.T, path string, want string) {
 	if string(got) != want {
 		t.Errorf("file %q = %q, want %q", path, got, want)
 	}
-}
-
-type textRecordUpdaterFunc func(context.Context, usecase.UpdateTextRecordRequest) (usecase.TextRecord, error)
-
-func (f textRecordUpdaterFunc) UpdateTextRecord(
-	ctx context.Context,
-	request usecase.UpdateTextRecordRequest,
-) (usecase.TextRecord, error) {
-	return f(ctx, request)
 }
 
 type recordDeleterFunc func(context.Context, usecase.DeleteRecordRequest) error

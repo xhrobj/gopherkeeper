@@ -18,20 +18,6 @@ const cardStdinFlag = "card-stdin"
 
 var errMultipleCardValues = errors.New("card stdin must contain one JSON value")
 
-type cardRecordCreator interface {
-	CreateCardRecord(
-		ctx context.Context,
-		request usecase.CreateCardRecordRequest,
-	) (usecase.CardRecord, error)
-}
-
-type cardRecordUpdater interface {
-	UpdateCardRecord(
-		ctx context.Context,
-		request usecase.UpdateCardRecordRequest,
-	) (usecase.CardRecord, error)
-}
-
 func newCreateCardRecordCommand(input io.Reader, create cardRecordCreateRunner) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "create-card",
@@ -158,7 +144,7 @@ func runUpdateCardRecord(
 
 func executeCreateCardRecord(
 	ctx context.Context,
-	creator cardRecordCreator,
+	creator recordCreator,
 	reader passwordReader,
 	streams passwordStreams,
 	request cardRecordCreateCommandRequest,
@@ -174,14 +160,9 @@ func executeCreateCardRecord(
 		return err
 	}
 
-	record, err := creator.CreateCardRecord(ctx, usecase.CreateCardRecordRequest{
-		Title:       request.title,
-		Number:      payload.Number,
-		Cardholder:  payload.Cardholder,
-		ExpiryMonth: payload.ExpiryMonth,
-		ExpiryYear:  payload.ExpiryYear,
-		CVV:         payload.CVV,
-		Metadata:    payload.Metadata,
+	record, err := creator.CreateRecord(ctx, usecase.CreateRecordRequest{
+		Title:   request.title,
+		Payload: &payload,
 	})
 	if err != nil {
 		return err
@@ -201,7 +182,7 @@ func executeCreateCardRecord(
 
 func executeUpdateCardRecord(
 	ctx context.Context,
-	updater cardRecordUpdater,
+	updater recordUpdater,
 	reader passwordReader,
 	streams passwordStreams,
 	request cardRecordUpdateCommandRequest,
@@ -217,16 +198,11 @@ func executeUpdateCardRecord(
 		return err
 	}
 
-	record, err := updater.UpdateCardRecord(ctx, usecase.UpdateCardRecordRequest{
+	record, err := updater.UpdateRecord(ctx, usecase.UpdateRecordRequest{
 		RecordID:         request.recordID,
 		ExpectedRevision: request.expectedRevision,
 		Title:            request.title,
-		Number:           payload.Number,
-		Cardholder:       payload.Cardholder,
-		ExpiryMonth:      payload.ExpiryMonth,
-		ExpiryYear:       payload.ExpiryYear,
-		CVV:              payload.CVV,
-		Metadata:         payload.Metadata,
+		Payload:          &payload,
 	})
 	if err != nil {
 		return err

@@ -23,12 +23,12 @@ const (
 	recordIDArgsUsage = "<record-id>"
 )
 
-type textRecordCreator interface {
-	CreateTextRecord(ctx context.Context, request usecase.CreateTextRecordRequest) (usecase.TextRecord, error)
+type recordCreator interface {
+	CreateRecord(ctx context.Context, request usecase.CreateRecordRequest) (usecase.Record, error)
 }
 
-type textRecordUpdater interface {
-	UpdateTextRecord(ctx context.Context, request usecase.UpdateTextRecordRequest) (usecase.TextRecord, error)
+type recordUpdater interface {
+	UpdateRecord(ctx context.Context, request usecase.UpdateRecordRequest) (usecase.Record, error)
 }
 
 type recordLister interface {
@@ -273,7 +273,7 @@ func runGetRecord(
 
 func executeCreateTextRecord(
 	ctx context.Context,
-	creator textRecordCreator,
+	creator recordCreator,
 	output io.Writer,
 	title string,
 	textFile string,
@@ -289,10 +289,12 @@ func executeCreateTextRecord(
 		return err
 	}
 
-	record, err := creator.CreateTextRecord(ctx, usecase.CreateTextRecordRequest{
-		Title:    title,
-		Text:     text,
-		Metadata: metadata,
+	record, err := creator.CreateRecord(ctx, usecase.CreateRecordRequest{
+		Title: title,
+		Payload: &model.TextPayload{
+			Text:     text,
+			Metadata: metadata,
+		},
 	})
 	if err != nil {
 		return err
@@ -312,7 +314,7 @@ func executeCreateTextRecord(
 
 func executeUpdateTextRecord(
 	ctx context.Context,
-	updater textRecordUpdater,
+	updater recordUpdater,
 	output io.Writer,
 	request textRecordUpdateCommandRequest,
 ) error {
@@ -326,12 +328,14 @@ func executeUpdateTextRecord(
 		return err
 	}
 
-	record, err := updater.UpdateTextRecord(ctx, usecase.UpdateTextRecordRequest{
+	record, err := updater.UpdateRecord(ctx, usecase.UpdateRecordRequest{
 		RecordID:         request.recordID,
 		ExpectedRevision: request.expectedRevision,
 		Title:            request.title,
-		Text:             text,
-		Metadata:         metadata,
+		Payload: &model.TextPayload{
+			Text:     text,
+			Metadata: metadata,
+		},
 	})
 	if err != nil {
 		return err

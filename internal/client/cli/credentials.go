@@ -16,20 +16,6 @@ const credentialsStdinFlag = "credentials-stdin"
 
 var errMultipleCredentialsValues = errors.New("credentials stdin must contain one JSON value")
 
-type credentialsRecordCreator interface {
-	CreateCredentialsRecord(
-		ctx context.Context,
-		request usecase.CreateCredentialsRecordRequest,
-	) (usecase.CredentialsRecord, error)
-}
-
-type credentialsRecordUpdater interface {
-	UpdateCredentialsRecord(
-		ctx context.Context,
-		request usecase.UpdateCredentialsRecordRequest,
-	) (usecase.CredentialsRecord, error)
-}
-
 func newCreateCredentialsRecordCommand(
 	input io.Reader,
 	create credentialsRecordCreateRunner,
@@ -170,7 +156,7 @@ func runUpdateCredentialsRecord(
 
 func executeCreateCredentialsRecord(
 	ctx context.Context,
-	creator credentialsRecordCreator,
+	creator recordCreator,
 	reader passwordReader,
 	streams passwordStreams,
 	request credentialsRecordCreateCommandRequest,
@@ -186,12 +172,9 @@ func executeCreateCredentialsRecord(
 		return err
 	}
 
-	record, err := creator.CreateCredentialsRecord(ctx, usecase.CreateCredentialsRecordRequest{
-		Title:    request.title,
-		Login:    payload.Login,
-		Password: payload.Password,
-		URL:      payload.URL,
-		Metadata: payload.Metadata,
+	record, err := creator.CreateRecord(ctx, usecase.CreateRecordRequest{
+		Title:   request.title,
+		Payload: &payload,
 	})
 	if err != nil {
 		return err
@@ -211,7 +194,7 @@ func executeCreateCredentialsRecord(
 
 func executeUpdateCredentialsRecord(
 	ctx context.Context,
-	updater credentialsRecordUpdater,
+	updater recordUpdater,
 	reader passwordReader,
 	streams passwordStreams,
 	request credentialsRecordUpdateCommandRequest,
@@ -227,14 +210,11 @@ func executeUpdateCredentialsRecord(
 		return err
 	}
 
-	record, err := updater.UpdateCredentialsRecord(ctx, usecase.UpdateCredentialsRecordRequest{
+	record, err := updater.UpdateRecord(ctx, usecase.UpdateRecordRequest{
 		RecordID:         request.recordID,
 		ExpectedRevision: request.expectedRevision,
 		Title:            request.title,
-		Login:            payload.Login,
-		Password:         payload.Password,
-		URL:              payload.URL,
-		Metadata:         payload.Metadata,
+		Payload:          &payload,
 	})
 	if err != nil {
 		return err

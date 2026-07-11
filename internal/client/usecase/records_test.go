@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -64,92 +65,127 @@ func (s recordClientStub) DeleteRecord(
 	return s.delete(ctx, accessToken, recordID, expectedRevision)
 }
 
-func TestApplication_CreateCredentialsRecord(t *testing.T) {
-	createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
-	application := newApplicationWithRecords(
-		nil,
-		recordClientStub{
-			create: func(
-				_ context.Context,
-				accessToken string,
-				request httpclient.CreateRecordRequest,
-			) (httpclient.Record, error) {
-				if accessToken != "test.jwt.token" {
-					t.Errorf("access token = %q, want test.jwt.token", accessToken)
-				}
-				payload, ok := request.Payload.(*model.CredentialsPayload)
-				if !ok {
-					t.Fatalf("payload type = %T, want *model.CredentialsPayload", request.Payload)
-				}
-				if payload.Login != "alice" || payload.Password != "correct-horse-battery-staple" {
-					t.Errorf("payload = %#v, want original credentials", payload)
-				}
-
-				return httpclient.Record{
-					Metadata: model.RecordMetadata{
-						ID:        testRecordID,
-						Type:      model.RecordTypeCredentials,
-						Title:     request.Title,
-						Revision:  1,
-						CreatedAt: createdAt,
-						UpdatedAt: createdAt,
-					},
-					Payload: payload,
-				}, nil
+func TestApplication_CreateRecord(t *testing.T) {
+	expiryMonth := 3
+	expiryYear := 2038
+	tests := []struct {
+		name    string
+		title   string
+		payload model.RecordPayload
+	}{
+		{
+			name:  "text",
+			title: "Private note",
+			payload: &model.TextPayload{
+				Text:     "secret text",
+				Metadata: "personal",
 			},
 		},
-		onlineSessionStorage(),
-		"localhost:8080",
-	)
+		{
+			name:  "credentials",
+			title: "GitHub",
+			payload: &model.CredentialsPayload{
+				Login:    "alice",
+				Password: "correct-horse-battery-staple",
+				URL:      "https://github.com",
+				Metadata: "personal account",
+			},
+		},
+		{
+			name:  "card",
+			title: "Joel's card",
+			payload: &model.CardPayload{
+				Number:      "2013 0614 2020 0619",
+				Cardholder:  "Joel Miller",
+				ExpiryMonth: &expiryMonth,
+				ExpiryYear:  &expiryYear,
+				CVV:         "014",
+				Metadata:    "test card",
+			},
+		},
+	}
 
-	record, err := application.CreateCredentialsRecord(context.Background(), CreateCredentialsRecordRequest{
-		Title:    "GitHub",
-		Login:    "alice",
-		Password: "correct-horse-battery-staple",
-		URL:      "https://github.com",
-		Metadata: "personal account",
-	})
-	if err != nil {
-		t.Fatalf("CreateCredentialsRecord() error = %v", err)
-	}
-	if record.Metadata.Type != model.RecordTypeCredentials {
-		t.Errorf("type = %q, want credentials", record.Metadata.Type)
-	}
-	if record.Payload.Password != "correct-horse-battery-staple" {
-		t.Error("credentials password was not returned unchanged")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			createdAt := time.Date(2026, time.July, 11, 12, 0, 0, 0, time.UTC)
+			application := newApplicationWithRecords(
+				nil,
+				recordClientStub{
+					create: func(
+						_ context.Context,
+						accessToken string,
+						request httpclient.CreateRecordRequest,
+					) (httpclient.Record, error) {
+						if accessToken != "test.jwt.token" {
+							t.Errorf("access token = %q, want test.jwt.token", accessToken)
+						}
+						if request.Title != tt.title {
+							t.Errorf("title = %q, want %q", request.Title, tt.title)
+						}
+						if !reflect.DeepEqual(request.Payload, tt.payload) {
+							t.Errorf("payload = %#v, want %#v", request.Payload, tt.payload)
+						}
+
+						return httpclient.Record{
+							Metadata: model.RecordMetadata{
+								ID:        testRecordID,
+								Type:      request.Payload.RecordType(),
+								Title:     request.Title,
+								Revision:  1,
+								CreatedAt: createdAt,
+								UpdatedAt: createdAt,
+							},
+							Payload: request.Payload,
+						}, nil
+					},
+				},
+				onlineSessionStorage(),
+				"localhost:8080",
+			)
+
+			record, err := application.CreateRecord(context.Background(), CreateRecordRequest{
+				Title:   tt.title,
+				Payload: tt.payload,
+			})
+			if err != nil {
+				t.Fatalf("CreateRecord() error = %v", err)
+			}
+			if record.Metadata.Type != tt.payload.RecordType() {
+				t.Errorf("type = %q, want %q", record.Metadata.Type, tt.payload.RecordType())
+			}
+			if !reflect.DeepEqual(record.Payload, tt.payload) {
+				t.Errorf("payload = %#v, want %#v", record.Payload, tt.payload)
+			}
+		})
 	}
 }
 
-func TestApplication_CreateCredentialsRecordValidationError(t *testing.T) {
+func TestApplication_CreateRecordValidationError(t *testing.T) {
 	tests := []struct {
 		name    string
-		request CreateCredentialsRecordRequest
+		request CreateRecordRequest
 		want    error
 	}{
 		{
 			name: "invalid title",
-			request: CreateCredentialsRecordRequest{
-				Title:    " ",
-				Login:    "alice",
-				Password: "correct-horse-battery-staple",
+			request: CreateRecordRequest{
+				Title:   " ",
+				Payload: &model.TextPayload{Text: "secret"},
 			},
 			want: model.ErrInvalidRecordTitle,
 		},
 		{
-			name: "empty login",
-			request: CreateCredentialsRecordRequest{
-				Title:    "GitHub",
-				Login:    " ",
-				Password: "correct-horse-battery-staple",
+			name: "missing payload",
+			request: CreateRecordRequest{
+				Title: "Private note",
 			},
-			want: model.ErrInvalidCredentialsPayload,
+			want: errUnexpectedRecordPayload,
 		},
 		{
-			name: "empty password",
-			request: CreateCredentialsRecordRequest{
-				Title:    "GitHub",
-				Login:    "alice",
-				Password: "",
+			name: "invalid payload",
+			request: CreateRecordRequest{
+				Title:   "GitHub",
+				Payload: &model.CredentialsPayload{Login: "alice"},
 			},
 			want: model.ErrInvalidCredentialsPayload,
 		},
@@ -164,11 +200,42 @@ func TestApplication_CreateCredentialsRecordValidationError(t *testing.T) {
 				},
 			}, sessionStorageStub{}, "localhost:8080")
 
-			_, err := application.CreateCredentialsRecord(context.Background(), tt.request)
+			_, err := application.CreateRecord(context.Background(), tt.request)
 			if !errors.Is(err, tt.want) {
-				t.Fatalf("CreateCredentialsRecord() error = %v, want %v", err, tt.want)
+				t.Fatalf("CreateRecord() error = %v, want %v", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestApplication_ListRecords(t *testing.T) {
+	want := []model.RecordMetadata{{
+		ID:       testRecordID,
+		Type:     model.RecordTypeText,
+		Title:    "Private note",
+		Revision: 1,
+	}}
+	application := newApplicationWithRecords(
+		nil,
+		recordClientStub{
+			list: func(_ context.Context, accessToken string) ([]model.RecordMetadata, error) {
+				if accessToken != "test.jwt.token" {
+					t.Errorf("access token = %q, want test.jwt.token", accessToken)
+				}
+
+				return want, nil
+			},
+		},
+		onlineSessionStorage(),
+		"localhost:8080",
+	)
+
+	got, err := application.ListRecords(context.Background())
+	if err != nil {
+		t.Fatalf("ListRecords() error = %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ListRecords() = %#v, want %#v", got, want)
 	}
 }
 
@@ -212,32 +279,14 @@ func TestApplication_GetRecord(t *testing.T) {
 	}
 }
 
-func TestApplication_UpdateCredentialsRecord(t *testing.T) {
+func TestApplication_GetRecordRejectsMismatchedPayload(t *testing.T) {
 	application := newApplicationWithRecords(
 		nil,
 		recordClientStub{
-			update: func(
-				_ context.Context,
-				accessToken, recordID string,
-				expectedRevision int64,
-				request httpclient.UpdateRecordRequest,
-			) (httpclient.Record, error) {
-				if accessToken != "test.jwt.token" || recordID != testRecordID || expectedRevision != 1 {
-					t.Error("update request contains unexpected common values")
-				}
-				payload, ok := request.Payload.(*model.CredentialsPayload)
-				if !ok || payload.Password != "updated-correct-horse-battery-staple" {
-					t.Fatalf("payload = %#v, want updated credentials", request.Payload)
-				}
-
+			get: func(context.Context, string, string) (httpclient.Record, error) {
 				return httpclient.Record{
-					Metadata: model.RecordMetadata{
-						ID:       testRecordID,
-						Type:     model.RecordTypeCredentials,
-						Title:    request.Title,
-						Revision: 2,
-					},
-					Payload: payload,
+					Metadata: model.RecordMetadata{Type: model.RecordTypeText},
+					Payload:  &model.CredentialsPayload{Login: "alice", Password: "secret"},
 				}, nil
 			},
 		},
@@ -245,18 +294,96 @@ func TestApplication_UpdateCredentialsRecord(t *testing.T) {
 		"localhost:8080",
 	)
 
-	record, err := application.UpdateCredentialsRecord(context.Background(), UpdateCredentialsRecordRequest{
-		RecordID:         testRecordID,
-		ExpectedRevision: 1,
-		Title:            "Updated GitHub",
-		Login:            "alice",
-		Password:         "updated-correct-horse-battery-staple",
-	})
-	if err != nil {
-		t.Fatalf("UpdateCredentialsRecord() error = %v", err)
+	_, err := application.GetRecord(context.Background(), testRecordID)
+	if !errors.Is(err, errUnexpectedRecordPayload) {
+		t.Fatalf("GetRecord() error = %v, want unexpected payload", err)
 	}
-	if record.Metadata.Revision != 2 {
-		t.Errorf("revision = %d, want 2", record.Metadata.Revision)
+}
+
+func TestApplication_UpdateRecord(t *testing.T) {
+	expiryMonth := 3
+	expiryYear := 2038
+	tests := []struct {
+		name    string
+		title   string
+		payload model.RecordPayload
+	}{
+		{
+			name:    "text",
+			title:   "Updated note",
+			payload: &model.TextPayload{Text: "updated secret", Metadata: "updated"},
+		},
+		{
+			name:  "credentials",
+			title: "Updated GitHub",
+			payload: &model.CredentialsPayload{
+				Login:    "alice",
+				Password: "updated-correct-horse-battery-staple",
+			},
+		},
+		{
+			name:  "card",
+			title: "Joel's card updated",
+			payload: &model.CardPayload{
+				Number:      "2013 0614 2020 0619",
+				Cardholder:  "Joel Miller",
+				ExpiryMonth: &expiryMonth,
+				ExpiryYear:  &expiryYear,
+				CVV:         "014",
+				Metadata:    "test card updated",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			application := newApplicationWithRecords(
+				nil,
+				recordClientStub{
+					update: func(
+						_ context.Context,
+						accessToken, recordID string,
+						expectedRevision int64,
+						request httpclient.UpdateRecordRequest,
+					) (httpclient.Record, error) {
+						if accessToken != "test.jwt.token" || recordID != testRecordID || expectedRevision != 1 {
+							t.Error("update request contains unexpected common values")
+						}
+						if request.Title != tt.title || !reflect.DeepEqual(request.Payload, tt.payload) {
+							t.Errorf("update request = %#v, want title and payload unchanged", request)
+						}
+
+						return httpclient.Record{
+							Metadata: model.RecordMetadata{
+								ID:       testRecordID,
+								Type:     request.Payload.RecordType(),
+								Title:    request.Title,
+								Revision: 2,
+							},
+							Payload: request.Payload,
+						}, nil
+					},
+				},
+				onlineSessionStorage(),
+				"localhost:8080",
+			)
+
+			record, err := application.UpdateRecord(context.Background(), UpdateRecordRequest{
+				RecordID:         testRecordID,
+				ExpectedRevision: 1,
+				Title:            tt.title,
+				Payload:          tt.payload,
+			})
+			if err != nil {
+				t.Fatalf("UpdateRecord() error = %v", err)
+			}
+			if record.Metadata.Revision != 2 {
+				t.Errorf("revision = %d, want 2", record.Metadata.Revision)
+			}
+			if !reflect.DeepEqual(record.Payload, tt.payload) {
+				t.Errorf("payload = %#v, want %#v", record.Payload, tt.payload)
+			}
+		})
 	}
 }
 
@@ -277,15 +404,17 @@ func TestApplication_UpdateRecordMapsAPIError(t *testing.T) {
 		"localhost:8080",
 	)
 
-	_, err := application.UpdateCredentialsRecord(context.Background(), UpdateCredentialsRecordRequest{
+	_, err := application.UpdateRecord(context.Background(), UpdateRecordRequest{
 		RecordID:         testRecordID,
 		ExpectedRevision: 1,
 		Title:            "GitHub",
-		Login:            "alice",
-		Password:         password,
+		Payload: &model.CredentialsPayload{
+			Login:    "alice",
+			Password: password,
+		},
 	})
 	if err == nil {
-		t.Fatal("UpdateCredentialsRecord() error = nil, want conflict")
+		t.Fatal("UpdateRecord() error = nil, want conflict")
 	}
 	if err.Error() != "record revision conflict" {
 		t.Fatalf("error = %q, want record revision conflict", err)

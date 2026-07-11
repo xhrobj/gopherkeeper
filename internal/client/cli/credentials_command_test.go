@@ -17,30 +17,6 @@ import (
 
 const testCredentialsPassword = "vault-secret-42"
 
-type credentialsRecordCreatorFunc func(
-	context.Context,
-	usecase.CreateCredentialsRecordRequest,
-) (usecase.CredentialsRecord, error)
-
-func (f credentialsRecordCreatorFunc) CreateCredentialsRecord(
-	ctx context.Context,
-	request usecase.CreateCredentialsRecordRequest,
-) (usecase.CredentialsRecord, error) {
-	return f(ctx, request)
-}
-
-type credentialsRecordUpdaterFunc func(
-	context.Context,
-	usecase.UpdateCredentialsRecordRequest,
-) (usecase.CredentialsRecord, error)
-
-func (f credentialsRecordUpdaterFunc) UpdateCredentialsRecord(
-	ctx context.Context,
-	request usecase.UpdateCredentialsRecordRequest,
-) (usecase.CredentialsRecord, error) {
-	return f(ctx, request)
-}
-
 type recordGetterFunc func(context.Context, string) (usecase.Record, error)
 
 func (f recordGetterFunc) GetRecord(ctx context.Context, recordID string) (usecase.Record, error) {
@@ -247,12 +223,12 @@ func TestExecuteCreateCredentialsRecord_Stdin(t *testing.T) {
 
 	err := executeCreateCredentialsRecord(
 		context.Background(),
-		credentialsRecordCreatorFunc(func(
+		recordCreatorFunc(func(
 			_ context.Context,
-			request usecase.CreateCredentialsRecordRequest,
-		) (usecase.CredentialsRecord, error) {
+			request usecase.CreateRecordRequest,
+		) (usecase.Record, error) {
 			assertCreateCredentialsRequest(t, request)
-			return usecase.CredentialsRecord{
+			return usecase.Record{
 				Metadata: model.RecordMetadata{ID: testRecordID, Revision: 1},
 			}, nil
 		}),
@@ -290,18 +266,19 @@ func TestExecuteCreateCredentialsRecord_Interactive(t *testing.T) {
 
 	err := executeCreateCredentialsRecord(
 		context.Background(),
-		credentialsRecordCreatorFunc(func(
+		recordCreatorFunc(func(
 			_ context.Context,
-			request usecase.CreateCredentialsRecordRequest,
-		) (usecase.CredentialsRecord, error) {
-			if request.Title != "GitHub" || request.Login != "alice" ||
-				request.Password != testCredentialsPassword ||
-				request.URL != "https://github.com" ||
-				request.Metadata != "private metadata" {
-				t.Errorf("request = %+v, want interactive credentials", request)
+			request usecase.CreateRecordRequest,
+		) (usecase.Record, error) {
+			payload := credentialsPayloadFromRequest(t, request.Payload)
+			if request.Title != "GitHub" || payload.Login != "alice" ||
+				payload.Password != testCredentialsPassword ||
+				payload.URL != "https://github.com" ||
+				payload.Metadata != "private metadata" {
+				t.Errorf("request = %+v, payload = %+v, want interactive credentials", request, payload)
 			}
 
-			return usecase.CredentialsRecord{
+			return usecase.Record{
 				Metadata: model.RecordMetadata{ID: testRecordID, Revision: 1},
 			}, nil
 		}),
@@ -342,12 +319,12 @@ func TestReadCredentialsPayloadInteractiveSuggestsCredentialsStdin(t *testing.T)
 }
 
 func TestExecuteCreateCredentialsRecordRejectsConflictingInput(t *testing.T) {
-	creator := credentialsRecordCreatorFunc(func(
+	creator := recordCreatorFunc(func(
 		context.Context,
-		usecase.CreateCredentialsRecordRequest,
-	) (usecase.CredentialsRecord, error) {
+		usecase.CreateRecordRequest,
+	) (usecase.Record, error) {
 		t.Fatal("creator must not be called")
-		return usecase.CredentialsRecord{}, nil
+		return usecase.Record{}, nil
 	})
 
 	err := executeCreateCredentialsRecord(
@@ -372,17 +349,18 @@ func TestExecuteUpdateCredentialsRecord(t *testing.T) {
 
 	err := executeUpdateCredentialsRecord(
 		context.Background(),
-		credentialsRecordUpdaterFunc(func(
+		recordUpdaterFunc(func(
 			_ context.Context,
-			request usecase.UpdateCredentialsRecordRequest,
-		) (usecase.CredentialsRecord, error) {
+			request usecase.UpdateRecordRequest,
+		) (usecase.Record, error) {
+			payload := credentialsPayloadFromRequest(t, request.Payload)
 			if request.RecordID != testRecordID || request.ExpectedRevision != 1 ||
-				request.Title != "GitHub updated" || request.Login != "alice" ||
-				request.Password != testCredentialsPassword {
-				t.Errorf("request = %+v, want update credentials request", request)
+				request.Title != "GitHub updated" || payload.Login != "alice" ||
+				payload.Password != testCredentialsPassword {
+				t.Errorf("request = %+v, payload = %+v, want update credentials request", request, payload)
 			}
 
-			return usecase.CredentialsRecord{
+			return usecase.Record{
 				Metadata: model.RecordMetadata{ID: testRecordID, Revision: 2},
 			}, nil
 		}),
@@ -491,22 +469,34 @@ func TestExecuteGetRecord_Text(t *testing.T) {
 	}
 }
 
-func assertCreateCredentialsRequest(t *testing.T, request usecase.CreateCredentialsRecordRequest) {
+func assertCreateCredentialsRequest(t *testing.T, request usecase.CreateRecordRequest) {
 	t.Helper()
 
 	if request.Title != "GitHub" {
 		t.Errorf("title = %q, want GitHub", request.Title)
 	}
-	if request.Login != "alice" {
-		t.Errorf("login = %q, want alice", request.Login)
+	payload := credentialsPayloadFromRequest(t, request.Payload)
+	if payload.Login != "alice" {
+		t.Errorf("login = %q, want alice", payload.Login)
 	}
-	if request.Password != testCredentialsPassword {
+	if payload.Password != testCredentialsPassword {
 		t.Error("creator received unexpected password")
 	}
-	if request.URL != "https://github.com" {
-		t.Errorf("URL = %q, want https://github.com", request.URL)
+	if payload.URL != "https://github.com" {
+		t.Errorf("URL = %q, want https://github.com", payload.URL)
 	}
-	if request.Metadata != "recovery codes" {
-		t.Errorf("metadata = %q, want recovery codes", request.Metadata)
+	if payload.Metadata != "recovery codes" {
+		t.Errorf("metadata = %q, want recovery codes", payload.Metadata)
 	}
+}
+
+func credentialsPayloadFromRequest(t *testing.T, payload model.RecordPayload) *model.CredentialsPayload {
+	t.Helper()
+
+	credentials, ok := payload.(*model.CredentialsPayload)
+	if !ok {
+		t.Fatalf("payload type = %T, want *model.CredentialsPayload", payload)
+	}
+
+	return credentials
 }
