@@ -126,8 +126,8 @@ type clientGetRecordTestCase struct {
 }
 
 func TestClient_GetRecord(t *testing.T) {
-	expiryMonth := 5
-	expiryYear := 2031
+	expiryMonth := 3
+	expiryYear := 2038
 	tests := []clientGetRecordTestCase{
 		{
 			name:       "text",
@@ -146,12 +146,12 @@ func TestClient_GetRecord(t *testing.T) {
 			name:       "card",
 			recordType: model.RecordTypeCard,
 			payload: &model.CardPayload{
-				Number:      "0000 0000 0000 0042",
-				Cardholder:  "Alice Example",
+				Number:      "2013 0614 2020 0619",
+				Cardholder:  "Joel Miller",
 				ExpiryMonth: &expiryMonth,
 				ExpiryYear:  &expiryYear,
-				CVV:         "042",
-				Metadata:    "main test card",
+				CVV:         "014",
+				Metadata:    "test card",
 			},
 		},
 	}

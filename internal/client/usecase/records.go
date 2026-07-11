@@ -297,16 +297,6 @@ func (a *Application) GetRecord(ctx context.Context, recordID string) (Record, e
 	}, nil
 }
 
-// GetTextRecord возвращает text-запись текущего пользователя в online-режиме.
-func (a *Application) GetTextRecord(ctx context.Context, recordID string) (TextRecord, error) {
-	record, err := a.GetRecord(ctx, recordID)
-	if err != nil {
-		return TextRecord{}, err
-	}
-
-	return textRecordFromRecord(record)
-}
-
 // UpdateTextRecord изменяет text-запись в online-режиме.
 func (a *Application) UpdateTextRecord(ctx context.Context, request UpdateTextRecordRequest) (TextRecord, error) {
 	payload := &model.TextPayload{
@@ -516,13 +506,6 @@ func mapRecordClientError(operation string, err error) error {
 }
 
 func textRecordFromClient(record httpclient.Record) (TextRecord, error) {
-	return textRecordFromRecord(Record{
-		Metadata: record.Metadata,
-		Payload:  record.Payload,
-	})
-}
-
-func textRecordFromRecord(record Record) (TextRecord, error) {
 	payload, ok := record.Payload.(*model.TextPayload)
 	if !ok || payload == nil || record.Metadata.Type != model.RecordTypeText {
 		return TextRecord{}, fmt.Errorf("text record payload: %w", errUnexpectedRecordPayload)
