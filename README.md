@@ -17,6 +17,7 @@
 - `client whoami` — проверка текущего пользователя по сохранённой online-сессии;
 - `client records create-text` / `update-text` — создание и изменение text-записей;
 - `client records create-credentials` / `update-credentials` — создание и изменение credentials-записей;
+- `client records create-card` / `update-card` — создание и изменение card-записей;
 - `client records list`, `get`, `delete` — общие операции для всех реализованных типов записей.
 
 ## Локальный запуск с нуля
@@ -344,7 +345,31 @@ printf '%s' "$GKEEP_CREDENTIALS_JSON" | \
 Created credentials record <record-id> with revision 1.
 ```
 
-### 14. Получить список записей
+### 14. Создать card-запись
+
+В штатном интерактивном режиме передаётся только открытый `title`:
+
+```bash
+gkeep records create-card --title "Joel's card"
+```
+
+Клиент запросит приватные поля отдельно:
+
+```text
+Card number:
+Cardholder (optional):
+Expiry month (optional):
+Expiry year (optional):
+CVV (optional):
+```
+
+Ожидаемый результат:
+
+```text
+Created card record <record-id> with revision 1.
+```
+
+### 15. Получить список записей
 
 ```bash
 gkeep records list
@@ -353,22 +378,25 @@ gkeep records list
 Список содержит только открытые metadata записи и не раскрывает приватный payload:
 
 ```text
-ID                                    TYPE         TITLE     REVISION  UPDATED AT
-<text-record-id>                      text         my note   1         2026-07-08T12:00:00Z
-<credentials-record-id>               credentials  GitHub    1         2026-07-10T12:01:00Z
+ID                                    TYPE         TITLE       REVISION  UPDATED AT
+<text-record-id>                      text         my note     1         2026-07-08T12:00:00Z
+<credentials-record-id>               credentials  GitHub      1         2026-07-10T12:01:00Z
+<card-record-id>                      card         Joel's card 1         2026-07-11T12:02:00Z
 ```
 
-### 15. Получить запись
+### 16. Получить запись
 
 ```bash
 gkeep records get <record-id>
 ```
 
-Клиент определяет тип записи и выводит расшифрованный `text` или `credentials` payload владельцу.
+Клиент определяет тип записи и выводит расшифрованный `text`, `credentials` или `card` payload владельцу.
 
-Для credentials вывод содержит login, password, URL и metadata. Это секретный вывод: не запускайте команду в общем терминале и не перенаправляйте результат в небезопасные логи или файлы.
+Для credentials вывод содержит login, password, URL и metadata. Для card вывод содержит полный номер карты,
+cardholder, срок действия, CVV и metadata. Это секретный вывод: не запускайте команду в общем терминале и не
+перенаправляйте результат в небезопасные логи или файлы.
 
-### 16. Обновить text-запись
+### 17. Обновить text-запись
 
 Подготовить новый файл с приватным текстом:
 
@@ -388,7 +416,7 @@ gkeep records update-text <record-id> --revision 1 --title 'updated note' --text
 Updated text record <record-id> to revision 2.
 ```
 
-### 17. Обновить credentials-запись
+### 18. Обновить credentials-запись
 
 Интерактивное обновление использует те же безопасные prompts, что и создание:
 
@@ -396,23 +424,44 @@ Updated text record <record-id> to revision 2.
 gkeep records update-credentials <record-id> --revision 1 --title 'Updated GitHub'
 ```
 
-gkeep records update-credentials f07ccc28-cf4b-4027-a1e1-5a5de729f65c --revision 1 --title 'Updated GitHub'
-
 Ожидаемый результат:
 
 ```text
 Updated credentials record <record-id> to revision 2.
 ```
 
-Для обеих update-команд `--revision` обязателен. Клиент передаёт её Серверу в HTTP-заголовке `If-Match`, чтобы не перетереть изменения с другого устройства. Устаревшая ревизия возвращает:
+### 19. Обновить card-запись
+
+Интерактивное обновление использует те же безопасные prompts, что и создание:
+
+```bash
+gkeep records update-card <record-id> --revision 1 --title "Joel's card updated"
+```
+
+Для автоматизации можно передать новый полный payload через stdin:
+
+```bash
+printf '%s' "$GKEEP_CARD_JSON" | \
+  gkeep records update-card <record-id> --revision 1 --title "Joel's card updated" --card-stdin
+```
+
+Ожидаемый результат:
+
+```text
+Updated card record <record-id> to revision 2.
+```
+
+Для всех update-команд `--revision` обязателен. Клиент передаёт её Серверу в HTTP-заголовке `If-Match`, чтобы
+не перетереть изменения с другого устройства. Устаревшая ревизия возвращает:
 
 ```text
 record revision conflict
 ```
 
-Тип записи изменить нельзя: text-запись обновляется только через `update-text`, credentials-запись — только через `update-credentials`.
+Тип записи изменить нельзя: text-запись обновляется только через `update-text`, credentials-запись — через
+`update-credentials`, card-запись — через `update-card`.
 
-### 18. Удалить запись
+### 20. Удалить запись
 
 Удалить запись любого реализованного типа можно общей командой с актуальной ревизией:
 
@@ -428,7 +477,7 @@ Deleted record <record-id>.
 
 Если ревизия устарела, Сервер возвращает конфликт и запись не удаляется. После успешного удаления повторный `gkeep records get <record-id>` вернёт `record not found`.
 
-### 19. Выйти из online-сессии
+### 21. Выйти из online-сессии
 
 ```bash
 gkeep logout
