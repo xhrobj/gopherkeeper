@@ -108,8 +108,8 @@ func TestApplication_CreateRecord(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			createdAt := time.Date(2026, time.July, 11, 12, 0, 0, 0, time.UTC)
-			application := newApplicationWithRecords(
-				nil,
+			application := newTestApplicationWithRecords(
+				userClientStub{},
 				recordClientStub{
 					create: func(
 						_ context.Context,
@@ -193,7 +193,7 @@ func TestApplication_CreateRecordValidationError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			application := newApplicationWithRecords(nil, recordClientStub{
+			application := newTestApplicationWithRecords(userClientStub{}, recordClientStub{
 				create: func(context.Context, string, httpclient.CreateRecordRequest) (httpclient.Record, error) {
 					t.Fatal("record client must not be called")
 					return httpclient.Record{}, nil
@@ -215,8 +215,8 @@ func TestApplication_ListRecords(t *testing.T) {
 		Title:    "Private note",
 		Revision: 1,
 	}}
-	application := newApplicationWithRecords(
-		nil,
+	application := newTestApplicationWithRecords(
+		userClientStub{},
 		recordClientStub{
 			list: func(_ context.Context, accessToken string) ([]model.RecordMetadata, error) {
 				if accessToken != "test.jwt.token" {
@@ -240,8 +240,8 @@ func TestApplication_ListRecords(t *testing.T) {
 }
 
 func TestApplication_GetRecord(t *testing.T) {
-	application := newApplicationWithRecords(
-		nil,
+	application := newTestApplicationWithRecords(
+		userClientStub{},
 		recordClientStub{
 			get: func(_ context.Context, accessToken, recordID string) (httpclient.Record, error) {
 				if accessToken != "test.jwt.token" {
@@ -280,8 +280,8 @@ func TestApplication_GetRecord(t *testing.T) {
 }
 
 func TestApplication_GetRecordRejectsMismatchedPayload(t *testing.T) {
-	application := newApplicationWithRecords(
-		nil,
+	application := newTestApplicationWithRecords(
+		userClientStub{},
 		recordClientStub{
 			get: func(context.Context, string, string) (httpclient.Record, error) {
 				return httpclient.Record{
@@ -337,8 +337,8 @@ func TestApplication_UpdateRecord(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			application := newApplicationWithRecords(
-				nil,
+			application := newTestApplicationWithRecords(
+				userClientStub{},
 				recordClientStub{
 					update: func(
 						_ context.Context,
@@ -389,8 +389,8 @@ func TestApplication_UpdateRecord(t *testing.T) {
 
 func TestApplication_UpdateRecordMapsAPIError(t *testing.T) {
 	password := "updated-correct-horse-battery-staple"
-	application := newApplicationWithRecords(
-		nil,
+	application := newTestApplicationWithRecords(
+		userClientStub{},
 		recordClientStub{
 			update: func(context.Context, string, string, int64, httpclient.UpdateRecordRequest) (httpclient.Record, error) {
 				return httpclient.Record{}, &httpclient.APIError{
@@ -425,8 +425,8 @@ func TestApplication_UpdateRecordMapsAPIError(t *testing.T) {
 }
 
 func TestApplication_DeleteRecord(t *testing.T) {
-	application := newApplicationWithRecords(
-		nil,
+	application := newTestApplicationWithRecords(
+		userClientStub{},
 		recordClientStub{
 			delete: func(_ context.Context, accessToken, recordID string, expectedRevision int64) error {
 				if accessToken != "test.jwt.token" || recordID != testRecordID || expectedRevision != 2 {

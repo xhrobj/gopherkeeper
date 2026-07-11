@@ -29,7 +29,10 @@ func runLogout(
 	cfg config.Config,
 	output io.Writer,
 ) error {
-	application := usecase.NewLocal(cfg)
+	application, err := usecase.NewLogout(cfg)
+	if err != nil {
+		return err
+	}
 
 	return executeLogout(ctx, application, output)
 }

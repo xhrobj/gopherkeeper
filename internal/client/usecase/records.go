@@ -69,9 +69,6 @@ type Record struct {
 
 // CreateRecord создаёт запись выбранного типа в online-режиме.
 func (a *Application) CreateRecord(ctx context.Context, request CreateRecordRequest) (Record, error) {
-	if a.records == nil {
-		return Record{}, errors.New("record client is not configured")
-	}
 	if err := model.ValidateRecordTitle(request.Title); err != nil {
 		return Record{}, err
 	}
@@ -100,9 +97,6 @@ func (a *Application) CreateRecord(ctx context.Context, request CreateRecordRequ
 
 // ListRecords возвращает metadata приватных записей текущего пользователя в online-режиме.
 func (a *Application) ListRecords(ctx context.Context) ([]model.RecordMetadata, error) {
-	if a.records == nil {
-		return nil, errors.New("record client is not configured")
-	}
 
 	storedSession, err := a.loadSession()
 	if err != nil {
@@ -119,9 +113,6 @@ func (a *Application) ListRecords(ctx context.Context) ([]model.RecordMetadata, 
 
 // GetRecord возвращает запись текущего пользователя с payload согласно её типу.
 func (a *Application) GetRecord(ctx context.Context, recordID string) (Record, error) {
-	if a.records == nil {
-		return Record{}, errors.New("record client is not configured")
-	}
 	if err := model.ValidateRecordID(recordID); err != nil {
 		return Record{}, err
 	}
@@ -141,9 +132,6 @@ func (a *Application) GetRecord(ctx context.Context, recordID string) (Record, e
 
 // UpdateRecord изменяет запись выбранного типа в online-режиме.
 func (a *Application) UpdateRecord(ctx context.Context, request UpdateRecordRequest) (Record, error) {
-	if a.records == nil {
-		return Record{}, errors.New("record client is not configured")
-	}
 	if err := model.ValidateRecordID(request.RecordID); err != nil {
 		return Record{}, err
 	}
@@ -184,9 +172,6 @@ func (a *Application) UpdateRecord(ctx context.Context, request UpdateRecordRequ
 
 // DeleteRecord удаляет запись в online-режиме.
 func (a *Application) DeleteRecord(ctx context.Context, request DeleteRecordRequest) error {
-	if a.records == nil {
-		return errors.New("record client is not configured")
-	}
 	if err := model.ValidateRecordID(request.RecordID); err != nil {
 		return err
 	}

@@ -27,11 +27,6 @@ func (a *Application) Register(ctx context.Context, login, password string) (mod
 
 // Login аутентифицирует пользователя и сохраняет online-сессию локально.
 func (a *Application) Login(ctx context.Context, login, password string) (model.User, error) {
-	sessions, err := a.sessionStorage()
-	if err != nil {
-		return model.User{}, fmt.Errorf("create online session storage: %w", err)
-	}
-
 	result, err := a.users.Login(ctx, login, password)
 	if err != nil {
 		var apiError *httpclient.APIError
@@ -42,7 +37,7 @@ func (a *Application) Login(ctx context.Context, login, password string) (model.
 		return model.User{}, fmt.Errorf("login user: %w", err)
 	}
 
-	if err := sessions.Save(session.Session{
+	if err := a.sessions.Save(session.Session{
 		ServerAddress: a.serverAddress,
 		AccessToken:   result.AccessToken,
 		ExpiresAt:     result.ExpiresAt,
@@ -51,20 +46,6 @@ func (a *Application) Login(ctx context.Context, login, password string) (model.
 	}
 
 	return result.User, nil
-}
-
-// Logout удаляет локальную online-сессию Клиента.
-func (a *Application) Logout(_ context.Context) error {
-	sessions, err := a.sessionStorage()
-	if err != nil {
-		return fmt.Errorf("create online session storage: %w", err)
-	}
-
-	if err := sessions.Delete(); err != nil {
-		return fmt.Errorf("delete online session: %w", err)
-	}
-
-	return nil
 }
 
 // Whoami возвращает пользователя из текущей online-сессии.
@@ -83,12 +64,7 @@ func (a *Application) Whoami(ctx context.Context) (model.User, error) {
 }
 
 func (a *Application) loadSession() (session.Session, error) {
-	sessions, err := a.sessionStorage()
-	if err != nil {
-		return session.Session{}, fmt.Errorf("create online session storage: %w", err)
-	}
-
-	storedSession, err := sessions.Load(a.serverAddress)
+	storedSession, err := a.sessions.Load(a.serverAddress)
 	if err != nil {
 		return session.Session{}, mapSessionLoadError(err)
 	}
