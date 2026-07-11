@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -324,31 +322,14 @@ func readPromptedLine(
 }
 
 func readCredentialsPayloadJSON(input io.Reader) (model.CredentialsPayload, error) {
-	data, err := io.ReadAll(io.LimitReader(input, model.HTTPRequestBodyMaxSize+1))
-	if err != nil {
-		return model.CredentialsPayload{}, fmt.Errorf("read credentials from stdin: %w", err)
-	}
-	if int64(len(data)) > model.HTTPRequestBodyMaxSize {
-		return model.CredentialsPayload{}, fmt.Errorf(
-			"read credentials from stdin: %w",
-			model.ErrPayloadTooLarge,
-		)
-	}
-
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-
 	var payload model.CredentialsPayload
-	if err := decoder.Decode(&payload); err != nil {
-		return model.CredentialsPayload{}, fmt.Errorf("decode credentials from stdin: %w", err)
-	}
-
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		if err == nil {
-			return model.CredentialsPayload{}, errMultipleCredentialsValues
-		}
-
-		return model.CredentialsPayload{}, fmt.Errorf("decode credentials from stdin: %w", err)
+	if err := readRecordPayloadJSON(
+		input,
+		"credentials",
+		errMultipleCredentialsValues,
+		&payload,
+	); err != nil {
+		return model.CredentialsPayload{}, err
 	}
 
 	if err := payload.Validate(); err != nil {

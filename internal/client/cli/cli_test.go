@@ -61,11 +61,17 @@ func runTestCommand(
 	if runners.createCredentialsRecord == nil {
 		runners.createCredentialsRecord = unexpectedCreateCredentialsRecordRunner(t)
 	}
+	if runners.createCardRecord == nil {
+		runners.createCardRecord = unexpectedCreateCardRecordRunner(t)
+	}
 	if runners.updateTextRecord == nil {
 		runners.updateTextRecord = unexpectedUpdateTextRecordRunner(t)
 	}
 	if runners.updateCredentialsRecord == nil {
 		runners.updateCredentialsRecord = unexpectedUpdateCredentialsRecordRunner(t)
+	}
+	if runners.updateCardRecord == nil {
+		runners.updateCardRecord = unexpectedUpdateCardRecordRunner(t)
 	}
 	if runners.listRecords == nil {
 		runners.listRecords = unexpectedListRecordsRunner(t)
@@ -186,6 +192,40 @@ func unexpectedUpdateCredentialsRecordRunner(t *testing.T) credentialsRecordUpda
 	) error {
 		t.Helper()
 		t.Fatal("records update-credentials command must not run")
+		return nil
+	}
+}
+
+func unexpectedCreateCardRecordRunner(t *testing.T) cardRecordCreateRunner {
+	t.Helper()
+
+	return func(
+		context.Context,
+		config.Config,
+		io.Reader,
+		io.Writer,
+		io.Writer,
+		cardRecordCreateCommandRequest,
+	) error {
+		t.Helper()
+		t.Fatal("records create-card command must not run")
+		return nil
+	}
+}
+
+func unexpectedUpdateCardRecordRunner(t *testing.T) cardRecordUpdateRunner {
+	t.Helper()
+
+	return func(
+		context.Context,
+		config.Config,
+		io.Reader,
+		io.Writer,
+		io.Writer,
+		cardRecordUpdateCommandRequest,
+	) error {
+		t.Helper()
+		t.Fatal("records update-card command must not run")
 		return nil
 	}
 }

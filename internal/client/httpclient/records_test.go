@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -125,6 +126,8 @@ type clientGetRecordTestCase struct {
 }
 
 func TestClient_GetRecord(t *testing.T) {
+	expiryMonth := 5
+	expiryYear := 2031
 	tests := []clientGetRecordTestCase{
 		{
 			name:       "text",
@@ -137,6 +140,18 @@ func TestClient_GetRecord(t *testing.T) {
 			payload: &model.CredentialsPayload{
 				Login:    "alice",
 				Password: "correct-horse-battery-staple",
+			},
+		},
+		{
+			name:       "card",
+			recordType: model.RecordTypeCard,
+			payload: &model.CardPayload{
+				Number:      "0000 0000 0000 0042",
+				Cardholder:  "Alice Example",
+				ExpiryMonth: &expiryMonth,
+				ExpiryYear:  &expiryYear,
+				CVV:         "042",
+				Metadata:    "main test card",
 			},
 		},
 	}
@@ -210,6 +225,11 @@ func assertClientRecordPayloadEqual(t *testing.T, got, want model.RecordPayload)
 		payload, ok := got.(*model.CredentialsPayload)
 		if !ok || *payload != *want {
 			t.Fatalf("payload = %#v, want credentials payload %#v", got, want)
+		}
+	case *model.CardPayload:
+		payload, ok := got.(*model.CardPayload)
+		if !ok || !reflect.DeepEqual(payload, want) {
+			t.Fatalf("payload = %#v, want card payload %#v", got, want)
 		}
 	default:
 		t.Fatalf("unsupported expected payload type %T", want)

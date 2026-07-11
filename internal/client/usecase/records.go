@@ -55,6 +55,30 @@ type CreateCredentialsRecordRequest struct {
 	Metadata string
 }
 
+// CreateCardRecordRequest содержит входные данные клиентского сценария создания card-записи.
+type CreateCardRecordRequest struct {
+	// Title содержит открытое название записи.
+	Title string
+
+	// Number содержит приватный номер карты.
+	Number string
+
+	// Cardholder содержит необязательное приватное имя владельца карты.
+	Cardholder string
+
+	// ExpiryMonth содержит необязательный приватный месяц окончания срока действия.
+	ExpiryMonth *int
+
+	// ExpiryYear содержит необязательный приватный год окончания срока действия.
+	ExpiryYear *int
+
+	// CVV содержит необязательный приватный код безопасности карты.
+	CVV string
+
+	// Metadata содержит необязательную приватную метаинформацию записи.
+	Metadata string
+}
+
 // UpdateTextRecordRequest содержит входные данные клиентского сценария изменения text-записи.
 type UpdateTextRecordRequest struct {
 	// RecordID содержит идентификатор изменяемой записи.
@@ -97,6 +121,36 @@ type UpdateCredentialsRecordRequest struct {
 	Metadata string
 }
 
+// UpdateCardRecordRequest содержит входные данные клиентского сценария изменения card-записи.
+type UpdateCardRecordRequest struct {
+	// RecordID содержит идентификатор изменяемой записи.
+	RecordID string
+
+	// ExpectedRevision содержит ревизию, которую пользователь ожидает изменить.
+	ExpectedRevision int64
+
+	// Title содержит новое открытое название записи.
+	Title string
+
+	// Number содержит новый приватный номер карты.
+	Number string
+
+	// Cardholder содержит новое необязательное приватное имя владельца карты.
+	Cardholder string
+
+	// ExpiryMonth содержит новый необязательный приватный месяц окончания срока действия.
+	ExpiryMonth *int
+
+	// ExpiryYear содержит новый необязательный приватный год окончания срока действия.
+	ExpiryYear *int
+
+	// CVV содержит новый необязательный приватный код безопасности карты.
+	CVV string
+
+	// Metadata содержит новую необязательную приватную метаинформацию записи.
+	Metadata string
+}
+
 // DeleteRecordRequest содержит входные данные клиентского сценария удаления записи.
 type DeleteRecordRequest struct {
 	// RecordID содержит идентификатор удаляемой записи.
@@ -133,6 +187,15 @@ type CredentialsRecord struct {
 	Payload model.CredentialsPayload
 }
 
+// CardRecord содержит открытую metadata и расшифрованный card payload.
+type CardRecord struct {
+	// Metadata содержит открытые поля записи.
+	Metadata model.RecordMetadata
+
+	// Payload содержит приватный card payload.
+	Payload model.CardPayload
+}
+
 // CreateTextRecord создаёт text-запись в online-режиме.
 func (a *Application) CreateTextRecord(ctx context.Context, request CreateTextRecordRequest) (TextRecord, error) {
 	payload := &model.TextPayload{
@@ -166,6 +229,28 @@ func (a *Application) CreateCredentialsRecord(
 	}
 
 	return credentialsRecordFromClient(record)
+}
+
+// CreateCardRecord создаёт card-запись в online-режиме.
+func (a *Application) CreateCardRecord(
+	ctx context.Context,
+	request CreateCardRecordRequest,
+) (CardRecord, error) {
+	payload := &model.CardPayload{
+		Number:      request.Number,
+		Cardholder:  request.Cardholder,
+		ExpiryMonth: request.ExpiryMonth,
+		ExpiryYear:  request.ExpiryYear,
+		CVV:         request.CVV,
+		Metadata:    request.Metadata,
+	}
+
+	record, err := a.createRecord(ctx, request.Title, payload, "create card record")
+	if err != nil {
+		return CardRecord{}, err
+	}
+
+	return cardRecordFromClient(record)
 }
 
 // ListRecords возвращает metadata приватных записей текущего пользователя в online-режиме.
@@ -269,6 +354,35 @@ func (a *Application) UpdateCredentialsRecord(
 	}
 
 	return credentialsRecordFromClient(record)
+}
+
+// UpdateCardRecord изменяет card-запись в online-режиме.
+func (a *Application) UpdateCardRecord(
+	ctx context.Context,
+	request UpdateCardRecordRequest,
+) (CardRecord, error) {
+	payload := &model.CardPayload{
+		Number:      request.Number,
+		Cardholder:  request.Cardholder,
+		ExpiryMonth: request.ExpiryMonth,
+		ExpiryYear:  request.ExpiryYear,
+		CVV:         request.CVV,
+		Metadata:    request.Metadata,
+	}
+
+	record, err := a.updateRecord(
+		ctx,
+		request.RecordID,
+		request.ExpectedRevision,
+		request.Title,
+		payload,
+		"update card record",
+	)
+	if err != nil {
+		return CardRecord{}, err
+	}
+
+	return cardRecordFromClient(record)
 }
 
 // DeleteRecord удаляет запись в online-режиме.
@@ -427,6 +541,18 @@ func credentialsRecordFromClient(record httpclient.Record) (CredentialsRecord, e
 	}
 
 	return CredentialsRecord{
+		Metadata: record.Metadata,
+		Payload:  *payload,
+	}, nil
+}
+
+func cardRecordFromClient(record httpclient.Record) (CardRecord, error) {
+	payload, ok := record.Payload.(*model.CardPayload)
+	if !ok || payload == nil || record.Metadata.Type != model.RecordTypeCard {
+		return CardRecord{}, fmt.Errorf("card record payload: %w", errUnexpectedRecordPayload)
+	}
+
+	return CardRecord{
 		Metadata: record.Metadata,
 		Payload:  *payload,
 	}, nil
