@@ -25,7 +25,7 @@ ENV_FILE ?= .env
 export LOG_LEVEL
 
 # данные о сборке подставляются в бинарники Клиента и Сервера через ldflags
-BUILD_VERSION ?= v0.5.0
+BUILD_VERSION ?= v0.6.0
 BUILD_DATE ?= $(shell date +%Y-%m-%d)
 BUILD_COMMIT ?= $(shell git rev-parse --short HEAD)
 

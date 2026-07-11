@@ -23,6 +23,8 @@ func NewRecordPayload(recordType RecordType) (RecordPayload, error) {
 		return &TextPayload{}, nil
 	case RecordTypeCredentials:
 		return &CredentialsPayload{}, nil
+	case RecordTypeCard:
+		return &CardPayload{}, nil
 	default:
 		return nil, ErrRecordTypeUnsupported
 	}

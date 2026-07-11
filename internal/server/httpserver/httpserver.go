@@ -17,6 +17,7 @@ const (
 	healthCheckTimeout      = 2 * time.Second
 	healthStatusOK          = "ok"
 	healthStatusUnavailable = "unavailable"
+	recordByIDPath          = "/records/{id}"
 )
 
 // DatabasePinger проверяет доступность PostgreSQL.
@@ -87,9 +88,9 @@ func NewHandler(deps Dependencies) http.Handler {
 			router.Method(http.MethodGet, "/users/me", currentUserHandler(deps.CurrentUserReader))
 			router.Method(http.MethodPost, "/records", createRecordHandler(deps.Records))
 			router.Method(http.MethodGet, "/records", listRecordsHandler(deps.Records))
-			router.Method(http.MethodGet, "/records/{id}", getRecordHandler(deps.Records))
-			router.Method(http.MethodPut, "/records/{id}", updateRecordHandler(deps.Records))
-			router.Method(http.MethodDelete, "/records/{id}", deleteRecordHandler(deps.Records))
+			router.Method(http.MethodGet, recordByIDPath, getRecordHandler(deps.Records))
+			router.Method(http.MethodPut, recordByIDPath, updateRecordHandler(deps.Records))
+			router.Method(http.MethodDelete, recordByIDPath, deleteRecordHandler(deps.Records))
 		})
 	})
 

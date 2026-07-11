@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -76,6 +77,16 @@ type credentialsRecordResponse struct {
 	Payload   model.CredentialsPayload `json:"payload"`
 }
 
+type cardRecordResponse struct {
+	ID        string            `json:"id"`
+	Type      model.RecordType  `json:"type"`
+	Title     string            `json:"title"`
+	Revision  int64             `json:"revision"`
+	CreatedAt time.Time         `json:"created_at"`
+	UpdatedAt time.Time         `json:"updated_at"`
+	Payload   model.CardPayload `json:"payload"`
+}
+
 func TestCreateRecordHandler_CreatesTextRecord(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 8, 12, 0, 0, 0, time.UTC)
 	updatedAt := time.Date(2026, time.July, 8, 12, 1, 0, 0, time.UTC)
@@ -103,10 +114,10 @@ func TestCreateRecordHandler_CreatesTextRecord(t *testing.T) {
 	serveAuthenticatedRecordHandler(t, createRecordHandler(records), response, request)
 
 	if gotRequest.UserID != 42 {
-		t.Errorf("CreateText() userID = %d, want 42", gotRequest.UserID)
+		t.Errorf("Create() userID = %d, want 42", gotRequest.UserID)
 	}
 	if gotRequest.Title != "my note" {
-		t.Errorf("CreateText() title = %q, want my note", gotRequest.Title)
+		t.Errorf("Create() title = %q, want my note", gotRequest.Title)
 	}
 	gotPayload := requireTextPayload(t, gotRequest.Payload)
 	if gotPayload.Text != "secret note" {
@@ -181,10 +192,10 @@ func TestCreateRecordHandler_CreatesCredentialsRecord(t *testing.T) {
 	serveAuthenticatedRecordHandler(t, createRecordHandler(records), response, request)
 
 	if gotRequest.UserID != 42 {
-		t.Errorf("CreateCredentials() userID = %d, want 42", gotRequest.UserID)
+		t.Errorf("Create() userID = %d, want 42", gotRequest.UserID)
 	}
 	if gotRequest.Title != "GitHub" {
-		t.Errorf("CreateCredentials() title = %q, want GitHub", gotRequest.Title)
+		t.Errorf("Create() title = %q, want GitHub", gotRequest.Title)
 	}
 	if gotPayload := requireCredentialsPayload(t, gotRequest.Payload); gotPayload != payload {
 		t.Errorf("Create() payload = %+v, want %+v", gotPayload, payload)
@@ -207,6 +218,83 @@ func TestCreateRecordHandler_CreatesCredentialsRecord(t *testing.T) {
 		UpdatedAt: updatedAt,
 		Payload:   payload,
 	})
+}
+
+func TestCreateRecordHandler_CreatesCardRecord(t *testing.T) {
+	createdAt := time.Date(2026, time.July, 11, 12, 0, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, time.July, 11, 12, 1, 0, 0, time.UTC)
+	month := 3
+	year := 2038
+	payload := model.CardPayload{
+		Number:      "2013 0614 2020 0619",
+		Cardholder:  "Joel Miller",
+		ExpiryMonth: &month,
+		ExpiryYear:  &year,
+		CVV:         "014",
+		Metadata:    "test card",
+	}
+	var gotRequest service.CreateRecordRequest
+	records := recordManagerStub{
+		create: func(
+			_ context.Context,
+			request service.CreateRecordRequest,
+		) (service.DecryptedRecord, error) {
+			gotRequest = request
+
+			return service.DecryptedRecord{
+				Metadata: model.RecordMetadata{
+					ID:        testRecordID,
+					Type:      model.RecordTypeCard,
+					Title:     request.Title,
+					Revision:  model.RecordInitialRevision,
+					CreatedAt: createdAt,
+					UpdatedAt: updatedAt,
+				},
+				Payload: request.Payload,
+			}, nil
+		},
+	}
+	request := newCreateRecordRequest(t, createCardRecordRequestBody(t, "Joel's card", payload))
+	response := httptest.NewRecorder()
+
+	serveAuthenticatedRecordHandler(t, createRecordHandler(records), response, request)
+
+	if gotRequest.UserID != 42 {
+		t.Errorf("Create() userID = %d, want 42", gotRequest.UserID)
+	}
+	if gotRequest.Title != "Joel's card" {
+		t.Errorf("Create() title = %q, want Joel's card", gotRequest.Title)
+	}
+	if gotPayload := requireCardPayload(t, gotRequest.Payload); !reflect.DeepEqual(gotPayload, payload) {
+		t.Errorf("Create() payload = %+v, want %+v", gotPayload, payload)
+	}
+	if response.Code != http.StatusCreated {
+		t.Errorf("status code = %d, want %d", response.Code, http.StatusCreated)
+	}
+	if etag := response.Header().Get("ETag"); etag != `"1"` {
+		t.Errorf("ETag = %q, want %q", etag, `"1"`)
+	}
+
+	var body cardRecordResponse
+	decodeJSONResponse(t, response, &body)
+	assertRecordMetadataResponse(t, recordMetadataResponse{
+		ID:        body.ID,
+		Type:      body.Type,
+		Title:     body.Title,
+		Revision:  body.Revision,
+		CreatedAt: body.CreatedAt,
+		UpdatedAt: body.UpdatedAt,
+	}, recordMetadataResponse{
+		ID:        testRecordID,
+		Type:      model.RecordTypeCard,
+		Title:     "Joel's card",
+		Revision:  model.RecordInitialRevision,
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+	})
+	if !reflect.DeepEqual(body.Payload, payload) {
+		t.Errorf("response payload = %+v, want %+v", body.Payload, payload)
+	}
 }
 
 func TestCreateRecordHandler_RejectsInvalidRequest(t *testing.T) {
@@ -267,9 +355,17 @@ func TestCreateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 			wantMessage: errorMessageInvalidRecordRequest,
 		},
 		{
+			name:        "card payload contains text field",
+			contentType: "application/json",
+			body:        `{"type":"card","title":"Joel's card","payload":{"number":"2013 0614 2020 0619","text":"secret"}}`,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
 			name:        "unsupported record type",
 			contentType: "application/json",
-			body:        `{"type":"card","title":"my note","payload":{"text":"secret"}}`,
+			body:        `{"type":"binary","title":"document","payload":{"filename":"note.txt"}}`,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
 			wantMessage: errorMessageInvalidRecordRequest,
@@ -342,6 +438,13 @@ func TestCreateRecordHandler_MapsServiceErrors(t *testing.T) {
 		{
 			name:        "invalid title",
 			serviceErr:  model.ErrInvalidRecordTitle,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "invalid card payload",
+			serviceErr:  model.ErrInvalidCardPayload,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
 			wantMessage: errorMessageInvalidRecordRequest,
@@ -647,16 +750,16 @@ func TestUpdateRecordHandler_UpdatesTextRecord(t *testing.T) {
 	serveAuthenticatedRecordHandler(t, updateRecordHandler(records), response, request)
 
 	if gotRequest.UserID != 42 {
-		t.Errorf("UpdateText() userID = %d, want 42", gotRequest.UserID)
+		t.Errorf("Update() userID = %d, want 42", gotRequest.UserID)
 	}
 	if gotRequest.RecordID != testRecordID {
-		t.Errorf("UpdateText() recordID = %q, want %q", gotRequest.RecordID, testRecordID)
+		t.Errorf("Update() recordID = %q, want %q", gotRequest.RecordID, testRecordID)
 	}
 	if gotRequest.ExpectedRevision != 1 {
-		t.Errorf("UpdateText() expected revision = %d, want 1", gotRequest.ExpectedRevision)
+		t.Errorf("Update() expected revision = %d, want 1", gotRequest.ExpectedRevision)
 	}
 	if gotRequest.Title != "new note" {
-		t.Errorf("UpdateText() title = %q, want new note", gotRequest.Title)
+		t.Errorf("Update() title = %q, want new note", gotRequest.Title)
 	}
 	gotPayload := requireTextPayload(t, gotRequest.Payload)
 	if gotPayload.Text != "new secret" {
@@ -732,16 +835,16 @@ func TestUpdateRecordHandler_UpdatesCredentialsRecord(t *testing.T) {
 	serveAuthenticatedRecordHandler(t, updateRecordHandler(records), response, request)
 
 	if gotRequest.UserID != 42 {
-		t.Errorf("UpdateCredentials() userID = %d, want 42", gotRequest.UserID)
+		t.Errorf("Update() userID = %d, want 42", gotRequest.UserID)
 	}
 	if gotRequest.RecordID != testRecordID {
-		t.Errorf("UpdateCredentials() recordID = %q, want %q", gotRequest.RecordID, testRecordID)
+		t.Errorf("Update() recordID = %q, want %q", gotRequest.RecordID, testRecordID)
 	}
 	if gotRequest.ExpectedRevision != 1 {
-		t.Errorf("UpdateCredentials() expected revision = %d, want 1", gotRequest.ExpectedRevision)
+		t.Errorf("Update() expected revision = %d, want 1", gotRequest.ExpectedRevision)
 	}
 	if gotRequest.Title != "GitHub updated" {
-		t.Errorf("UpdateCredentials() title = %q, want GitHub updated", gotRequest.Title)
+		t.Errorf("Update() title = %q, want GitHub updated", gotRequest.Title)
 	}
 	if gotPayload := requireCredentialsPayload(t, gotRequest.Payload); gotPayload != payload {
 		t.Errorf("Update() payload = %+v, want %+v", gotPayload, payload)
@@ -1300,6 +1403,12 @@ func createCredentialsRecordRequestBody(
 	})
 }
 
+func createCardRecordRequestBody(t *testing.T, title string, payload model.CardPayload) string {
+	t.Helper()
+
+	return recordRequestBody(t, model.RecordTypeCard, title, payload)
+}
+
 func updateTextRecordRequestBody(t *testing.T, title string, text string, metadata string) string {
 	t.Helper()
 
@@ -1389,6 +1498,17 @@ func requireCredentialsPayload(t *testing.T, payload model.RecordPayload) model.
 	value, ok := payload.(*model.CredentialsPayload)
 	if !ok || value == nil {
 		t.Fatalf("payload type = %T, want non-nil *CredentialsPayload", payload)
+	}
+
+	return *value
+}
+
+func requireCardPayload(t *testing.T, payload model.RecordPayload) model.CardPayload {
+	t.Helper()
+
+	value, ok := payload.(*model.CardPayload)
+	if !ok || value == nil {
+		t.Fatalf("payload type = %T, want non-nil *CardPayload", payload)
 	}
 
 	return *value

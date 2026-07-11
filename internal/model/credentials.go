@@ -50,4 +50,6 @@ func (*CredentialsPayload) RecordType() RecordType {
 	return RecordTypeCredentials
 }
 
-func (*CredentialsPayload) recordPayload() {}
+func (*CredentialsPayload) recordPayload() {
+	// запрещает реализацию RecordPayload вне пакета model
+}

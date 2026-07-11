@@ -15,30 +15,21 @@ var (
 	errInvalidStoredRecord = errors.New("invalid stored record")
 )
 
-// RecordCreator сохраняет encrypted record.
-type RecordCreator interface {
+// RecordRepository содержит операции хранения, необходимые RecordService.
+type RecordRepository interface {
 	// Create сохраняет encrypted record и возвращает зафиксированное состояние.
 	Create(ctx context.Context, record model.Record) (model.Record, error)
-}
 
-// RecordReader читает encrypted records и metadata пользователя.
-type RecordReader interface {
 	// ListMetadata возвращает открытые поля записей пользователя без payload.
 	ListMetadata(ctx context.Context, userID int64) ([]model.RecordMetadata, error)
 
 	// Get возвращает encrypted record пользователя по идентификатору.
 	Get(ctx context.Context, userID int64, recordID string) (model.Record, error)
-}
 
-// RecordUpdater изменяет encrypted record при совпадении ожидаемой ревизии.
-type RecordUpdater interface {
-	// Update изменяет encrypted record и возвращает зафиксированное состояние.
+	// Update изменяет encrypted record при совпадении ожидаемой ревизии.
 	Update(ctx context.Context, record model.Record, expectedRevision int64) (model.Record, error)
-}
 
-// RecordDeleter удаляет encrypted record при совпадении ожидаемой ревизии.
-type RecordDeleter interface {
-	// Delete физически удаляет encrypted record.
+	// Delete физически удаляет encrypted record при совпадении ожидаемой ревизии.
 	Delete(ctx context.Context, userID int64, recordID string, expectedRevision int64) error
 }
 
@@ -49,14 +40,6 @@ type RecordPayloadCrypto interface {
 
 	// Decrypt расшифровывает encrypted payload с authenticated data.
 	Decrypt(encrypted recordcrypto.EncryptedPayload, aad []byte) ([]byte, error)
-}
-
-// RecordRepository объединяет операции хранения, необходимые RecordService.
-type RecordRepository interface {
-	RecordCreator
-	RecordReader
-	RecordUpdater
-	RecordDeleter
 }
 
 // CreateRecordRequest содержит входные данные для создания приватной записи.
@@ -193,15 +176,6 @@ func (s *RecordService) List(ctx context.Context, userID int64) ([]model.RecordM
 
 // Get возвращает запись пользователя и расшифровывает payload согласно её типу.
 func (s *RecordService) Get(ctx context.Context, userID int64, recordID string) (DecryptedRecord, error) {
-	return s.getRecord(ctx, userID, recordID, nil)
-}
-
-func (s *RecordService) getRecord(
-	ctx context.Context,
-	userID int64,
-	recordID string,
-	expectedType *model.RecordType,
-) (DecryptedRecord, error) {
 	if err := validateRecordOwner(userID); err != nil {
 		return DecryptedRecord{}, err
 	}
@@ -212,9 +186,6 @@ func (s *RecordService) getRecord(
 	record, err := s.records.Get(ctx, userID, recordID)
 	if err != nil {
 		return DecryptedRecord{}, fmt.Errorf("get record: %w", err)
-	}
-	if expectedType != nil && record.Type != *expectedType {
-		return DecryptedRecord{}, model.ErrRecordTypeUnsupported
 	}
 
 	payload, err := model.NewRecordPayload(record.Type)

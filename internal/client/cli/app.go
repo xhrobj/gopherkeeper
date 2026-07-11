@@ -30,8 +30,10 @@ type commandRunners struct {
 	whoami                  outputRunner
 	createTextRecord        textRecordCreateRunner
 	createCredentialsRecord credentialsRecordCreateRunner
+	createCardRecord        cardRecordCreateRunner
 	updateTextRecord        textRecordUpdateRunner
 	updateCredentialsRecord credentialsRecordUpdateRunner
+	updateCardRecord        cardRecordUpdateRunner
 	listRecords             outputRunner
 	getRecord               recordGetRunner
 	deleteRecord            recordDeleteRunner
@@ -83,8 +85,10 @@ func defaultCommandRunners() commandRunners {
 		whoami:                  runWhoami,
 		createTextRecord:        runCreateTextRecord,
 		createCredentialsRecord: runCreateCredentialsRecord,
+		createCardRecord:        runCreateCardRecord,
 		updateTextRecord:        runUpdateTextRecord,
 		updateCredentialsRecord: runUpdateCredentialsRecord,
+		updateCardRecord:        runUpdateCardRecord,
 		listRecords:             runListRecords,
 		getRecord:               runGetRecord,
 		deleteRecord:            runDeleteRecord,

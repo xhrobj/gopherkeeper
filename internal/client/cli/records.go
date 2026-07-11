@@ -50,8 +50,10 @@ func newRecordsCommand(input io.Reader, runners commandRunners) *urfavecli.Comma
 		Commands: []*urfavecli.Command{
 			newCreateTextRecordCommand(runners.createTextRecord),
 			newCreateCredentialsRecordCommand(input, runners.createCredentialsRecord),
+			newCreateCardRecordCommand(input, runners.createCardRecord),
 			newUpdateTextRecordCommand(runners.updateTextRecord),
 			newUpdateCredentialsRecordCommand(input, runners.updateCredentialsRecord),
+			newUpdateCardRecordCommand(input, runners.updateCardRecord),
 			newListRecordsCommand(runners.listRecords),
 			newGetRecordCommand(runners.getRecord),
 			newDeleteRecordCommand(runners.deleteRecord),
@@ -438,6 +440,12 @@ func executeGetRecord(ctx context.Context, getter recordGetter, output io.Writer
 		}
 
 		return writeCredentialsRecordPayload(output, payload)
+	case *model.CardPayload:
+		if payload == nil {
+			return errors.New("unexpected nil card payload")
+		}
+
+		return writeCardRecordPayload(output, payload)
 	default:
 		return errors.New("unsupported record payload")
 	}
@@ -468,6 +476,37 @@ func writeCredentialsRecordPayload(output io.Writer, payload *model.CredentialsP
 	}
 
 	return writeRecordMetadataPayload(output, payload.Metadata, "credentials record")
+}
+
+func writeCardRecordPayload(output io.Writer, payload *model.CardPayload) error {
+	if _, err := fmt.Fprintf(output, "\nNumber: %s\n", payload.Number); err != nil {
+		return fmt.Errorf("write card record: %w", err)
+	}
+
+	if payload.Cardholder != "" {
+		if _, err := fmt.Fprintf(output, "Cardholder: %s\n", payload.Cardholder); err != nil {
+			return fmt.Errorf("write cardholder: %w", err)
+		}
+	}
+
+	if payload.ExpiryMonth != nil && payload.ExpiryYear != nil {
+		if _, err := fmt.Fprintf(
+			output,
+			"Expiry: %02d/%d\n",
+			*payload.ExpiryMonth,
+			*payload.ExpiryYear,
+		); err != nil {
+			return fmt.Errorf("write card expiry: %w", err)
+		}
+	}
+
+	if payload.CVV != "" {
+		if _, err := fmt.Fprintf(output, "CVV: %s\n", payload.CVV); err != nil {
+			return fmt.Errorf("write card CVV: %w", err)
+		}
+	}
+
+	return writeRecordMetadataPayload(output, payload.Metadata, "card record")
 }
 
 func writeRecordMetadataPayload(output io.Writer, metadata string, description string) error {

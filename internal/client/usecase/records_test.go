@@ -212,33 +212,6 @@ func TestApplication_GetRecord(t *testing.T) {
 	}
 }
 
-func TestApplication_GetTextRecord(t *testing.T) {
-	application := newApplicationWithRecords(
-		nil,
-		recordClientStub{
-			get: func(context.Context, string, string) (httpclient.Record, error) {
-				return httpclient.Record{
-					Metadata: model.RecordMetadata{
-						ID:   testRecordID,
-						Type: model.RecordTypeText,
-					},
-					Payload: &model.TextPayload{Text: "secret note"},
-				}, nil
-			},
-		},
-		onlineSessionStorage(),
-		"localhost:8080",
-	)
-
-	record, err := application.GetTextRecord(context.Background(), testRecordID)
-	if err != nil {
-		t.Fatalf("GetTextRecord() error = %v", err)
-	}
-	if record.Payload.Text != "secret note" {
-		t.Errorf("text = %q, want secret note", record.Payload.Text)
-	}
-}
-
 func TestApplication_UpdateCredentialsRecord(t *testing.T) {
 	application := newApplicationWithRecords(
 		nil,

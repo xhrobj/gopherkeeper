@@ -14,7 +14,7 @@ func TestNewRecordPayload(t *testing.T) {
 	}{
 		{name: "text", recordType: RecordTypeText, wantType: RecordTypeText},
 		{name: "credentials", recordType: RecordTypeCredentials, wantType: RecordTypeCredentials},
-		{name: "card is not implemented", recordType: RecordTypeCard, wantErr: ErrRecordTypeUnsupported},
+		{name: "card", recordType: RecordTypeCard, wantType: RecordTypeCard},
 		{name: "binary is not implemented", recordType: RecordTypeBinary, wantErr: ErrRecordTypeUnsupported},
 		{name: "unknown", recordType: RecordType("unknown"), wantErr: ErrRecordTypeUnsupported},
 	}

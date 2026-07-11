@@ -33,4 +33,6 @@ func (*TextPayload) RecordType() RecordType {
 	return RecordTypeText
 }
 
-func (*TextPayload) recordPayload() {}
+func (*TextPayload) recordPayload() {
+	// запрещает реализацию RecordPayload вне пакета model
+}
