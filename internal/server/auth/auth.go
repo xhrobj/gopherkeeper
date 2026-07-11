@@ -11,12 +11,3 @@ var (
 	// сохранённому хэшу.
 	ErrPasswordMismatch = errors.New("password mismatch")
 )
-
-// PasswordManager описывает операции хеширования и проверки пароля.
-type PasswordManager interface {
-	// Hash возвращает хэш переданного пароля.
-	Hash(password string) ([]byte, error)
-
-	// Check проверяет соответствие пароля переданному хэшу.
-	Check(password string, hash []byte) error
-}

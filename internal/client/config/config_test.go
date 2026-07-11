@@ -201,23 +201,6 @@ func TestParse_ReturnsConfigFileError(t *testing.T) {
 	}
 }
 
-func TestLoad(t *testing.T) {
-	isolateConfigEnvironment(t)
-	t.Setenv("ADDRESS", "localhost:8081")
-	t.Setenv("CA_CERT_FILE", "env-ca.pem")
-	t.Setenv("SESSION_FILE", "env-session.json")
-	t.Setenv("CONFIG", "")
-
-	want := Config{
-		Address:     "localhost:8081",
-		CACertFile:  "env-ca.pem",
-		SessionFile: "env-session.json",
-	}
-	if got := Load(); got != want {
-		t.Errorf("Load() = %+v, want %+v", got, want)
-	}
-}
-
 func isolateConfigEnvironment(t *testing.T) {
 	t.Helper()
 

@@ -37,17 +37,6 @@ type explicitFlags struct {
 	SessionFile *string
 }
 
-// Load формирует базовую конфигурацию Клиента из переменных окружения
-// и значений по умолчанию.
-func Load() Config {
-	cfg, err := Parse(nil)
-	if err != nil {
-		return Config{Address: defaultAddress}
-	}
-
-	return cfg
-}
-
 // Parse формирует конфигурацию Клиента из явно указанного JSON-файла,
 // переменных окружения и аргументов командной строки.
 //
