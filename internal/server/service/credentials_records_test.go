@@ -24,36 +24,8 @@ func TestRecordService_CreateCredentials(t *testing.T) {
 		Ciphertext:    []byte("ciphertext"),
 	}
 
-	crypto := &recordPayloadCryptoStub{
-		encryptFunc: func(plaintext, aad []byte) (recordcrypto.EncryptedPayload, error) {
-			assertEncryptedCredentialsPayload(t, plaintext, payload)
-			if !strings.Contains(string(aad), "gopherkeeper:v1:user:42:record:") ||
-				!strings.Contains(string(aad), ":type:credentials") {
-				t.Fatalf("Encrypt() AAD = %q", aad)
-			}
-
-			return encrypted, nil
-		},
-	}
-	records := &recordRepositoryStub{
-		createFunc: func(_ context.Context, record model.Record) (model.Record, error) {
-			if err := model.ValidateRecordID(record.ID); err != nil {
-				t.Fatalf("Create() record ID is invalid: %v", err)
-			}
-			if record.UserID != 42 || record.Type != model.RecordTypeCredentials || record.Title != "GitHub" {
-				t.Fatalf("Create() record = %+v", record)
-			}
-			if record.Revision != 0 {
-				t.Fatalf("Create() revision = %d, want DB default", record.Revision)
-			}
-			assertEncryptedRecord(t, record, encrypted)
-
-			record.Revision = model.RecordInitialRevision
-			record.CreatedAt = createdAt
-			record.UpdatedAt = updatedAt
-			return record, nil
-		},
-	}
+	crypto := newCreateCredentialsCryptoStub(t, payload, encrypted)
+	records := newCreateCredentialsRepositoryStub(t, encrypted, createdAt, updatedAt)
 	service := NewRecordService(records, crypto)
 
 	created, err := service.CreateCredentials(context.Background(), CreateCredentialsRecordRequest{
@@ -64,6 +36,87 @@ func TestRecordService_CreateCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateCredentials() error = %v", err)
 	}
+	assertCreatedCredentialsResult(t, created, payload, createdAt, updatedAt)
+	if crypto.encryptCalls != 1 || records.createCalls != 1 {
+		t.Fatalf("calls: Encrypt=%d Create=%d", crypto.encryptCalls, records.createCalls)
+	}
+}
+
+func newCreateCredentialsCryptoStub(
+	t *testing.T,
+	payload model.CredentialsPayload,
+	encrypted recordcrypto.EncryptedPayload,
+) *recordPayloadCryptoStub {
+	t.Helper()
+
+	return &recordPayloadCryptoStub{
+		encryptFunc: func(plaintext, aad []byte) (recordcrypto.EncryptedPayload, error) {
+			assertEncryptedCredentialsPayload(t, plaintext, payload)
+			assertCredentialsCreateAAD(t, aad)
+
+			return encrypted, nil
+		},
+	}
+}
+
+func assertCredentialsCreateAAD(t *testing.T, aad []byte) {
+	t.Helper()
+
+	if !strings.Contains(string(aad), "gopherkeeper:v1:user:42:record:") ||
+		!strings.Contains(string(aad), ":type:credentials") {
+		t.Fatalf("Encrypt() AAD = %q", aad)
+	}
+}
+
+func newCreateCredentialsRepositoryStub(
+	t *testing.T,
+	encrypted recordcrypto.EncryptedPayload,
+	createdAt time.Time,
+	updatedAt time.Time,
+) *recordRepositoryStub {
+	t.Helper()
+
+	return &recordRepositoryStub{
+		createFunc: func(_ context.Context, record model.Record) (model.Record, error) {
+			assertCredentialsRecordForCreate(t, record, encrypted)
+
+			record.Revision = model.RecordInitialRevision
+			record.CreatedAt = createdAt
+			record.UpdatedAt = updatedAt
+
+			return record, nil
+		},
+	}
+}
+
+func assertCredentialsRecordForCreate(
+	t *testing.T,
+	record model.Record,
+	encrypted recordcrypto.EncryptedPayload,
+) {
+	t.Helper()
+
+	if err := model.ValidateRecordID(record.ID); err != nil {
+		t.Fatalf("Create() record ID is invalid: %v", err)
+	}
+	if record.UserID != 42 || record.Type != model.RecordTypeCredentials || record.Title != "GitHub" {
+		t.Fatalf("Create() record = %+v", record)
+	}
+	if record.Revision != 0 {
+		t.Fatalf("Create() revision = %d, want DB default", record.Revision)
+	}
+	assertEncryptedRecord(t, record, encrypted)
+}
+
+func assertCreatedCredentialsResult(
+	t *testing.T,
+	created CredentialsRecord,
+	payload model.CredentialsPayload,
+	createdAt time.Time,
+	updatedAt time.Time,
+) {
+	t.Helper()
+
 	if created.Metadata.Type != model.RecordTypeCredentials || created.Metadata.Title != "GitHub" ||
 		created.Metadata.Revision != model.RecordInitialRevision || created.Metadata.CreatedAt != createdAt ||
 		created.Metadata.UpdatedAt != updatedAt {
@@ -71,9 +124,6 @@ func TestRecordService_CreateCredentials(t *testing.T) {
 	}
 	if created.Payload != payload {
 		t.Fatalf("CreateCredentials() payload = %+v, want %+v", created.Payload, payload)
-	}
-	if crypto.encryptCalls != 1 || records.createCalls != 1 {
-		t.Fatalf("calls: Encrypt=%d Create=%d", crypto.encryptCalls, records.createCalls)
 	}
 }
 

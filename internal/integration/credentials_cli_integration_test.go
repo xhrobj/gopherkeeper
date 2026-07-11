@@ -18,6 +18,13 @@ var createdCredentialsRecordPattern = regexp.MustCompile(
 	`^Created credentials record ([0-9a-f-]+) with revision ([0-9]+)\.$`,
 )
 
+type credentialsCLIConfig struct {
+	ctx         context.Context
+	address     string
+	caCertFile  string
+	sessionFile string
+}
+
 func TestIntegration_CLICredentialsRecordFlow(t *testing.T) {
 	ctx, pool, httpLogs, serverAddress, caCertFile := startCLIRecordTestServer(t)
 	if _, _, err := runRegisterCommand(
@@ -32,6 +39,12 @@ func TestIntegration_CLICredentialsRecordFlow(t *testing.T) {
 
 	aliceSessionFile := filepath.Join(t.TempDir(), "alice-session.json")
 	loginTestUser(t, ctx, serverAddress, caCertFile, aliceSessionFile, " Alice ")
+	aliceCLI := credentialsCLIConfig{
+		ctx:         ctx,
+		address:     serverAddress,
+		caCertFile:  caCertFile,
+		sessionFile: aliceSessionFile,
+	}
 
 	initial := model.CredentialsPayload{
 		Login:    "alice@example.com",
@@ -59,19 +72,16 @@ func TestIntegration_CLICredentialsRecordFlow(t *testing.T) {
 		initial.Metadata,
 	)
 	assertCredentialsList(t, ctx, serverAddress, caCertFile, aliceSessionFile, recordID, initial)
-	assertCredentialsRecord(
-		t,
-		ctx,
-		serverAddress,
-		caCertFile,
-		aliceSessionFile,
-		recordID,
-		1,
-		initial,
-	)
+	assertCredentialsRecord(t, aliceCLI, recordID, 1, initial)
 
 	aliceSecondSessionFile := filepath.Join(t.TempDir(), "alice-second-session.json")
 	loginTestUser(t, ctx, serverAddress, caCertFile, aliceSecondSessionFile, " Alice ")
+	aliceSecondCLI := credentialsCLIConfig{
+		ctx:         ctx,
+		address:     serverAddress,
+		caCertFile:  caCertFile,
+		sessionFile: aliceSecondSessionFile,
+	}
 
 	updated := model.CredentialsPayload{
 		Login:    "alice.updated@example.com",
@@ -79,17 +89,7 @@ func TestIntegration_CLICredentialsRecordFlow(t *testing.T) {
 		URL:      "https://github.com/settings/security",
 		Metadata: "updated recovery codes",
 	}
-	updateCredentialsRecord(
-		t,
-		ctx,
-		serverAddress,
-		caCertFile,
-		aliceSessionFile,
-		recordID,
-		1,
-		"Updated Alice GitHub",
-		updated,
-	)
+	updateCredentialsRecord(t, aliceCLI, recordID, 1, "Updated Alice GitHub", updated)
 	assertPlaintextAbsentFromPostgres(
 		t,
 		ctx,
@@ -100,22 +100,10 @@ func TestIntegration_CLICredentialsRecordFlow(t *testing.T) {
 		updated.URL,
 		updated.Metadata,
 	)
-	assertCredentialsRecord(
-		t,
-		ctx,
-		serverAddress,
-		caCertFile,
-		aliceSessionFile,
-		recordID,
-		2,
-		updated,
-	)
+	assertCredentialsRecord(t, aliceCLI, recordID, 2, updated)
 	assertStaleCredentialsUpdate(
 		t,
-		ctx,
-		serverAddress,
-		caCertFile,
-		aliceSecondSessionFile,
+		aliceSecondCLI,
 		recordID,
 		updated,
 	)
@@ -201,10 +189,7 @@ func createCredentialsRecord(
 
 func updateCredentialsRecord(
 	t *testing.T,
-	ctx context.Context,
-	address string,
-	caCertFile string,
-	sessionFile string,
+	config credentialsCLIConfig,
 	recordID string,
 	revision int64,
 	title string,
@@ -214,10 +199,7 @@ func updateCredentialsRecord(
 
 	stdout, stderr, err := runUpdateCredentialsRecordCommand(
 		t,
-		ctx,
-		address,
-		caCertFile,
-		sessionFile,
+		config,
 		recordID,
 		revision,
 		title,
@@ -265,17 +247,20 @@ func assertCredentialsList(
 
 func assertCredentialsRecord(
 	t *testing.T,
-	ctx context.Context,
-	address string,
-	caCertFile string,
-	sessionFile string,
+	config credentialsCLIConfig,
 	recordID string,
 	revision int64,
 	payload model.CredentialsPayload,
 ) {
 	t.Helper()
 
-	stdout, stderr, err := runGetRecordCommand(ctx, address, caCertFile, sessionFile, recordID)
+	stdout, stderr, err := runGetRecordCommand(
+		config.ctx,
+		config.address,
+		config.caCertFile,
+		config.sessionFile,
+		recordID,
+	)
 	if err != nil {
 		t.Fatalf("get credentials record: %v", err)
 	}
@@ -303,10 +288,7 @@ func assertCredentialsRecord(
 
 func assertStaleCredentialsUpdate(
 	t *testing.T,
-	ctx context.Context,
-	address string,
-	caCertFile string,
-	sessionFile string,
+	config credentialsCLIConfig,
 	recordID string,
 	payload model.CredentialsPayload,
 ) {
@@ -314,10 +296,7 @@ func assertStaleCredentialsUpdate(
 
 	stdout, stderr, err := runUpdateCredentialsRecordCommand(
 		t,
-		ctx,
-		address,
-		caCertFile,
-		sessionFile,
+		config,
 		recordID,
 		1,
 		"Stale credentials",
@@ -365,12 +344,15 @@ func assertForeignCredentialsAccessHidden(
 	_, _, err := runGetRecordCommand(ctx, address, caCertFile, sessionFile, recordID)
 	assertCLIErrorContains(t, "foreign credentials get", err, "record not found")
 
+	config := credentialsCLIConfig{
+		ctx:         ctx,
+		address:     address,
+		caCertFile:  caCertFile,
+		sessionFile: sessionFile,
+	}
 	stdout, stderr, err := runUpdateCredentialsRecordCommand(
 		t,
-		ctx,
-		address,
-		caCertFile,
-		sessionFile,
+		config,
 		recordID,
 		2,
 		"Eve credentials",
@@ -407,10 +389,7 @@ func runCreateCredentialsRecordCommand(
 
 func runUpdateCredentialsRecordCommand(
 	t *testing.T,
-	ctx context.Context,
-	address string,
-	caCertFile string,
-	sessionFile string,
+	config credentialsCLIConfig,
 	recordID string,
 	revision int64,
 	title string,
@@ -418,11 +397,11 @@ func runUpdateCredentialsRecordCommand(
 ) (string, string, error) {
 	t.Helper()
 
-	return runClientCommandWithInput(ctx, []string{
+	return runClientCommandWithInput(config.ctx, []string{
 		"gkeep",
-		"--address", address,
-		"--ca-cert", caCertFile,
-		"--session-file", sessionFile,
+		"--address", config.address,
+		"--ca-cert", config.caCertFile,
+		"--session-file", config.sessionFile,
 		"records", "update-credentials", recordID,
 		"--revision", fmt.Sprintf("%d", revision),
 		"--title", title,

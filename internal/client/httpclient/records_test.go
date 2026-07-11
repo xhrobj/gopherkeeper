@@ -18,46 +18,8 @@ const testRecordID = "550e8400-e29b-41d4-a716-446655440000"
 func TestClient_CreateRecord(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
 	password := "correct-horse-battery-staple"
-
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Errorf("method = %s, want %s", r.Method, http.MethodPost)
-		}
-		if r.URL.Path != recordsPath {
-			t.Errorf("path = %s, want %s", r.URL.Path, recordsPath)
-		}
-		if strings.Contains(r.URL.RawQuery, password) || strings.Contains(r.Header.Get("Authorization"), password) {
-			t.Error("credentials password appeared outside JSON body")
-		}
-
-		var request struct {
-			Type    model.RecordType `json:"type"`
-			Title   string           `json:"title"`
-			Payload json.RawMessage  `json:"payload"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Fatalf("decode request: %v", err)
-		}
-		if request.Type != model.RecordTypeCredentials {
-			t.Errorf("type = %q, want credentials", request.Type)
-		}
-
-		var payload model.CredentialsPayload
-		if err := json.Unmarshal(request.Payload, &payload); err != nil {
-			t.Fatalf("decode credentials payload: %v", err)
-		}
-		if payload.Password != password {
-			t.Error("credentials password was not transferred unchanged")
-		}
-
-		writeRecordResponse(t, w, http.StatusCreated, recordResponse{
-			ID:        testRecordID,
-			Type:      model.RecordTypeCredentials,
-			Title:     request.Title,
-			Revision:  1,
-			CreatedAt: createdAt,
-			UpdatedAt: createdAt,
-		}, &payload)
+		handleCreateRecordTestRequest(t, createdAt, password, w, r)
 	}))
 	defer server.Close()
 
@@ -77,6 +39,72 @@ func TestClient_CreateRecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateRecord() error = %v", err)
 	}
+	assertCreatedCredentialsRecord(t, record, password)
+}
+
+func handleCreateRecordTestRequest(
+	t *testing.T,
+	createdAt time.Time,
+	password string,
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	t.Helper()
+
+	if r.Method != http.MethodPost {
+		t.Errorf("method = %s, want %s", r.Method, http.MethodPost)
+	}
+	if r.URL.Path != recordsPath {
+		t.Errorf("path = %s, want %s", r.URL.Path, recordsPath)
+	}
+	if strings.Contains(r.URL.RawQuery, password) || strings.Contains(r.Header.Get("Authorization"), password) {
+		t.Error("credentials password appeared outside JSON body")
+	}
+
+	request := decodeCredentialsRecordRequest(t, r)
+	if request.Payload.Password != password {
+		t.Error("credentials password was not transferred unchanged")
+	}
+	writeRecordResponse(t, w, http.StatusCreated, recordResponse{
+		ID:        testRecordID,
+		Type:      model.RecordTypeCredentials,
+		Title:     request.Title,
+		Revision:  1,
+		CreatedAt: createdAt,
+		UpdatedAt: createdAt,
+	}, &request.Payload)
+}
+
+type credentialsRecordRequest struct {
+	Title   string
+	Payload model.CredentialsPayload
+}
+
+func decodeCredentialsRecordRequest(t *testing.T, r *http.Request) credentialsRecordRequest {
+	t.Helper()
+
+	var request struct {
+		Type    model.RecordType `json:"type"`
+		Title   string           `json:"title"`
+		Payload json.RawMessage  `json:"payload"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	if request.Type != model.RecordTypeCredentials {
+		t.Errorf("type = %q, want credentials", request.Type)
+	}
+
+	var payload model.CredentialsPayload
+	if err := json.Unmarshal(request.Payload, &payload); err != nil {
+		t.Fatalf("decode credentials payload: %v", err)
+	}
+
+	return credentialsRecordRequest{Title: request.Title, Payload: payload}
+}
+
+func assertCreatedCredentialsRecord(t *testing.T, record Record, password string) {
+	t.Helper()
 
 	payload, ok := record.Payload.(*model.CredentialsPayload)
 	if !ok {
@@ -90,24 +118,18 @@ func TestClient_CreateRecord(t *testing.T) {
 	}
 }
 
+type clientGetRecordTestCase struct {
+	name       string
+	recordType model.RecordType
+	payload    model.RecordPayload
+}
+
 func TestClient_GetRecord(t *testing.T) {
-	tests := []struct {
-		name       string
-		recordType model.RecordType
-		payload    model.RecordPayload
-		assert     func(*testing.T, model.RecordPayload)
-	}{
+	tests := []clientGetRecordTestCase{
 		{
 			name:       "text",
 			recordType: model.RecordTypeText,
 			payload:    &model.TextPayload{Text: "secret note", Metadata: "private"},
-			assert: func(t *testing.T, got model.RecordPayload) {
-				t.Helper()
-				payload, ok := got.(*model.TextPayload)
-				if !ok || payload.Text != "secret note" {
-					t.Fatalf("payload = %#v, want text payload", got)
-				}
-			},
 		},
 		{
 			name:       "credentials",
@@ -116,52 +138,81 @@ func TestClient_GetRecord(t *testing.T) {
 				Login:    "alice",
 				Password: "correct-horse-battery-staple",
 			},
-			assert: func(t *testing.T, got model.RecordPayload) {
-				t.Helper()
-				payload, ok := got.(*model.CredentialsPayload)
-				if !ok || payload.Login != "alice" {
-					t.Fatalf("payload = %#v, want credentials payload", got)
-				}
-			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodGet {
-					t.Errorf("method = %s, want %s", r.Method, http.MethodGet)
-				}
-				if r.URL.Path != recordsPath+"/"+testRecordID {
-					t.Errorf("path = %s, want record path", r.URL.Path)
-				}
-
-				createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
-				writeRecordResponse(t, w, http.StatusOK, recordResponse{
-					ID:        testRecordID,
-					Type:      tt.recordType,
-					Title:     "Record",
-					Revision:  1,
-					CreatedAt: createdAt,
-					UpdatedAt: createdAt,
-				}, tt.payload)
-			}))
-			defer server.Close()
-
-			client, err := New(serverAddress(server), writeServerCertificate(t, server))
-			if err != nil {
-				t.Fatalf("New() error = %v", err)
-			}
-
-			record, err := client.GetRecord(context.Background(), "test.jwt.token", testRecordID)
-			if err != nil {
-				t.Fatalf("GetRecord() error = %v", err)
-			}
-			if record.Metadata.Type != tt.recordType {
-				t.Errorf("type = %q, want %q", record.Metadata.Type, tt.recordType)
-			}
-			tt.assert(t, record.Payload)
+			testClientGetRecord(t, tt)
 		})
+	}
+}
+
+func testClientGetRecord(t *testing.T, tt clientGetRecordTestCase) {
+	t.Helper()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handleGetRecordTestRequest(t, tt, w, r)
+	}))
+	defer server.Close()
+
+	client, err := New(serverAddress(server), writeServerCertificate(t, server))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	record, err := client.GetRecord(context.Background(), "test.jwt.token", testRecordID)
+	if err != nil {
+		t.Fatalf("GetRecord() error = %v", err)
+	}
+	if record.Metadata.Type != tt.recordType {
+		t.Errorf("type = %q, want %q", record.Metadata.Type, tt.recordType)
+	}
+	assertClientRecordPayloadEqual(t, record.Payload, tt.payload)
+}
+
+func handleGetRecordTestRequest(
+	t *testing.T,
+	tt clientGetRecordTestCase,
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	t.Helper()
+
+	if r.Method != http.MethodGet {
+		t.Errorf("method = %s, want %s", r.Method, http.MethodGet)
+	}
+	if r.URL.Path != recordsPath+"/"+testRecordID {
+		t.Errorf("path = %s, want record path", r.URL.Path)
+	}
+
+	createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
+	writeRecordResponse(t, w, http.StatusOK, recordResponse{
+		ID:        testRecordID,
+		Type:      tt.recordType,
+		Title:     "Record",
+		Revision:  1,
+		CreatedAt: createdAt,
+		UpdatedAt: createdAt,
+	}, tt.payload)
+}
+
+func assertClientRecordPayloadEqual(t *testing.T, got, want model.RecordPayload) {
+	t.Helper()
+
+	switch want := want.(type) {
+	case *model.TextPayload:
+		payload, ok := got.(*model.TextPayload)
+		if !ok || *payload != *want {
+			t.Fatalf("payload = %#v, want text payload %#v", got, want)
+		}
+	case *model.CredentialsPayload:
+		payload, ok := got.(*model.CredentialsPayload)
+		if !ok || *payload != *want {
+			t.Fatalf("payload = %#v, want credentials payload %#v", got, want)
+		}
+	default:
+		t.Fatalf("unsupported expected payload type %T", want)
 	}
 }
 
