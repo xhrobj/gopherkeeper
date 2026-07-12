@@ -25,6 +25,8 @@ func NewRecordPayload(recordType RecordType) (RecordPayload, error) {
 		return &CredentialsPayload{}, nil
 	case RecordTypeCard:
 		return &CardPayload{}, nil
+	case RecordTypeBinary:
+		return &BinaryPayload{}, nil
 	default:
 		return nil, ErrRecordTypeUnsupported
 	}

@@ -11,14 +11,19 @@ import (
 )
 
 const (
+	mebibyte = 1024 * 1024
+
 	// TextPayloadMaxSize содержит максимальный размер text payload в байтах UTF-8.
-	TextPayloadMaxSize = 1 * 1024 * 1024
+	TextPayloadMaxSize = mebibyte
+
+	// BinaryPayloadMaxSize содержит максимальный размер binary payload в исходных байтах.
+	BinaryPayloadMaxSize = 2 * mebibyte
 
 	// MetadataMaxSize содержит максимальный размер приватной метаинформации в байтах UTF-8.
 	MetadataMaxSize = 64 * 1024
 
 	// HTTPRequestBodyMaxSize содержит максимальный размер HTTP request body в байтах.
-	HTTPRequestBodyMaxSize int64 = 4 * 1024 * 1024
+	HTTPRequestBodyMaxSize int64 = 4 * mebibyte
 
 	// RecordInitialRevision содержит начальную ревизию новой записи.
 	RecordInitialRevision int64 = 1
@@ -42,6 +47,9 @@ var (
 
 	// ErrInvalidTextPayload сообщает, что text payload некорректен.
 	ErrInvalidTextPayload = errors.New("invalid text payload")
+
+	// ErrInvalidBinaryPayload сообщает, что binary payload некорректен.
+	ErrInvalidBinaryPayload = errors.New("invalid binary payload")
 
 	// ErrRecordRevisionConflict сообщает, что ожидаемая ревизия записи устарела.
 	ErrRecordRevisionConflict = errors.New("record revision conflict")

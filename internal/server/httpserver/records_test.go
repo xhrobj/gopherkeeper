@@ -365,7 +365,7 @@ func TestCreateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 		{
 			name:        "unsupported record type",
 			contentType: "application/json",
-			body:        `{"type":"binary","title":"document","payload":{"filename":"note.txt"}}`,
+			body:        `{"type":"otp","title":"token","payload":{"secret":"value"}}`,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
 			wantMessage: errorMessageInvalidRecordRequest,
