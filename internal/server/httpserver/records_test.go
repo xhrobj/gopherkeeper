@@ -19,6 +19,11 @@ import (
 
 const testRecordID = "7b4c2d7d-0e2f-4c4b-8d4b-8f4f7c4d3a21"
 
+var (
+	testRecordCreatedAt = time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
+	testRecordUpdatedAt = time.Date(2026, time.July, 12, 12, 1, 0, 0, time.UTC)
+)
+
 type recordManagerStub struct {
 	create func(context.Context, service.CreateRecordRequest) (model.Record, error)
 	list   func(context.Context, int64) ([]model.RecordMetadata, error)
@@ -57,343 +62,66 @@ func (s recordManagerStub) Delete(ctx context.Context, request service.DeleteRec
 	return s.delete(ctx, request)
 }
 
-type textRecordResponse struct {
-	ID        string            `json:"id"`
-	Type      model.RecordType  `json:"type"`
-	Title     string            `json:"title"`
-	Revision  int64             `json:"revision"`
-	CreatedAt time.Time         `json:"created_at"`
-	UpdatedAt time.Time         `json:"updated_at"`
-	Payload   model.TextPayload `json:"payload"`
+type recordResponseEnvelope struct {
+	ID        string           `json:"id"`
+	Type      model.RecordType `json:"type"`
+	Title     string           `json:"title"`
+	Revision  int64            `json:"revision"`
+	CreatedAt time.Time        `json:"created_at"`
+	UpdatedAt time.Time        `json:"updated_at"`
+	Payload   json.RawMessage  `json:"payload"`
 }
 
-type credentialsRecordResponse struct {
-	ID        string                   `json:"id"`
-	Type      model.RecordType         `json:"type"`
-	Title     string                   `json:"title"`
-	Revision  int64                    `json:"revision"`
-	CreatedAt time.Time                `json:"created_at"`
-	UpdatedAt time.Time                `json:"updated_at"`
-	Payload   model.CredentialsPayload `json:"payload"`
+type recordPayloadCase struct {
+	name       string
+	title      string
+	payload    model.RecordPayload
+	wantBase64 string
 }
 
-type cardRecordResponse struct {
-	ID        string            `json:"id"`
-	Type      model.RecordType  `json:"type"`
-	Title     string            `json:"title"`
-	Revision  int64             `json:"revision"`
-	CreatedAt time.Time         `json:"created_at"`
-	UpdatedAt time.Time         `json:"updated_at"`
-	Payload   model.CardPayload `json:"payload"`
+func TestCreateRecordHandler_CreatesRecords(t *testing.T) {
+	for _, tt := range recordPayloadCases() {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotRequest service.CreateRecordRequest
+			records := recordManagerStub{
+				create: func(_ context.Context, request service.CreateRecordRequest) (model.Record, error) {
+					gotRequest = request
+
+					return testRecord(request.Title, model.RecordInitialRevision, request.Payload), nil
+				},
+			}
+			requestBody := recordRequestBody(t, tt.payload.RecordType(), tt.title, tt.payload)
+			if tt.wantBase64 != "" && !strings.Contains(requestBody, tt.wantBase64) {
+				t.Fatalf("request body = %s, want Base64 fragment %s", requestBody, tt.wantBase64)
+			}
+			response := httptest.NewRecorder()
+
+			serveAuthenticatedRecordHandler(
+				t,
+				createRecordHandler(records),
+				response,
+				newCreateRecordRequest(requestBody),
+			)
+
+			assertCreateRecordRequest(t, gotRequest, tt.title, tt.payload)
+			assertRecordResponse(
+				t,
+				response,
+				http.StatusCreated,
+				model.RecordInitialRevision,
+				tt.title,
+				tt.payload,
+			)
+			if tt.wantBase64 != "" && !strings.Contains(response.Body.String(), tt.wantBase64) {
+				t.Errorf("response body = %s, want Base64 fragment %s", response.Body.String(), tt.wantBase64)
+			}
+		})
+	}
 }
 
-type binaryRecordResponse struct {
-	ID        string              `json:"id"`
-	Type      model.RecordType    `json:"type"`
-	Title     string              `json:"title"`
-	Revision  int64               `json:"revision"`
-	CreatedAt time.Time           `json:"created_at"`
-	UpdatedAt time.Time           `json:"updated_at"`
-	Payload   model.BinaryPayload `json:"payload"`
-}
-
-func TestCreateRecordHandler_CreatesTextRecord(t *testing.T) {
-	createdAt := time.Date(2026, time.July, 8, 12, 0, 0, 0, time.UTC)
-	updatedAt := time.Date(2026, time.July, 8, 12, 1, 0, 0, time.UTC)
-	var gotRequest service.CreateRecordRequest
+func TestCreateRecordHandler_AcceptsEmptyBinaryData(t *testing.T) {
 	records := recordManagerStub{
 		create: func(_ context.Context, request service.CreateRecordRequest) (model.Record, error) {
-			gotRequest = request
-
-			return model.Record{
-				Metadata: model.RecordMetadata{
-					ID:        testRecordID,
-					Type:      model.RecordTypeText,
-					Title:     request.Title,
-					Revision:  model.RecordInitialRevision,
-					CreatedAt: createdAt,
-					UpdatedAt: updatedAt,
-				},
-				Payload: request.Payload,
-			}, nil
-		},
-	}
-	request := newCreateRecordRequest(t, createTextRecordRequestBody(t, "my note", "secret note", "private metadata"))
-	response := httptest.NewRecorder()
-
-	serveAuthenticatedRecordHandler(t, createRecordHandler(records), response, request)
-
-	if gotRequest.UserID != 42 {
-		t.Errorf("Create() userID = %d, want 42", gotRequest.UserID)
-	}
-	if gotRequest.Title != "my note" {
-		t.Errorf("Create() title = %q, want my note", gotRequest.Title)
-	}
-	gotPayload := requireTextPayload(t, gotRequest.Payload)
-	if gotPayload.Text != "secret note" {
-		t.Errorf("Create() payload text = %q, want secret note", gotPayload.Text)
-	}
-	if gotPayload.Metadata != "private metadata" {
-		t.Errorf("Create() metadata = %q, want private metadata", gotPayload.Metadata)
-	}
-	if response.Code != http.StatusCreated {
-		t.Errorf("status code = %d, want %d", response.Code, http.StatusCreated)
-	}
-	if etag := response.Header().Get("ETag"); etag != `"1"` {
-		t.Errorf("ETag = %q, want %q", etag, `"1"`)
-	}
-
-	var body textRecordResponse
-	decodeJSONResponse(t, response, &body)
-	assertTextRecordResponse(t, body, textRecordResponse{
-		ID:        testRecordID,
-		Type:      model.RecordTypeText,
-		Title:     "my note",
-		Revision:  model.RecordInitialRevision,
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
-		Payload: model.TextPayload{
-			Text:     "secret note",
-			Metadata: "private metadata",
-		},
-	})
-}
-
-func TestCreateRecordHandler_CreatesCredentialsRecord(t *testing.T) {
-	createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
-	updatedAt := time.Date(2026, time.July, 10, 12, 1, 0, 0, time.UTC)
-	payload := model.CredentialsPayload{
-		Login:    "alice",
-		Password: "correct-horse-battery-staple",
-		URL:      "https://github.com",
-		Metadata: "personal account",
-	}
-	var gotRequest service.CreateRecordRequest
-	records := recordManagerStub{
-		create: func(
-			_ context.Context,
-			request service.CreateRecordRequest,
-		) (model.Record, error) {
-			gotRequest = request
-
-			return model.Record{
-				Metadata: model.RecordMetadata{
-					ID:        testRecordID,
-					Type:      model.RecordTypeCredentials,
-					Title:     request.Title,
-					Revision:  model.RecordInitialRevision,
-					CreatedAt: createdAt,
-					UpdatedAt: updatedAt,
-				},
-				Payload: request.Payload,
-			}, nil
-		},
-	}
-	request := newCreateRecordRequest(t, createCredentialsRecordRequestBody(
-		t,
-		"GitHub",
-		payload.Login,
-		payload.Password,
-		payload.URL,
-		payload.Metadata,
-	))
-	response := httptest.NewRecorder()
-
-	serveAuthenticatedRecordHandler(t, createRecordHandler(records), response, request)
-
-	if gotRequest.UserID != 42 {
-		t.Errorf("Create() userID = %d, want 42", gotRequest.UserID)
-	}
-	if gotRequest.Title != "GitHub" {
-		t.Errorf("Create() title = %q, want GitHub", gotRequest.Title)
-	}
-	if gotPayload := requireCredentialsPayload(t, gotRequest.Payload); gotPayload != payload {
-		t.Errorf("Create() payload = %+v, want %+v", gotPayload, payload)
-	}
-	if response.Code != http.StatusCreated {
-		t.Errorf("status code = %d, want %d", response.Code, http.StatusCreated)
-	}
-	if etag := response.Header().Get("ETag"); etag != `"1"` {
-		t.Errorf("ETag = %q, want %q", etag, `"1"`)
-	}
-
-	var body credentialsRecordResponse
-	decodeJSONResponse(t, response, &body)
-	assertCredentialsRecordResponse(t, body, credentialsRecordResponse{
-		ID:        testRecordID,
-		Type:      model.RecordTypeCredentials,
-		Title:     "GitHub",
-		Revision:  model.RecordInitialRevision,
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
-		Payload:   payload,
-	})
-}
-
-func TestCreateRecordHandler_CreatesCardRecord(t *testing.T) {
-	createdAt := time.Date(2026, time.July, 11, 12, 0, 0, 0, time.UTC)
-	updatedAt := time.Date(2026, time.July, 11, 12, 1, 0, 0, time.UTC)
-	month := 3
-	year := 2038
-	payload := model.CardPayload{
-		Number:      "2013 0614 2020 0619",
-		Cardholder:  "Joel Miller",
-		ExpiryMonth: &month,
-		ExpiryYear:  &year,
-		CVV:         "014",
-		Metadata:    "test card",
-	}
-	var gotRequest service.CreateRecordRequest
-	records := recordManagerStub{
-		create: func(
-			_ context.Context,
-			request service.CreateRecordRequest,
-		) (model.Record, error) {
-			gotRequest = request
-
-			return model.Record{
-				Metadata: model.RecordMetadata{
-					ID:        testRecordID,
-					Type:      model.RecordTypeCard,
-					Title:     request.Title,
-					Revision:  model.RecordInitialRevision,
-					CreatedAt: createdAt,
-					UpdatedAt: updatedAt,
-				},
-				Payload: request.Payload,
-			}, nil
-		},
-	}
-	request := newCreateRecordRequest(t, createCardRecordRequestBody(t, "Joel's card", payload))
-	response := httptest.NewRecorder()
-
-	serveAuthenticatedRecordHandler(t, createRecordHandler(records), response, request)
-
-	if gotRequest.UserID != 42 {
-		t.Errorf("Create() userID = %d, want 42", gotRequest.UserID)
-	}
-	if gotRequest.Title != "Joel's card" {
-		t.Errorf("Create() title = %q, want Joel's card", gotRequest.Title)
-	}
-	if gotPayload := requireCardPayload(t, gotRequest.Payload); !reflect.DeepEqual(gotPayload, payload) {
-		t.Errorf("Create() payload = %+v, want %+v", gotPayload, payload)
-	}
-	if response.Code != http.StatusCreated {
-		t.Errorf("status code = %d, want %d", response.Code, http.StatusCreated)
-	}
-	if etag := response.Header().Get("ETag"); etag != `"1"` {
-		t.Errorf("ETag = %q, want %q", etag, `"1"`)
-	}
-
-	var body cardRecordResponse
-	decodeJSONResponse(t, response, &body)
-	assertRecordMetadataResponse(t, recordMetadataResponse{
-		ID:        body.ID,
-		Type:      body.Type,
-		Title:     body.Title,
-		Revision:  body.Revision,
-		CreatedAt: body.CreatedAt,
-		UpdatedAt: body.UpdatedAt,
-	}, recordMetadataResponse{
-		ID:        testRecordID,
-		Type:      model.RecordTypeCard,
-		Title:     "Joel's card",
-		Revision:  model.RecordInitialRevision,
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
-	})
-	if !reflect.DeepEqual(body.Payload, payload) {
-		t.Errorf("response payload = %+v, want %+v", body.Payload, payload)
-	}
-}
-
-func TestCreateRecordHandler_CreatesBinaryRecord(t *testing.T) {
-	createdAt := time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
-	updatedAt := time.Date(2026, time.July, 12, 12, 1, 0, 0, time.UTC)
-	payload := model.BinaryPayload{
-		Filename:    "backup.bin",
-		Data:        []byte{0x00, 0x01, 0x02, 0xff},
-		ContentType: "application/octet-stream",
-		Metadata:    "encrypted backup",
-	}
-	var gotRequest service.CreateRecordRequest
-	records := recordManagerStub{
-		create: func(
-			_ context.Context,
-			request service.CreateRecordRequest,
-		) (model.Record, error) {
-			gotRequest = request
-
-			return model.Record{
-				Metadata: model.RecordMetadata{
-					ID:        testRecordID,
-					Type:      model.RecordTypeBinary,
-					Title:     request.Title,
-					Revision:  model.RecordInitialRevision,
-					CreatedAt: createdAt,
-					UpdatedAt: updatedAt,
-				},
-				Payload: request.Payload,
-			}, nil
-		},
-	}
-	requestBody := createBinaryRecordRequestBody(t, "Backup", payload)
-	if !strings.Contains(requestBody, `"data":"AAEC/w=="`) {
-		t.Fatalf("request body does not contain expected Base64 data: %s", requestBody)
-	}
-	request := newCreateRecordRequest(t, requestBody)
-	response := httptest.NewRecorder()
-
-	serveAuthenticatedRecordHandler(t, createRecordHandler(records), response, request)
-
-	if gotRequest.UserID != 42 {
-		t.Errorf("Create() userID = %d, want 42", gotRequest.UserID)
-	}
-	if gotRequest.Title != "Backup" {
-		t.Errorf("Create() title = %q, want Backup", gotRequest.Title)
-	}
-	if gotPayload := requireBinaryPayload(t, gotRequest.Payload); !reflect.DeepEqual(gotPayload, payload) {
-		t.Errorf("Create() payload = %+v, want %+v", gotPayload, payload)
-	}
-	if response.Code != http.StatusCreated {
-		t.Errorf("status code = %d, want %d", response.Code, http.StatusCreated)
-	}
-	if etag := response.Header().Get("ETag"); etag != `"1"` {
-		t.Errorf("ETag = %q, want %q", etag, `"1"`)
-	}
-
-	if !strings.Contains(response.Body.String(), `"data":"AAEC/w=="`) {
-		t.Errorf("response body does not contain expected Base64 data: %s", response.Body.String())
-	}
-
-	var body binaryRecordResponse
-	decodeJSONResponse(t, response, &body)
-	assertRecordMetadataResponse(t, recordMetadataResponse{
-		ID:        body.ID,
-		Type:      body.Type,
-		Title:     body.Title,
-		Revision:  body.Revision,
-		CreatedAt: body.CreatedAt,
-		UpdatedAt: body.UpdatedAt,
-	}, recordMetadataResponse{
-		ID:        testRecordID,
-		Type:      model.RecordTypeBinary,
-		Title:     "Backup",
-		Revision:  model.RecordInitialRevision,
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
-	})
-	if !reflect.DeepEqual(body.Payload, payload) {
-		t.Errorf("response payload = %+v, want %+v", body.Payload, payload)
-	}
-}
-
-func TestCreateRecordHandler_AcceptsEmptyBinaryFile(t *testing.T) {
-	records := recordManagerStub{
-		create: func(
-			_ context.Context,
-			request service.CreateRecordRequest,
-		) (model.Record, error) {
 			payload := requireBinaryPayload(t, request.Payload)
 			if payload.Data == nil {
 				t.Fatal("Create() binary data = nil, want present empty slice")
@@ -402,19 +130,10 @@ func TestCreateRecordHandler_AcceptsEmptyBinaryFile(t *testing.T) {
 				t.Fatalf("Create() binary data length = %d, want 0", len(payload.Data))
 			}
 
-			return model.Record{
-				Metadata: model.RecordMetadata{
-					ID:       testRecordID,
-					Type:     model.RecordTypeBinary,
-					Title:    request.Title,
-					Revision: model.RecordInitialRevision,
-				},
-				Payload: request.Payload,
-			}, nil
+			return testRecord(request.Title, model.RecordInitialRevision, request.Payload), nil
 		},
 	}
 	request := newCreateRecordRequest(
-		t,
 		`{"type":"binary","title":"Empty","payload":{"filename":"empty.bin","data":""}}`,
 	)
 	response := httptest.NewRecorder()
@@ -428,58 +147,61 @@ func TestCreateRecordHandler_AcceptsEmptyBinaryFile(t *testing.T) {
 
 func TestCreateRecordHandler_MapsBinaryPayloadValidation(t *testing.T) {
 	tests := []struct {
-		name       string
-		body       string
-		wantStatus int
-		wantCode   string
+		name        string
+		body        string
+		wantStatus  int
+		wantCode    string
+		wantMessage string
 	}{
 		{
-			name:       "missing data",
-			body:       `{"type":"binary","title":"Empty","payload":{"filename":"empty.bin"}}`,
-			wantStatus: http.StatusBadRequest,
-			wantCode:   errorCodeInvalidRequest,
+			name:        "missing data",
+			body:        `{"type":"binary","title":"Empty","payload":{"filename":"empty.bin"}}`,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
 		},
 		{
-			name:       "null data",
-			body:       `{"type":"binary","title":"Empty","payload":{"filename":"empty.bin","data":null}}`,
-			wantStatus: http.StatusBadRequest,
-			wantCode:   errorCodeInvalidRequest,
+			name:        "null data",
+			body:        `{"type":"binary","title":"Empty","payload":{"filename":"empty.bin","data":null}}`,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
 		},
 		{
 			name: "decoded data too large",
-			body: createBinaryRecordRequestBody(t, "Large", model.BinaryPayload{
+			body: recordRequestBody(t, model.RecordTypeBinary, "Large", &model.BinaryPayload{
 				Filename: "large.bin",
 				Data:     make([]byte, model.BinaryPayloadMaxSize+1),
 			}),
-			wantStatus: http.StatusRequestEntityTooLarge,
-			wantCode:   errorCodePayloadTooLarge,
+			wantStatus:  http.StatusRequestEntityTooLarge,
+			wantCode:    errorCodePayloadTooLarge,
+			wantMessage: errorMessagePayloadTooLarge,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			records := recordManagerStub{
-				create: func(
-					_ context.Context,
-					request service.CreateRecordRequest,
-				) (model.Record, error) {
+				create: func(_ context.Context, request service.CreateRecordRequest) (model.Record, error) {
 					return model.Record{}, request.Payload.Validate()
 				},
 			}
-			request := newCreateRecordRequest(t, tt.body)
 			response := httptest.NewRecorder()
 
-			serveAuthenticatedRecordHandler(t, createRecordHandler(records), response, request)
+			serveAuthenticatedRecordHandler(
+				t,
+				createRecordHandler(records),
+				response,
+				newCreateRecordRequest(tt.body),
+			)
 
-			assertErrorResponse(t, response, tt.wantStatus, tt.wantCode, map[int]string{
-				http.StatusBadRequest:            errorMessageInvalidRecordRequest,
-				http.StatusRequestEntityTooLarge: errorMessagePayloadTooLarge,
-			}[tt.wantStatus])
+			assertErrorResponse(t, response, tt.wantStatus, tt.wantCode, tt.wantMessage)
 		})
 	}
 }
 
 func TestCreateRecordHandler_RejectsInvalidRequest(t *testing.T) {
+	validBody := recordRequestBody(t, model.RecordTypeText, "my note", &model.TextPayload{Text: "secret note"})
 	tests := []struct {
 		name        string
 		contentType string
@@ -490,7 +212,7 @@ func TestCreateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 	}{
 		{
 			name:        "missing Content-Type",
-			body:        createTextRecordRequestBody(t, "my note", "secret note", ""),
+			body:        validBody,
 			wantStatus:  http.StatusUnsupportedMediaType,
 			wantCode:    errorCodeUnsupportedMediaType,
 			wantMessage: errorMessageUnsupportedMediaType,
@@ -498,7 +220,7 @@ func TestCreateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 		{
 			name:        "unsupported Content-Type",
 			contentType: "text/plain",
-			body:        createTextRecordRequestBody(t, "my note", "secret note", ""),
+			body:        validBody,
 			wantStatus:  http.StatusUnsupportedMediaType,
 			wantCode:    errorCodeUnsupportedMediaType,
 			wantMessage: errorMessageUnsupportedMediaType,
@@ -538,8 +260,7 @@ func TestCreateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 		{
 			name:        "credentials payload contains text field",
 			contentType: "application/json",
-			body: `{"type":"credentials","title":"GitHub","payload":` +
-				`{"login":"alice","password":"secret","text":"note"}}`,
+			body:        `{"type":"credentials","title":"GitHub","payload":{"login":"alice","password":"secret","text":"note"}}`,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
 			wantMessage: errorMessageInvalidRecordRequest,
@@ -563,8 +284,7 @@ func TestCreateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 		{
 			name:        "multiple JSON values",
 			contentType: "application/json",
-			body: createTextRecordRequestBody(t, "my note", "secret note", "") +
-				createTextRecordRequestBody(t, "my note", "secret note", ""),
+			body:        validBody + validBody,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
 			wantMessage: errorMessageInvalidRecordRequest,
@@ -592,76 +312,22 @@ func TestCreateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 	}
 }
 
-func TestCreateRecordHandler_RejectsOversizedBody(t *testing.T) {
-	records := recordManagerStub{
-		create: func(context.Context, service.CreateRecordRequest) (model.Record, error) {
-			t.Fatal("record service must not be called")
-			return model.Record{}, nil
-		},
-	}
-	body := `{"type":"text","title":"my note","payload":{"text":"` +
-		strings.Repeat("a", int(maxRequestBodySize)) +
-		`"}}`
-	request := newCreateRecordRequest(t, body)
-	response := httptest.NewRecorder()
-
-	serveAuthenticatedRecordHandler(t, createRecordHandler(records), response, request)
-
-	assertErrorResponse(
-		t,
-		response,
-		http.StatusRequestEntityTooLarge,
-		errorCodePayloadTooLarge,
-		errorMessagePayloadTooLarge,
-	)
-}
-
-func TestCreateRecordHandler_MapsServiceError(t *testing.T) {
-	internalError := errors.New("database connection details")
-	records := recordManagerStub{
-		create: func(context.Context, service.CreateRecordRequest) (model.Record, error) {
-			return model.Record{}, internalError
-		},
-	}
-	request := newCreateRecordRequest(t, createTextRecordRequestBody(t, "my note", "secret", ""))
-	response := httptest.NewRecorder()
-
-	serveAuthenticatedRecordHandler(t, createRecordHandler(records), response, request)
-
-	assertErrorResponse(
-		t,
-		response,
-		http.StatusInternalServerError,
-		errorCodeInternal,
-		errorMessageInternal,
-	)
-	if strings.Contains(response.Body.String(), internalError.Error()) {
-		t.Error("response body contains internal error details")
-	}
-}
-
 func TestListRecordsHandler_ReturnsMetadataOnly(t *testing.T) {
-	createdAt := time.Date(2026, time.July, 8, 12, 0, 0, 0, time.UTC)
-	updatedAt := time.Date(2026, time.July, 8, 12, 1, 0, 0, time.UTC)
 	var gotUserID int64
 	records := recordManagerStub{
 		list: func(_ context.Context, userID int64) ([]model.RecordMetadata, error) {
 			gotUserID = userID
-
-			return []model.RecordMetadata{{
-				ID:        testRecordID,
-				Type:      model.RecordTypeText,
-				Title:     "my note",
-				Revision:  model.RecordInitialRevision,
-				CreatedAt: createdAt,
-				UpdatedAt: updatedAt,
-			}}, nil
+			return []model.RecordMetadata{testRecordMetadata("my note", model.RecordTypeText, 1)}, nil
 		},
 	}
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/records", nil)
 	response := httptest.NewRecorder()
 
-	serveAuthenticatedRecordHandler(t, listRecordsHandler(records), response, request)
+	serveAuthenticatedRecordHandler(
+		t,
+		listRecordsHandler(records),
+		response,
+		httptest.NewRequest(http.MethodGet, "/api/v1/records", nil),
+	)
 
 	if gotUserID != 42 {
 		t.Errorf("List() userID = %d, want 42", gotUserID)
@@ -675,198 +341,44 @@ func TestListRecordsHandler_ReturnsMetadataOnly(t *testing.T) {
 	if len(body.Records) != 1 {
 		t.Fatalf("records count = %d, want 1", len(body.Records))
 	}
-	assertRecordMetadataResponse(t, body.Records[0], recordMetadataResponse{
-		ID:        testRecordID,
-		Type:      model.RecordTypeText,
-		Title:     "my note",
-		Revision:  model.RecordInitialRevision,
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
-	})
+	assertRecordMetadataResponse(t, body.Records[0], newRecordMetadataResponse(
+		testRecordMetadata("my note", model.RecordTypeText, 1),
+	))
 	if strings.Contains(response.Body.String(), "secret note") {
 		t.Error("list response contains payload")
 	}
 }
 
-func TestGetRecordHandler_ReturnsTextRecord(t *testing.T) {
-	createdAt := time.Date(2026, time.July, 8, 12, 0, 0, 0, time.UTC)
-	updatedAt := time.Date(2026, time.July, 8, 12, 1, 0, 0, time.UTC)
-	payload := model.TextPayload{
-		Text:     "secret note",
-		Metadata: "private metadata",
-	}
-	var gotUserID int64
-	var gotRecordID string
-	records := recordManagerStub{
-		get: func(_ context.Context, userID int64, recordID string) (model.Record, error) {
-			gotUserID = userID
-			gotRecordID = recordID
+func TestGetRecordHandler_ReturnsRecords(t *testing.T) {
+	for _, tt := range recordPayloadCases() {
+		t.Run(tt.name, func(t *testing.T) {
+			records := recordManagerStub{
+				get: func(_ context.Context, userID int64, recordID string) (model.Record, error) {
+					if userID != 42 {
+						t.Fatalf("Get() userID = %d, want 42", userID)
+					}
+					if recordID != testRecordID {
+						t.Fatalf("Get() recordID = %q, want %q", recordID, testRecordID)
+					}
 
-			return model.Record{
-				Metadata: model.RecordMetadata{
-					ID:        testRecordID,
-					Type:      model.RecordTypeText,
-					Title:     "my note",
-					Revision:  model.RecordInitialRevision,
-					CreatedAt: createdAt,
-					UpdatedAt: updatedAt,
+					return testRecord(tt.title, model.RecordInitialRevision, tt.payload), nil
 				},
-				Payload: &payload,
-			}, nil
-		},
-	}
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/records/"+testRecordID, nil)
-	request.SetPathValue("id", testRecordID)
-	response := httptest.NewRecorder()
-
-	serveAuthenticatedRecordHandler(t, getRecordHandler(records), response, request)
-
-	if gotUserID != 42 {
-		t.Errorf("Get() userID = %d, want 42", gotUserID)
-	}
-	if gotRecordID != testRecordID {
-		t.Errorf("Get() recordID = %q, want %q", gotRecordID, testRecordID)
-	}
-	if response.Code != http.StatusOK {
-		t.Errorf("status code = %d, want %d", response.Code, http.StatusOK)
-	}
-	if etag := response.Header().Get("ETag"); etag != `"1"` {
-		t.Errorf("ETag = %q, want %q", etag, `"1"`)
-	}
-
-	var body textRecordResponse
-	decodeJSONResponse(t, response, &body)
-	assertTextRecordResponse(t, body, textRecordResponse{
-		ID:        testRecordID,
-		Type:      model.RecordTypeText,
-		Title:     "my note",
-		Revision:  model.RecordInitialRevision,
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
-		Payload:   payload,
-	})
-}
-
-func TestGetRecordHandler_ReturnsCredentialsRecord(t *testing.T) {
-	createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
-	updatedAt := time.Date(2026, time.July, 10, 12, 1, 0, 0, time.UTC)
-	payload := model.CredentialsPayload{
-		Login:    "alice",
-		Password: "correct-horse-battery-staple",
-		URL:      "https://github.com",
-		Metadata: "personal account",
-	}
-	records := recordManagerStub{
-		get: func(_ context.Context, userID int64, recordID string) (model.Record, error) {
-			if userID != 42 {
-				t.Fatalf("Get() userID = %d, want 42", userID)
 			}
-			if recordID != testRecordID {
-				t.Fatalf("Get() recordID = %q, want %q", recordID, testRecordID)
-			}
+			request := httptest.NewRequest(http.MethodGet, "/api/v1/records/"+testRecordID, nil)
+			request.SetPathValue("id", testRecordID)
+			response := httptest.NewRecorder()
 
-			return model.Record{
-				Metadata: model.RecordMetadata{
-					ID:        testRecordID,
-					Type:      model.RecordTypeCredentials,
-					Title:     "GitHub",
-					Revision:  model.RecordInitialRevision,
-					CreatedAt: createdAt,
-					UpdatedAt: updatedAt,
-				},
-				Payload: &payload,
-			}, nil
-		},
-	}
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/records/"+testRecordID, nil)
-	request.SetPathValue("id", testRecordID)
-	response := httptest.NewRecorder()
+			serveAuthenticatedRecordHandler(t, getRecordHandler(records), response, request)
 
-	serveAuthenticatedRecordHandler(t, getRecordHandler(records), response, request)
-
-	if response.Code != http.StatusOK {
-		t.Errorf("status code = %d, want %d", response.Code, http.StatusOK)
-	}
-	if etag := response.Header().Get("ETag"); etag != `"1"` {
-		t.Errorf("ETag = %q, want %q", etag, `"1"`)
-	}
-
-	var body credentialsRecordResponse
-	decodeJSONResponse(t, response, &body)
-	assertCredentialsRecordResponse(t, body, credentialsRecordResponse{
-		ID:        testRecordID,
-		Type:      model.RecordTypeCredentials,
-		Title:     "GitHub",
-		Revision:  model.RecordInitialRevision,
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
-		Payload:   payload,
-	})
-}
-
-func TestGetRecordHandler_ReturnsBinaryRecord(t *testing.T) {
-	createdAt := time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
-	updatedAt := time.Date(2026, time.July, 12, 12, 1, 0, 0, time.UTC)
-	payload := model.BinaryPayload{
-		Filename:    "backup.bin",
-		Data:        []byte{0x00, 0x01, 0x02, 0xff},
-		ContentType: "application/octet-stream",
-		Metadata:    "encrypted backup",
-	}
-	records := recordManagerStub{
-		get: func(_ context.Context, userID int64, recordID string) (model.Record, error) {
-			if userID != 42 {
-				t.Fatalf("Get() userID = %d, want 42", userID)
-			}
-			if recordID != testRecordID {
-				t.Fatalf("Get() recordID = %q, want %q", recordID, testRecordID)
-			}
-
-			return model.Record{
-				Metadata: model.RecordMetadata{
-					ID:        testRecordID,
-					Type:      model.RecordTypeBinary,
-					Title:     "Backup",
-					Revision:  model.RecordInitialRevision,
-					CreatedAt: createdAt,
-					UpdatedAt: updatedAt,
-				},
-				Payload: &payload,
-			}, nil
-		},
-	}
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/records/"+testRecordID, nil)
-	request.SetPathValue("id", testRecordID)
-	response := httptest.NewRecorder()
-
-	serveAuthenticatedRecordHandler(t, getRecordHandler(records), response, request)
-
-	if response.Code != http.StatusOK {
-		t.Errorf("status code = %d, want %d", response.Code, http.StatusOK)
-	}
-	if etag := response.Header().Get("ETag"); etag != `"1"` {
-		t.Errorf("ETag = %q, want %q", etag, `"1"`)
-	}
-
-	var body binaryRecordResponse
-	decodeJSONResponse(t, response, &body)
-	assertRecordMetadataResponse(t, recordMetadataResponse{
-		ID:        body.ID,
-		Type:      body.Type,
-		Title:     body.Title,
-		Revision:  body.Revision,
-		CreatedAt: body.CreatedAt,
-		UpdatedAt: body.UpdatedAt,
-	}, recordMetadataResponse{
-		ID:        testRecordID,
-		Type:      model.RecordTypeBinary,
-		Title:     "Backup",
-		Revision:  model.RecordInitialRevision,
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
-	})
-	if !reflect.DeepEqual(body.Payload, payload) {
-		t.Errorf("response payload = %+v, want %+v", body.Payload, payload)
+			assertRecordResponse(
+				t,
+				response,
+				http.StatusOK,
+				model.RecordInitialRevision,
+				tt.title,
+				tt.payload,
+			)
+		})
 	}
 }
 
@@ -874,12 +386,7 @@ func TestGetRecordHandler_RejectsInvalidServiceResult(t *testing.T) {
 	records := recordManagerStub{
 		get: func(context.Context, int64, string) (model.Record, error) {
 			return model.Record{
-				Metadata: model.RecordMetadata{
-					ID:       testRecordID,
-					Type:     model.RecordTypeCredentials,
-					Title:    "GitHub",
-					Revision: model.RecordInitialRevision,
-				},
+				Metadata: testRecordMetadata("GitHub", model.RecordTypeCredentials, 1),
 			}, nil
 		},
 	}
@@ -889,13 +396,7 @@ func TestGetRecordHandler_RejectsInvalidServiceResult(t *testing.T) {
 
 	serveAuthenticatedRecordHandler(t, getRecordHandler(records), response, request)
 
-	assertErrorResponse(
-		t,
-		response,
-		http.StatusInternalServerError,
-		errorCodeInternal,
-		errorMessageInternal,
-	)
+	assertErrorResponse(t, response, http.StatusInternalServerError, errorCodeInternal, errorMessageInternal)
 	if response.Header().Get("ETag") != "" {
 		t.Errorf("ETag = %q, want empty", response.Header().Get("ETag"))
 	}
@@ -913,154 +414,34 @@ func TestNewRecordResponse_RejectsNilPayload(t *testing.T) {
 	}
 }
 
-func TestUpdateRecordHandler_UpdatesTextRecord(t *testing.T) {
-	createdAt := time.Date(2026, time.July, 9, 12, 0, 0, 0, time.UTC)
-	updatedAt := time.Date(2026, time.July, 9, 12, 1, 0, 0, time.UTC)
-	var gotRequest service.UpdateRecordRequest
-	records := recordManagerStub{
-		update: func(_ context.Context, request service.UpdateRecordRequest) (model.Record, error) {
-			gotRequest = request
-
-			return model.Record{
-				Metadata: model.RecordMetadata{
-					ID:        request.RecordID,
-					Type:      model.RecordTypeText,
-					Title:     request.Title,
-					Revision:  2,
-					CreatedAt: createdAt,
-					UpdatedAt: updatedAt,
+func TestUpdateRecordHandler_UpdatesRecords(t *testing.T) {
+	tests := recordPayloadCases()[:2]
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotRequest service.UpdateRecordRequest
+			records := recordManagerStub{
+				update: func(_ context.Context, request service.UpdateRecordRequest) (model.Record, error) {
+					gotRequest = request
+					return testRecord(request.Title, 2, request.Payload), nil
 				},
-				Payload: request.Payload,
-			}, nil
-		},
-	}
-	request := newUpdateRecordRequest(t, testRecordID, updateTextRecordRequestBody(t, "new note", "new secret", "new metadata"))
-	request.Header.Set("If-Match", `"1"`)
-	response := httptest.NewRecorder()
+			}
+			request := newUpdateRecordRequest(
+				testRecordID,
+				recordRequestBody(t, tt.payload.RecordType(), tt.title, tt.payload),
+			)
+			request.Header.Set("If-Match", `"1"`)
+			response := httptest.NewRecorder()
 
-	serveAuthenticatedRecordHandler(t, updateRecordHandler(records), response, request)
+			serveAuthenticatedRecordHandler(t, updateRecordHandler(records), response, request)
 
-	if gotRequest.UserID != 42 {
-		t.Errorf("Update() userID = %d, want 42", gotRequest.UserID)
+			assertUpdateRecordRequest(t, gotRequest, tt.title, tt.payload)
+			assertRecordResponse(t, response, http.StatusOK, 2, tt.title, tt.payload)
+		})
 	}
-	if gotRequest.RecordID != testRecordID {
-		t.Errorf("Update() recordID = %q, want %q", gotRequest.RecordID, testRecordID)
-	}
-	if gotRequest.ExpectedRevision != 1 {
-		t.Errorf("Update() expected revision = %d, want 1", gotRequest.ExpectedRevision)
-	}
-	if gotRequest.Title != "new note" {
-		t.Errorf("Update() title = %q, want new note", gotRequest.Title)
-	}
-	gotPayload := requireTextPayload(t, gotRequest.Payload)
-	if gotPayload.Text != "new secret" {
-		t.Errorf("Update() payload text = %q, want new secret", gotPayload.Text)
-	}
-	if gotPayload.Metadata != "new metadata" {
-		t.Errorf("Update() metadata = %q, want new metadata", gotPayload.Metadata)
-	}
-	if response.Code != http.StatusOK {
-		t.Errorf("status code = %d, want %d", response.Code, http.StatusOK)
-	}
-	if etag := response.Header().Get("ETag"); etag != `"2"` {
-		t.Errorf("ETag = %q, want %q", etag, `"2"`)
-	}
-
-	var body textRecordResponse
-	decodeJSONResponse(t, response, &body)
-	assertTextRecordResponse(t, body, textRecordResponse{
-		ID:        testRecordID,
-		Type:      model.RecordTypeText,
-		Title:     "new note",
-		Revision:  2,
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
-		Payload: model.TextPayload{
-			Text:     "new secret",
-			Metadata: "new metadata",
-		},
-	})
-}
-
-func TestUpdateRecordHandler_UpdatesCredentialsRecord(t *testing.T) {
-	createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
-	updatedAt := time.Date(2026, time.July, 10, 12, 1, 0, 0, time.UTC)
-	payload := model.CredentialsPayload{
-		Login:    "alice@example.com",
-		Password: "new-secret",
-		URL:      "https://github.com/login",
-		Metadata: "updated account",
-	}
-	var gotRequest service.UpdateRecordRequest
-	records := recordManagerStub{
-		update: func(
-			_ context.Context,
-			request service.UpdateRecordRequest,
-		) (model.Record, error) {
-			gotRequest = request
-
-			return model.Record{
-				Metadata: model.RecordMetadata{
-					ID:        request.RecordID,
-					Type:      model.RecordTypeCredentials,
-					Title:     request.Title,
-					Revision:  2,
-					CreatedAt: createdAt,
-					UpdatedAt: updatedAt,
-				},
-				Payload: request.Payload,
-			}, nil
-		},
-	}
-	request := newUpdateRecordRequest(t, testRecordID, updateCredentialsRecordRequestBody(
-		t,
-		"GitHub updated",
-		payload.Login,
-		payload.Password,
-		payload.URL,
-		payload.Metadata,
-	))
-	request.Header.Set("If-Match", `"1"`)
-	response := httptest.NewRecorder()
-
-	serveAuthenticatedRecordHandler(t, updateRecordHandler(records), response, request)
-
-	if gotRequest.UserID != 42 {
-		t.Errorf("Update() userID = %d, want 42", gotRequest.UserID)
-	}
-	if gotRequest.RecordID != testRecordID {
-		t.Errorf("Update() recordID = %q, want %q", gotRequest.RecordID, testRecordID)
-	}
-	if gotRequest.ExpectedRevision != 1 {
-		t.Errorf("Update() expected revision = %d, want 1", gotRequest.ExpectedRevision)
-	}
-	if gotRequest.Title != "GitHub updated" {
-		t.Errorf("Update() title = %q, want GitHub updated", gotRequest.Title)
-	}
-	if gotPayload := requireCredentialsPayload(t, gotRequest.Payload); gotPayload != payload {
-		t.Errorf("Update() payload = %+v, want %+v", gotPayload, payload)
-	}
-	if response.Code != http.StatusOK {
-		t.Errorf("status code = %d, want %d", response.Code, http.StatusOK)
-	}
-	if etag := response.Header().Get("ETag"); etag != `"2"` {
-		t.Errorf("ETag = %q, want %q", etag, `"2"`)
-	}
-
-	var body credentialsRecordResponse
-	decodeJSONResponse(t, response, &body)
-	assertCredentialsRecordResponse(t, body, credentialsRecordResponse{
-		ID:        testRecordID,
-		Type:      model.RecordTypeCredentials,
-		Title:     "GitHub updated",
-		Revision:  2,
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
-		Payload:   payload,
-	})
 }
 
 func TestUpdateRecordHandler_RejectsInvalidRequest(t *testing.T) {
+	validBody := recordRequestBody(t, model.RecordTypeText, "my note", &model.TextPayload{Text: "secret note"})
 	tests := []struct {
 		name        string
 		ifMatch     string
@@ -1073,7 +454,7 @@ func TestUpdateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 		{
 			name:        "missing If-Match",
 			contentType: "application/json",
-			body:        updateTextRecordRequestBody(t, "my note", "secret note", ""),
+			body:        validBody,
 			wantStatus:  http.StatusPreconditionRequired,
 			wantCode:    errorCodePreconditionRequired,
 			wantMessage: errorMessagePreconditionRequired,
@@ -1082,7 +463,7 @@ func TestUpdateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 			name:        "unquoted If-Match",
 			ifMatch:     "1",
 			contentType: "application/json",
-			body:        updateTextRecordRequestBody(t, "my note", "secret note", ""),
+			body:        validBody,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
 			wantMessage: errorMessageInvalidRecordRequest,
@@ -1091,7 +472,7 @@ func TestUpdateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 			name:        "weak If-Match",
 			ifMatch:     `W/"1"`,
 			contentType: "application/json",
-			body:        updateTextRecordRequestBody(t, "my note", "secret note", ""),
+			body:        validBody,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
 			wantMessage: errorMessageInvalidRecordRequest,
@@ -1100,7 +481,7 @@ func TestUpdateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 			name:        "zero If-Match revision",
 			ifMatch:     `"0"`,
 			contentType: "application/json",
-			body:        updateTextRecordRequestBody(t, "my note", "secret note", ""),
+			body:        validBody,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
 			wantMessage: errorMessageInvalidRecordRequest,
@@ -1108,7 +489,7 @@ func TestUpdateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 		{
 			name:        "missing Content-Type",
 			ifMatch:     `"1"`,
-			body:        updateTextRecordRequestBody(t, "my note", "secret note", ""),
+			body:        validBody,
 			wantStatus:  http.StatusUnsupportedMediaType,
 			wantCode:    errorCodeUnsupportedMediaType,
 			wantMessage: errorMessageUnsupportedMediaType,
@@ -1153,8 +534,7 @@ func TestUpdateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 			name:        "multiple JSON values",
 			ifMatch:     `"1"`,
 			contentType: "application/json",
-			body: updateTextRecordRequestBody(t, "my note", "secret note", "") +
-				updateTextRecordRequestBody(t, "my note", "secret note", ""),
+			body:        validBody + validBody,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
 			wantMessage: errorMessageInvalidRecordRequest,
@@ -1169,7 +549,11 @@ func TestUpdateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 					return model.Record{}, nil
 				},
 			}
-			request := httptest.NewRequest(http.MethodPut, "/api/v1/records/"+testRecordID, strings.NewReader(tt.body))
+			request := httptest.NewRequest(
+				http.MethodPut,
+				"/api/v1/records/"+testRecordID,
+				strings.NewReader(tt.body),
+			)
 			request.SetPathValue("id", testRecordID)
 			if tt.ifMatch != "" {
 				request.Header.Set("If-Match", tt.ifMatch)
@@ -1186,50 +570,56 @@ func TestUpdateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 	}
 }
 
-func TestUpdateRecordHandler_RejectsOversizedBody(t *testing.T) {
-	records := recordManagerStub{
-		update: func(context.Context, service.UpdateRecordRequest) (model.Record, error) {
-			t.Fatal("record service must not be called")
-			return model.Record{}, nil
-		},
-	}
+func TestRecordHandlers_RejectOversizedBody(t *testing.T) {
 	body := `{"type":"text","title":"my note","payload":{"text":"` +
 		strings.Repeat("a", int(maxRequestBodySize)) +
 		`"}}`
-	request := newUpdateRecordRequest(t, testRecordID, body)
-	request.Header.Set("If-Match", `"1"`)
-	response := httptest.NewRecorder()
-
-	serveAuthenticatedRecordHandler(t, updateRecordHandler(records), response, request)
-
-	assertErrorResponse(
-		t,
-		response,
-		http.StatusRequestEntityTooLarge,
-		errorCodePayloadTooLarge,
-		errorMessagePayloadTooLarge,
-	)
-}
-
-func TestUpdateRecordHandler_MapsServiceError(t *testing.T) {
-	records := recordManagerStub{
-		update: func(context.Context, service.UpdateRecordRequest) (model.Record, error) {
-			return model.Record{}, model.ErrRecordRevisionConflict
+	tests := []struct {
+		name    string
+		handler http.Handler
+		request *http.Request
+	}{
+		{
+			name: "create",
+			handler: createRecordHandler(recordManagerStub{
+				create: func(context.Context, service.CreateRecordRequest) (model.Record, error) {
+					t.Fatal("record service must not be called")
+					return model.Record{}, nil
+				},
+			}),
+			request: newCreateRecordRequest(body),
+		},
+		{
+			name: "update",
+			handler: updateRecordHandler(recordManagerStub{
+				update: func(context.Context, service.UpdateRecordRequest) (model.Record, error) {
+					t.Fatal("record service must not be called")
+					return model.Record{}, nil
+				},
+			}),
+			request: func() *http.Request {
+				request := newUpdateRecordRequest(testRecordID, body)
+				request.Header.Set("If-Match", `"1"`)
+				return request
+			}(),
 		},
 	}
-	request := newUpdateRecordRequest(t, testRecordID, updateTextRecordRequestBody(t, "my note", "secret", ""))
-	request.Header.Set("If-Match", `"1"`)
-	response := httptest.NewRecorder()
 
-	serveAuthenticatedRecordHandler(t, updateRecordHandler(records), response, request)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
 
-	assertErrorResponse(
-		t,
-		response,
-		http.StatusConflict,
-		errorCodeRevisionConflict,
-		errorMessageRevisionConflict,
-	)
+			serveAuthenticatedRecordHandler(t, tt.handler, response, tt.request)
+
+			assertErrorResponse(
+				t,
+				response,
+				http.StatusRequestEntityTooLarge,
+				errorCodePayloadTooLarge,
+				errorMessagePayloadTooLarge,
+			)
+		})
+	}
 }
 
 func TestDeleteRecordHandler_DeletesRecord(t *testing.T) {
@@ -1314,25 +704,85 @@ func TestDeleteRecordHandler_RejectsInvalidIfMatch(t *testing.T) {
 	}
 }
 
-func TestDeleteRecordHandler_MapsServiceError(t *testing.T) {
-	records := recordManagerStub{
-		delete: func(context.Context, service.DeleteRecordRequest) error {
-			return model.ErrRecordRevisionConflict
+func TestRecordHandlers_MapServiceError(t *testing.T) {
+	internalError := errors.New("database connection details")
+	validBody := recordRequestBody(t, model.RecordTypeText, "my note", &model.TextPayload{Text: "secret"})
+	tests := []struct {
+		name    string
+		handler http.Handler
+		request *http.Request
+	}{
+		{
+			name: "create",
+			handler: createRecordHandler(recordManagerStub{
+				create: func(context.Context, service.CreateRecordRequest) (model.Record, error) {
+					return model.Record{}, internalError
+				},
+			}),
+			request: newCreateRecordRequest(validBody),
+		},
+		{
+			name: "list",
+			handler: listRecordsHandler(recordManagerStub{
+				list: func(context.Context, int64) ([]model.RecordMetadata, error) {
+					return nil, internalError
+				},
+			}),
+			request: httptest.NewRequest(http.MethodGet, "/api/v1/records", nil),
+		},
+		{
+			name: "get",
+			handler: getRecordHandler(recordManagerStub{
+				get: func(context.Context, int64, string) (model.Record, error) {
+					return model.Record{}, internalError
+				},
+			}),
+			request: func() *http.Request {
+				request := httptest.NewRequest(http.MethodGet, "/api/v1/records/"+testRecordID, nil)
+				request.SetPathValue("id", testRecordID)
+				return request
+			}(),
+		},
+		{
+			name: "update",
+			handler: updateRecordHandler(recordManagerStub{
+				update: func(context.Context, service.UpdateRecordRequest) (model.Record, error) {
+					return model.Record{}, internalError
+				},
+			}),
+			request: func() *http.Request {
+				request := newUpdateRecordRequest(testRecordID, validBody)
+				request.Header.Set("If-Match", `"1"`)
+				return request
+			}(),
+		},
+		{
+			name: "delete",
+			handler: deleteRecordHandler(recordManagerStub{
+				delete: func(context.Context, service.DeleteRecordRequest) error {
+					return internalError
+				},
+			}),
+			request: func() *http.Request {
+				request := newDeleteRecordRequest(testRecordID)
+				request.Header.Set("If-Match", `"1"`)
+				return request
+			}(),
 		},
 	}
-	request := newDeleteRecordRequest(testRecordID)
-	request.Header.Set("If-Match", `"1"`)
-	response := httptest.NewRecorder()
 
-	serveAuthenticatedRecordHandler(t, deleteRecordHandler(records), response, request)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
 
-	assertErrorResponse(
-		t,
-		response,
-		http.StatusConflict,
-		errorCodeRevisionConflict,
-		errorMessageRevisionConflict,
-	)
+			serveAuthenticatedRecordHandler(t, tt.handler, response, tt.request)
+
+			assertErrorResponse(t, response, http.StatusInternalServerError, errorCodeInternal, errorMessageInternal)
+			if strings.Contains(response.Body.String(), internalError.Error()) {
+				t.Error("response body contains internal error details")
+			}
+		})
+	}
 }
 
 func TestWriteRecordError(t *testing.T) {
@@ -1503,36 +953,17 @@ func TestRecordHandlers_RequireAuthentication(t *testing.T) {
 			return nil
 		},
 	}
+	validBody := recordRequestBody(t, model.RecordTypeText, "my note", &model.TextPayload{Text: "secret"})
 	tests := []struct {
 		name    string
 		handler http.Handler
 		request *http.Request
 	}{
-		{
-			name:    "create",
-			handler: createRecordHandler(records),
-			request: newCreateRecordRequest(t, createTextRecordRequestBody(t, "my note", "secret", "")),
-		},
-		{
-			name:    "list",
-			handler: listRecordsHandler(records),
-			request: httptest.NewRequest(http.MethodGet, "/api/v1/records", nil),
-		},
-		{
-			name:    "get",
-			handler: getRecordHandler(records),
-			request: httptest.NewRequest(http.MethodGet, "/api/v1/records/"+testRecordID, nil),
-		},
-		{
-			name:    "update",
-			handler: updateRecordHandler(records),
-			request: newUpdateRecordRequest(t, testRecordID, updateTextRecordRequestBody(t, "my note", "secret", "")),
-		},
-		{
-			name:    "delete",
-			handler: deleteRecordHandler(records),
-			request: newDeleteRecordRequest(testRecordID),
-		},
+		{name: "create", handler: createRecordHandler(records), request: newCreateRecordRequest(validBody)},
+		{name: "list", handler: listRecordsHandler(records), request: httptest.NewRequest(http.MethodGet, "/api/v1/records", nil)},
+		{name: "get", handler: getRecordHandler(records), request: httptest.NewRequest(http.MethodGet, "/api/v1/records/"+testRecordID, nil)},
+		{name: "update", handler: updateRecordHandler(records), request: newUpdateRecordRequest(testRecordID, validBody)},
+		{name: "delete", handler: deleteRecordHandler(records), request: newDeleteRecordRequest(testRecordID)},
 	}
 
 	for _, tt := range tests {
@@ -1546,19 +977,71 @@ func TestRecordHandlers_RequireAuthentication(t *testing.T) {
 	}
 }
 
-func TestRecordHandlers_MapRecordNotFound(t *testing.T) {
-	records := recordManagerStub{
-		get: func(context.Context, int64, string) (model.Record, error) {
-			return model.Record{}, fmt.Errorf("get record: %w", model.ErrRecordNotFound)
+func recordPayloadCases() []recordPayloadCase {
+	month := 3
+	year := 2038
+
+	return []recordPayloadCase{
+		{
+			name:  "text",
+			title: "my note",
+			payload: &model.TextPayload{
+				Text:     "secret note",
+				Metadata: "private metadata",
+			},
+		},
+		{
+			name:  "credentials",
+			title: "GitHub",
+			payload: &model.CredentialsPayload{
+				Login:    "alice",
+				Password: "correct-horse-battery-staple",
+				URL:      "https://github.com",
+				Metadata: "personal account",
+			},
+		},
+		{
+			name:  "card",
+			title: "Joel's card",
+			payload: &model.CardPayload{
+				Number:      "2013 0614 2020 0619",
+				Cardholder:  "Joel Miller",
+				ExpiryMonth: &month,
+				ExpiryYear:  &year,
+				CVV:         "014",
+				Metadata:    "test card",
+			},
+		},
+		{
+			name:  "binary",
+			title: "Backup",
+			payload: &model.BinaryPayload{
+				Filename:    "backup.bin",
+				Data:        []byte{0x00, 0x01, 0x02, 0xff},
+				ContentType: "application/octet-stream",
+				Metadata:    "encrypted backup",
+			},
+			wantBase64: `"data":"AAEC/w=="`,
 		},
 	}
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/records/"+testRecordID, nil)
-	request.SetPathValue("id", testRecordID)
-	response := httptest.NewRecorder()
+}
 
-	serveAuthenticatedRecordHandler(t, getRecordHandler(records), response, request)
+func testRecord(title string, revision int64, payload model.RecordPayload) model.Record {
+	return model.Record{
+		Metadata: testRecordMetadata(title, payload.RecordType(), revision),
+		Payload:  payload,
+	}
+}
 
-	assertErrorResponse(t, response, http.StatusNotFound, errorCodeRecordNotFound, errorMessageRecordNotFound)
+func testRecordMetadata(title string, recordType model.RecordType, revision int64) model.RecordMetadata {
+	return model.RecordMetadata{
+		ID:        testRecordID,
+		Type:      recordType,
+		Title:     title,
+		Revision:  revision,
+		CreatedAt: testRecordCreatedAt,
+		UpdatedAt: testRecordUpdatedAt,
+	}
 }
 
 func serveAuthenticatedRecordHandler(
@@ -1581,18 +1064,14 @@ func serveAuthenticatedRecordHandler(
 	middleware.WithAuthentication(handler, validator).ServeHTTP(response, request)
 }
 
-func newCreateRecordRequest(t *testing.T, body string) *http.Request {
-	t.Helper()
-
+func newCreateRecordRequest(body string) *http.Request {
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/records", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 
 	return request
 }
 
-func newUpdateRecordRequest(t *testing.T, recordID string, body string) *http.Request {
-	t.Helper()
-
+func newUpdateRecordRequest(recordID string, body string) *http.Request {
 	request := httptest.NewRequest(http.MethodPut, "/api/v1/records/"+recordID, strings.NewReader(body))
 	request.SetPathValue("id", recordID)
 	request.Header.Set("Content-Type", "application/json")
@@ -1605,64 +1084,6 @@ func newDeleteRecordRequest(recordID string) *http.Request {
 	request.SetPathValue("id", recordID)
 
 	return request
-}
-
-func createTextRecordRequestBody(t *testing.T, title string, text string, metadata string) string {
-	t.Helper()
-
-	return recordRequestBody(t, model.RecordTypeText, title, model.TextPayload{
-		Text:     text,
-		Metadata: metadata,
-	})
-}
-
-func createCredentialsRecordRequestBody(
-	t *testing.T,
-	title string,
-	login string,
-	password string,
-	url string,
-	metadata string,
-) string {
-	t.Helper()
-
-	return recordRequestBody(t, model.RecordTypeCredentials, title, model.CredentialsPayload{
-		Login:    login,
-		Password: password,
-		URL:      url,
-		Metadata: metadata,
-	})
-}
-
-func createCardRecordRequestBody(t *testing.T, title string, payload model.CardPayload) string {
-	t.Helper()
-
-	return recordRequestBody(t, model.RecordTypeCard, title, payload)
-}
-
-func createBinaryRecordRequestBody(t *testing.T, title string, payload model.BinaryPayload) string {
-	t.Helper()
-
-	return recordRequestBody(t, model.RecordTypeBinary, title, payload)
-}
-
-func updateTextRecordRequestBody(t *testing.T, title string, text string, metadata string) string {
-	t.Helper()
-
-	return createTextRecordRequestBody(t, title, text, metadata)
-}
-
-func updateCredentialsRecordRequestBody(
-	t *testing.T,
-	title string,
-	login string,
-	password string,
-	url string,
-	metadata string,
-) string {
-	t.Helper()
-
-	return createCredentialsRecordRequestBody(t, title, login, password, url, metadata)
 }
 
 func recordRequestBody(t *testing.T, recordType model.RecordType, title string, payload any) string {
@@ -1695,6 +1116,81 @@ func decodeJSONResponse(t *testing.T, response *httptest.ResponseRecorder, targe
 	}
 }
 
+func assertCreateRecordRequest(
+	t *testing.T,
+	got service.CreateRecordRequest,
+	wantTitle string,
+	wantPayload model.RecordPayload,
+) {
+	t.Helper()
+
+	if got.UserID != 42 {
+		t.Errorf("Create() userID = %d, want 42", got.UserID)
+	}
+	if got.Title != wantTitle {
+		t.Errorf("Create() title = %q, want %q", got.Title, wantTitle)
+	}
+	if !reflect.DeepEqual(got.Payload, wantPayload) {
+		t.Errorf("Create() payload = %#v, want %#v", got.Payload, wantPayload)
+	}
+}
+
+func assertUpdateRecordRequest(
+	t *testing.T,
+	got service.UpdateRecordRequest,
+	wantTitle string,
+	wantPayload model.RecordPayload,
+) {
+	t.Helper()
+
+	if got.UserID != 42 {
+		t.Errorf("Update() userID = %d, want 42", got.UserID)
+	}
+	if got.RecordID != testRecordID {
+		t.Errorf("Update() recordID = %q, want %q", got.RecordID, testRecordID)
+	}
+	if got.ExpectedRevision != 1 {
+		t.Errorf("Update() expected revision = %d, want 1", got.ExpectedRevision)
+	}
+	if got.Title != wantTitle {
+		t.Errorf("Update() title = %q, want %q", got.Title, wantTitle)
+	}
+	if !reflect.DeepEqual(got.Payload, wantPayload) {
+		t.Errorf("Update() payload = %#v, want %#v", got.Payload, wantPayload)
+	}
+}
+
+func assertRecordResponse(
+	t *testing.T,
+	response *httptest.ResponseRecorder,
+	wantStatus int,
+	wantRevision int64,
+	wantTitle string,
+	wantPayload model.RecordPayload,
+) {
+	t.Helper()
+
+	if response.Code != wantStatus {
+		t.Errorf("status code = %d, want %d", response.Code, wantStatus)
+	}
+	wantETag := fmt.Sprintf(`"%d"`, wantRevision)
+	if got := response.Header().Get("ETag"); got != wantETag {
+		t.Errorf("ETag = %q, want %q", got, wantETag)
+	}
+
+	var body recordResponseEnvelope
+	decodeJSONResponse(t, response, &body)
+	assertRecordMetadataResponse(t, recordMetadataResponse{
+		ID:        body.ID,
+		Type:      body.Type,
+		Title:     body.Title,
+		Revision:  body.Revision,
+		CreatedAt: body.CreatedAt,
+		UpdatedAt: body.UpdatedAt,
+	}, newRecordMetadataResponse(testRecordMetadata(wantTitle, wantPayload.RecordType(), wantRevision)))
+	assertJSONValue(t, body.Payload, wantPayload)
+}
+
 func assertRecordMetadataResponse(t *testing.T, got recordMetadataResponse, want recordMetadataResponse) {
 	t.Helper()
 
@@ -1718,37 +1214,24 @@ func assertRecordMetadataResponse(t *testing.T, got recordMetadataResponse, want
 	}
 }
 
-func requireTextPayload(t *testing.T, payload model.RecordPayload) model.TextPayload {
+func assertJSONValue(t *testing.T, gotJSON []byte, want any) {
 	t.Helper()
 
-	value, ok := payload.(*model.TextPayload)
-	if !ok || value == nil {
-		t.Fatalf("payload type = %T, want non-nil *TextPayload", payload)
+	var gotValue any
+	if err := json.Unmarshal(gotJSON, &gotValue); err != nil {
+		t.Fatalf("decode response payload: %v", err)
 	}
-
-	return *value
-}
-
-func requireCredentialsPayload(t *testing.T, payload model.RecordPayload) model.CredentialsPayload {
-	t.Helper()
-
-	value, ok := payload.(*model.CredentialsPayload)
-	if !ok || value == nil {
-		t.Fatalf("payload type = %T, want non-nil *CredentialsPayload", payload)
+	wantJSON, err := json.Marshal(want)
+	if err != nil {
+		t.Fatalf("encode expected payload: %v", err)
 	}
-
-	return *value
-}
-
-func requireCardPayload(t *testing.T, payload model.RecordPayload) model.CardPayload {
-	t.Helper()
-
-	value, ok := payload.(*model.CardPayload)
-	if !ok || value == nil {
-		t.Fatalf("payload type = %T, want non-nil *CardPayload", payload)
+	var wantValue any
+	if err := json.Unmarshal(wantJSON, &wantValue); err != nil {
+		t.Fatalf("decode expected payload: %v", err)
 	}
-
-	return *value
+	if !reflect.DeepEqual(gotValue, wantValue) {
+		t.Errorf("response payload = %#v, want %#v", gotValue, wantValue)
+	}
 }
 
 func requireBinaryPayload(t *testing.T, payload model.RecordPayload) model.BinaryPayload {
@@ -1760,57 +1243,4 @@ func requireBinaryPayload(t *testing.T, payload model.RecordPayload) model.Binar
 	}
 
 	return *value
-}
-
-func assertTextRecordResponse(t *testing.T, got textRecordResponse, want textRecordResponse) {
-	t.Helper()
-
-	assertRecordMetadataResponse(t, recordMetadataResponse{
-		ID:        got.ID,
-		Type:      got.Type,
-		Title:     got.Title,
-		Revision:  got.Revision,
-		CreatedAt: got.CreatedAt,
-		UpdatedAt: got.UpdatedAt,
-	}, recordMetadataResponse{
-		ID:        want.ID,
-		Type:      want.Type,
-		Title:     want.Title,
-		Revision:  want.Revision,
-		CreatedAt: want.CreatedAt,
-		UpdatedAt: want.UpdatedAt,
-	})
-	if got.Payload.Text != want.Payload.Text {
-		t.Errorf("response payload.text = %q, want %q", got.Payload.Text, want.Payload.Text)
-	}
-	if got.Payload.Metadata != want.Payload.Metadata {
-		t.Errorf("response payload.metadata = %q, want %q", got.Payload.Metadata, want.Payload.Metadata)
-	}
-}
-
-func assertCredentialsRecordResponse(
-	t *testing.T,
-	got credentialsRecordResponse,
-	want credentialsRecordResponse,
-) {
-	t.Helper()
-
-	assertRecordMetadataResponse(t, recordMetadataResponse{
-		ID:        got.ID,
-		Type:      got.Type,
-		Title:     got.Title,
-		Revision:  got.Revision,
-		CreatedAt: got.CreatedAt,
-		UpdatedAt: got.UpdatedAt,
-	}, recordMetadataResponse{
-		ID:        want.ID,
-		Type:      want.Type,
-		Title:     want.Title,
-		Revision:  want.Revision,
-		CreatedAt: want.CreatedAt,
-		UpdatedAt: want.UpdatedAt,
-	})
-	if got.Payload != want.Payload {
-		t.Errorf("response payload = %+v, want %+v", got.Payload, want.Payload)
-	}
 }

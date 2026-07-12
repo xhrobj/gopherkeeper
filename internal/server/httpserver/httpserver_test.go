@@ -228,7 +228,7 @@ func TestNewHandler_RoutesRecords(t *testing.T) {
 	}{
 		{
 			name:       "create",
-			request:    newCreateRecordRequest(t, createTextRecordRequestBody(t, "my note", "secret", "")),
+			request:    newCreateRecordRequest(recordRequestBody(t, model.RecordTypeText, "my note", &model.TextPayload{Text: "secret"})),
 			wantStatus: http.StatusCreated,
 		},
 		{
@@ -243,7 +243,7 @@ func TestNewHandler_RoutesRecords(t *testing.T) {
 		},
 		{
 			name:       "update",
-			request:    newUpdateRecordRequest(t, testRecordID, updateTextRecordRequestBody(t, "new note", "new secret", "")),
+			request:    newUpdateRecordRequest(testRecordID, recordRequestBody(t, model.RecordTypeText, "new note", &model.TextPayload{Text: "new secret"})),
 			wantStatus: http.StatusOK,
 		},
 		{

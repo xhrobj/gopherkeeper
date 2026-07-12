@@ -19,9 +19,9 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/server/migration"
 )
 
-var createdRecordPattern = regexp.MustCompile(`^Created text record ([0-9a-f-]+) with revision ([0-9]+)\.$`)
+var createdTextRecordPattern = regexp.MustCompile(`^Created text record ([0-9a-f-]+) with revision ([0-9]+)\.$`)
 
-func TestIntegration_CLITextRecordUpdateDeleteFlow(t *testing.T) {
+func TestIntegration_CLITextRecordConflictAndIsolationFlow(t *testing.T) {
 	flow := newCLITextRecordFlow(t)
 	recordID := flow.createInitialRecord()
 
@@ -34,6 +34,40 @@ func TestIntegration_CLITextRecordUpdateDeleteFlow(t *testing.T) {
 	flow.deleteRecord(recordID)
 	flow.assertDeleted(recordID)
 	flow.assertHTTPLogsDoNotContainSecrets()
+}
+
+type recordCLIConfig struct {
+	ctx         context.Context
+	address     string
+	caCertFile  string
+	sessionFile string
+}
+
+func newRecordCLIEnvironment(
+	t *testing.T,
+) (recordCLIConfig, *pgxpool.Pool, *bytes.Buffer) {
+	t.Helper()
+
+	ctx, pool, httpLogs, serverAddress, caCertFile := startCLIRecordTestServer(t)
+	if _, _, err := runRegisterCommand(
+		ctx,
+		serverAddress,
+		caCertFile,
+		" Alice ",
+		testRegistrationPassword,
+	); err != nil {
+		t.Fatalf("register Alice: %v", err)
+	}
+
+	sessionFile := filepath.Join(t.TempDir(), "alice-session.json")
+	loginTestUser(t, ctx, serverAddress, caCertFile, sessionFile, " Alice ")
+
+	return recordCLIConfig{
+		ctx:         ctx,
+		address:     serverAddress,
+		caCertFile:  caCertFile,
+		sessionFile: sessionFile,
+	}, pool, httpLogs
 }
 
 type cliTextRecordFlow struct {
@@ -53,22 +87,16 @@ type cliTextRecordFlow struct {
 func newCLITextRecordFlow(t *testing.T) *cliTextRecordFlow {
 	t.Helper()
 
-	ctx, pool, httpLogs, serverAddress, caCertFile := startCLIRecordTestServer(t)
-	if _, _, err := runRegisterCommand(ctx, serverAddress, caCertFile, " Alice ", testRegistrationPassword); err != nil {
-		t.Fatalf("register Alice: %v", err)
-	}
-
-	aliceSessionFile := filepath.Join(t.TempDir(), "alice-session.json")
-	loginTestUser(t, ctx, serverAddress, caCertFile, aliceSessionFile, " Alice ")
+	config, pool, httpLogs := newRecordCLIEnvironment(t)
 
 	return &cliTextRecordFlow{
 		t:                   t,
-		ctx:                 ctx,
-		serverAddress:       serverAddress,
-		caCertFile:          caCertFile,
+		ctx:                 config.ctx,
+		serverAddress:       config.address,
+		caCertFile:          config.caCertFile,
 		pool:                pool,
 		httpLogs:            httpLogs,
-		aliceSessionFile:    aliceSessionFile,
+		aliceSessionFile:    config.sessionFile,
 		updatedTextFile:     writeIntegrationFile(t, "updated-note.txt", "updated secret"),
 		updatedMetadataFile: writeIntegrationFile(t, "updated-metadata.txt", "updated private metadata"),
 	}
@@ -418,7 +446,7 @@ func runClientCommandWithInput(
 func parseCreatedTextRecordOutput(t *testing.T, output string) (string, int64) {
 	t.Helper()
 
-	matches := createdRecordPattern.FindStringSubmatch(strings.TrimSpace(output))
+	matches := createdTextRecordPattern.FindStringSubmatch(strings.TrimSpace(output))
 	if matches == nil {
 		t.Fatalf("created record output = %q, want created record message", output)
 	}

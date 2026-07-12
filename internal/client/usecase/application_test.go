@@ -11,21 +11,21 @@ import (
 
 const testPassword = "correct-horse-battery-staple"
 
-type userClientStub struct {
+type userGatewayStub struct {
 	register func(context.Context, string, string) (model.User, error)
 	login    func(context.Context, string, string) (model.Authentication, error)
 	whoami   func(context.Context, string) (model.User, error)
 }
 
-func (s userClientStub) Register(ctx context.Context, login, password string) (model.User, error) {
+func (s userGatewayStub) Register(ctx context.Context, login, password string) (model.User, error) {
 	return s.register(ctx, login, password)
 }
 
-func (s userClientStub) Login(ctx context.Context, login, password string) (model.Authentication, error) {
+func (s userGatewayStub) Login(ctx context.Context, login, password string) (model.Authentication, error) {
 	return s.login(ctx, login, password)
 }
 
-func (s userClientStub) CurrentUser(ctx context.Context, accessToken string) (model.User, error) {
+func (s userGatewayStub) CurrentUser(ctx context.Context, accessToken string) (model.User, error) {
 	return s.whoami(ctx, accessToken)
 }
 
@@ -80,7 +80,7 @@ func testUser() model.User {
 
 func TestNew(t *testing.T) {
 	application := New(
-		userClientStub{},
+		userGatewayStub{},
 		recordGatewayStub{},
 		func() (SessionStorage, error) { return sessionStorageStub{}, nil },
 		"localhost:8080",

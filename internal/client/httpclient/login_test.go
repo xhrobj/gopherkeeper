@@ -107,7 +107,7 @@ func assertLoginRequest(t *testing.T, r *http.Request) bool {
 	return valid
 }
 
-func TestClient_Login_ReturnsAPIError(t *testing.T) {
+func TestClient_LoginReturnsAPIError(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)

@@ -23,56 +23,31 @@ var createdBinaryRecordPattern = regexp.MustCompile(
 	`^Created binary record ([0-9a-f-]+) with revision ([0-9]+)\.$`,
 )
 
-type binaryCLIConfig struct {
-	ctx         context.Context
-	address     string
-	caCertFile  string
-	sessionFile string
-}
-
-func TestIntegration_CLIBinaryRecordFlow(t *testing.T) {
-	ctx, pool, httpLogs, serverAddress, caCertFile := startCLIRecordTestServer(t)
-	if _, _, err := runRegisterCommand(
-		ctx,
-		serverAddress,
-		caCertFile,
-		" Alice ",
-		testRegistrationPassword,
-	); err != nil {
-		t.Fatalf("register Alice: %v", err)
-	}
-
-	sessionFile := filepath.Join(t.TempDir(), "alice-session.json")
-	loginTestUser(t, ctx, serverAddress, caCertFile, sessionFile, " Alice ")
-	config := binaryCLIConfig{
-		ctx:         ctx,
-		address:     serverAddress,
-		caCertFile:  caCertFile,
-		sessionFile: sessionFile,
-	}
+func TestIntegration_CLIBinaryRecordRoundTrip(t *testing.T) {
+	config, pool, httpLogs := newRecordCLIEnvironment(t)
 
 	initialData := []byte("gopherkeeper-binary-secret-42\x00\xff\x10")
 	initialFile := writeIntegrationBinaryFile(t, "backup.bin", initialData)
 	initialMetadata := "private binary metadata"
 	initialMetadataFile := writeIntegrationFile(t, "backup-metadata.txt", initialMetadata)
-	initialContentType := "application/octet-stream"
+	contentType := "application/octet-stream"
 
 	recordID := createBinaryRecord(
 		t,
 		config,
 		"Alice backup",
 		initialFile,
-		initialContentType,
+		contentType,
 		initialMetadataFile,
 		initialData,
 	)
 	assertPlaintextAbsentFromPostgres(
 		t,
-		ctx,
+		config.ctx,
 		pool,
 		recordID,
 		"backup.bin",
-		initialContentType,
+		contentType,
 		initialMetadata,
 		"gopherkeeper-binary-secret-42",
 	)
@@ -82,7 +57,7 @@ func TestIntegration_CLIBinaryRecordFlow(t *testing.T) {
 		recordID,
 		"Alice backup",
 		"backup.bin",
-		initialContentType,
+		contentType,
 		initialMetadata,
 		initialData,
 	)
@@ -96,7 +71,7 @@ func TestIntegration_CLIBinaryRecordFlow(t *testing.T) {
 		initialOutput,
 		initialData,
 		"backup.bin",
-		initialContentType,
+		contentType,
 		initialMetadata,
 	)
 	assertBinaryOutputNotOverwritten(t, config, recordID, initialOutput, initialData)
@@ -112,31 +87,20 @@ func TestIntegration_CLIBinaryRecordFlow(t *testing.T) {
 		1,
 		"Alice backup updated",
 		updatedFile,
-		initialContentType,
+		contentType,
 		updatedMetadataFile,
 		updatedData,
 	)
 	assertPlaintextAbsentFromPostgres(
 		t,
-		ctx,
+		config.ctx,
 		pool,
 		recordID,
 		"backup-v2.bin",
-		initialContentType,
+		contentType,
 		updatedMetadata,
 		"gopherkeeper-updated-binary-secret-69",
 	)
-
-	_, _, err := runUpdateBinaryRecordCommand(
-		config,
-		recordID,
-		1,
-		"Stale Alice backup",
-		updatedFile,
-		initialContentType,
-		updatedMetadataFile,
-	)
-	assertCLIErrorContains(t, "stale binary update", err, "record revision conflict")
 
 	updatedOutput := filepath.Join(t.TempDir(), "restored-backup-v2.bin")
 	assertBinaryRecord(
@@ -147,44 +111,17 @@ func TestIntegration_CLIBinaryRecordFlow(t *testing.T) {
 		updatedOutput,
 		updatedData,
 		"backup-v2.bin",
-		initialContentType,
+		contentType,
 		updatedMetadata,
 	)
 
 	assertEmptyBinaryRoundTrip(t, config)
 	assertOversizedBinaryRejectedLocally(t, config)
 	assertInvalidBinaryRequestsRejectedByServer(t, config)
-
-	stdout, stderr, err := runDeleteRecordCommand(
-		ctx,
-		serverAddress,
-		caCertFile,
-		sessionFile,
-		recordID,
-		2,
-	)
-	if err != nil {
-		t.Fatalf("delete binary record: %v", err)
-	}
-	wantDelete := fmt.Sprintf("Deleted record %s.\n", recordID)
-	if stdout != wantDelete {
-		t.Errorf("delete stdout = %q, want %q", stdout, wantDelete)
-	}
-	if stderr != "" {
-		t.Errorf("delete stderr = %q, want empty output", stderr)
-	}
-
-	deletedOutput := filepath.Join(t.TempDir(), "deleted-backup.bin")
-	_, _, err = runGetBinaryRecordCommand(config, recordID, deletedOutput)
-	assertCLIErrorContains(t, "get deleted binary record", err, "record not found")
-	if _, statErr := os.Stat(deletedOutput); !os.IsNotExist(statErr) {
-		t.Fatalf("deleted output stat error = %v, want not exist", statErr)
-	}
-
 	assertBinaryHTTPLogsDoNotContainSecrets(
 		t,
 		httpLogs.String(),
-		sessionFile,
+		config.sessionFile,
 		[][]byte{initialData, updatedData},
 		"backup.bin",
 		"backup-v2.bin",
@@ -195,7 +132,7 @@ func TestIntegration_CLIBinaryRecordFlow(t *testing.T) {
 
 func createBinaryRecord(
 	t *testing.T,
-	config binaryCLIConfig,
+	config recordCLIConfig,
 	title string,
 	binaryFile string,
 	contentType string,
@@ -232,7 +169,7 @@ func createBinaryRecord(
 
 func updateBinaryRecord(
 	t *testing.T,
-	config binaryCLIConfig,
+	config recordCLIConfig,
 	recordID string,
 	revision int64,
 	title string,
@@ -268,7 +205,7 @@ func updateBinaryRecord(
 
 func assertBinaryList(
 	t *testing.T,
-	config binaryCLIConfig,
+	config recordCLIConfig,
 	recordID string,
 	title string,
 	filename string,
@@ -311,7 +248,7 @@ func assertBinaryList(
 
 func assertBinaryRecord(
 	t *testing.T,
-	config binaryCLIConfig,
+	config recordCLIConfig,
 	recordID string,
 	revision int64,
 	outputPath string,
@@ -360,7 +297,7 @@ func assertBinaryRecord(
 
 func assertBinaryOutputNotOverwritten(
 	t *testing.T,
-	config binaryCLIConfig,
+	config recordCLIConfig,
 	recordID string,
 	outputPath string,
 	wantData []byte,
@@ -382,7 +319,7 @@ func assertBinaryOutputNotOverwritten(
 	}
 }
 
-func assertEmptyBinaryRoundTrip(t *testing.T, config binaryCLIConfig) {
+func assertEmptyBinaryRoundTrip(t *testing.T, config recordCLIConfig) {
 	t.Helper()
 
 	emptyFile := writeIntegrationBinaryFile(t, "empty.bin", []byte{})
@@ -406,7 +343,7 @@ func assertEmptyBinaryRoundTrip(t *testing.T, config binaryCLIConfig) {
 	}
 }
 
-func assertOversizedBinaryRejectedLocally(t *testing.T, config binaryCLIConfig) {
+func assertOversizedBinaryRejectedLocally(t *testing.T, config recordCLIConfig) {
 	t.Helper()
 
 	oversized := bytes.Repeat([]byte{0x2a}, model.BinaryPayloadMaxSize+1)
@@ -424,7 +361,7 @@ func assertOversizedBinaryRejectedLocally(t *testing.T, config binaryCLIConfig) 
 	}
 }
 
-func assertInvalidBinaryRequestsRejectedByServer(t *testing.T, config binaryCLIConfig) {
+func assertInvalidBinaryRequestsRejectedByServer(t *testing.T, config recordCLIConfig) {
 	t.Helper()
 
 	accessToken := readIntegrationAccessToken(t, config.sessionFile)
@@ -517,7 +454,7 @@ func assertBinaryCreateRequestError(
 }
 
 func runCreateBinaryRecordCommand(
-	config binaryCLIConfig,
+	config recordCLIConfig,
 	title string,
 	binaryFile string,
 	contentType string,
@@ -543,7 +480,7 @@ func runCreateBinaryRecordCommand(
 }
 
 func runUpdateBinaryRecordCommand(
-	config binaryCLIConfig,
+	config recordCLIConfig,
 	recordID string,
 	revision int64,
 	title string,
@@ -572,7 +509,7 @@ func runUpdateBinaryRecordCommand(
 }
 
 func runGetBinaryRecordCommand(
-	config binaryCLIConfig,
+	config recordCLIConfig,
 	recordID string,
 	outputPath string,
 ) (string, string, error) {

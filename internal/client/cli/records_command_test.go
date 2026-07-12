@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
@@ -141,47 +140,6 @@ func TestRecordsDeleteCommand_RequiresRecordID(t *testing.T) {
 	)
 	if err == nil || err.Error() != "record id is required" {
 		t.Fatalf("run delete command error = %v, want record id is required", err)
-	}
-}
-
-func TestExecuteUpdateTextRecord(t *testing.T) {
-	textFile := writeTestFile(t, "note.txt", "updated secret")
-	metadataFile := writeTestFile(t, "metadata.txt", "updated private metadata")
-	updatedAt := time.Date(2026, time.July, 9, 12, 5, 0, 0, time.UTC)
-	app := newApplicationStub(t)
-	app.updateRecord = func(_ context.Context, request usecase.UpdateRecordRequest) (model.Record, error) {
-		assertTextUpdateRequest(t, request)
-		return model.Record{
-			Metadata: model.RecordMetadata{
-				ID:        testRecordID,
-				Type:      model.RecordTypeText,
-				Title:     request.Title,
-				Revision:  2,
-				UpdatedAt: updatedAt,
-			},
-			Payload: request.Payload,
-		}, nil
-	}
-
-	var output bytes.Buffer
-	if err := executeUpdateTextRecord(
-		context.Background(),
-		app,
-		&output,
-		textRecordUpdateCommandRequest{
-			recordID:         testRecordID,
-			expectedRevision: 1,
-			title:            "Updated note",
-			textFile:         textFile,
-			metadataFile:     metadataFile,
-		},
-	); err != nil {
-		t.Fatalf("executeUpdateTextRecord() error = %v", err)
-	}
-
-	want := "Updated text record " + testRecordID + " to revision 2.\n"
-	if output.String() != want {
-		t.Errorf("output = %q, want %q", output.String(), want)
 	}
 }
 

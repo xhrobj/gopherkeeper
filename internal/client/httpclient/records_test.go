@@ -310,29 +310,8 @@ func handleGetRecordTestRequest(
 func assertClientRecordPayloadEqual(t *testing.T, got, want model.RecordPayload) {
 	t.Helper()
 
-	switch want := want.(type) {
-	case *model.TextPayload:
-		payload, ok := got.(*model.TextPayload)
-		if !ok || *payload != *want {
-			t.Fatalf("payload = %#v, want text payload %#v", got, want)
-		}
-	case *model.CredentialsPayload:
-		payload, ok := got.(*model.CredentialsPayload)
-		if !ok || *payload != *want {
-			t.Fatalf("payload = %#v, want credentials payload %#v", got, want)
-		}
-	case *model.CardPayload:
-		payload, ok := got.(*model.CardPayload)
-		if !ok || !reflect.DeepEqual(payload, want) {
-			t.Fatalf("payload = %#v, want card payload %#v", got, want)
-		}
-	case *model.BinaryPayload:
-		payload, ok := got.(*model.BinaryPayload)
-		if !ok || !reflect.DeepEqual(payload, want) {
-			t.Fatalf("payload = %#v, want binary payload %#v", got, want)
-		}
-	default:
-		t.Fatalf("unsupported expected payload type %T", want)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("payload = %#v, want %#v", got, want)
 	}
 }
 
@@ -426,66 +405,71 @@ func TestClient_UpdateRecordReturnsAPIError(t *testing.T) {
 	if apiError.Code != "record_revision_conflict" {
 		t.Errorf("code = %q, want record_revision_conflict", apiError.Code)
 	}
+	if !errors.Is(err, model.ErrRecordRevisionConflict) {
+		t.Errorf("UpdateRecord() error = %v, want ErrRecordRevisionConflict", err)
+	}
 	if strings.Contains(err.Error(), "test.jwt.token") || strings.Contains(err.Error(), "updated secret") {
 		t.Error("update error contains access token or payload")
 	}
 }
 
 func TestClient_GetRecordRejectsInvalidPayload(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"id":"550e8400-e29b-41d4-a716-446655440000",
-			"type":"credentials",
-			"title":"GitHub",
-			"revision":1,
-			"created_at":"2026-07-10T12:00:00Z",
-			"updated_at":"2026-07-10T12:00:00Z",
-			"payload":{"login":"alice","password":"correct-horse-battery-staple","text":"unexpected"}
-		}`))
-	}))
-	defer server.Close()
-
-	client, err := New(serverAddress(server), writeServerCertificate(t, server))
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
+	tests := []struct {
+		name     string
+		response string
+		secrets  []string
+	}{
+		{
+			name: "credentials unknown field",
+			response: `{
+				"id":"550e8400-e29b-41d4-a716-446655440000",
+				"type":"credentials",
+				"title":"GitHub",
+				"revision":1,
+				"created_at":"2026-07-12T12:00:00Z",
+				"updated_at":"2026-07-12T12:00:00Z",
+				"payload":{"login":"alice","password":"correct-horse-battery-staple","text":"unexpected"}
+			}`,
+			secrets: []string{"correct-horse-battery-staple"},
+		},
+		{
+			name: "malformed binary Base64",
+			response: `{
+				"id":"550e8400-e29b-41d4-a716-446655440000",
+				"type":"binary",
+				"title":"Alice encrypted backup",
+				"revision":1,
+				"created_at":"2026-07-12T12:00:00Z",
+				"updated_at":"2026-07-12T12:00:00Z",
+				"payload":{"filename":"backup.bin","data":"not-base64***"}
+			}`,
+			secrets: []string{"test.jwt.token", "not-base64"},
+		},
 	}
 
-	_, err = client.GetRecord(context.Background(), "test.jwt.token", testRecordID)
-	if err == nil {
-		t.Fatal("GetRecord() error = nil, want invalid payload error")
-	}
-	if strings.Contains(err.Error(), "correct-horse-battery-staple") {
-		t.Error("decode error contains credentials password")
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tt.response))
+			}))
+			defer server.Close()
 
-func TestClient_GetRecordRejectsInvalidBinaryPayload(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{
-			"id":"550e8400-e29b-41d4-a716-446655440000",
-			"type":"binary",
-			"title":"Alice encrypted backup",
-			"revision":1,
-			"created_at":"2026-07-12T12:00:00Z",
-			"updated_at":"2026-07-12T12:00:00Z",
-			"payload":{"filename":"backup.bin","data":"not-base64***"}
-		}`))
-	}))
-	defer server.Close()
+			client, err := New(serverAddress(server), writeServerCertificate(t, server))
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
 
-	client, err := New(serverAddress(server), writeServerCertificate(t, server))
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	_, err = client.GetRecord(context.Background(), "test.jwt.token", testRecordID)
-	if err == nil {
-		t.Fatal("GetRecord() error = nil, want invalid binary payload error")
-	}
-	if strings.Contains(err.Error(), "test.jwt.token") || strings.Contains(err.Error(), "not-base64") {
-		t.Error("decode error contains access token or binary data")
+			_, err = client.GetRecord(context.Background(), "test.jwt.token", testRecordID)
+			if err == nil {
+				t.Fatal("GetRecord() error = nil, want invalid payload error")
+			}
+			for _, secret := range tt.secrets {
+				if strings.Contains(err.Error(), secret) {
+					t.Errorf("decode error contains secret %q", secret)
+				}
+			}
+		})
 	}
 }
 

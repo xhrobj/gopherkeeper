@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 func TestClient_CurrentUser(t *testing.T) {
@@ -109,6 +111,9 @@ func TestClient_CurrentUserReturnsAPIError(t *testing.T) {
 	}
 	if apiError.Code != "unauthorized" {
 		t.Errorf("code = %q, want unauthorized", apiError.Code)
+	}
+	if !errors.Is(err, model.ErrUnauthorized) {
+		t.Errorf("CurrentUser() error = %v, want ErrUnauthorized", err)
 	}
 	if strings.Contains(err.Error(), "test.jwt.token") {
 		t.Error("current user error contains access token")

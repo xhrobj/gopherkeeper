@@ -7,8 +7,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 func TestClient_DoJSONReturnsStatusErrorForInvalidErrorResponse(t *testing.T) {
@@ -119,29 +117,18 @@ func TestClient_DoJSONReturnsNetworkError(t *testing.T) {
 	}
 }
 
-func TestDecodeAPIErrorMapsSemanticCause(t *testing.T) {
-	tests := []struct {
-		code string
-		want error
-	}{
-		{code: "login_already_exists", want: model.ErrLoginAlreadyExists},
-		{code: "invalid_credentials", want: model.ErrInvalidCredentials},
-		{code: "unauthorized", want: model.ErrUnauthorized},
-		{code: "record_not_found", want: model.ErrRecordNotFound},
-		{code: "record_revision_conflict", want: model.ErrRecordRevisionConflict},
-		{code: "precondition_required", want: model.ErrRecordPreconditionRequired},
-		{code: "payload_too_large", want: model.ErrPayloadTooLarge},
-		{code: "invalid_request", want: model.ErrInvalidRecordData},
-	}
+func TestDecodeAPIError_DoesNotAssignSemanticCause(t *testing.T) {
+	err := decodeAPIError(
+		http.StatusBadRequest,
+		"400 Bad Request",
+		[]byte(`{"code":"invalid_request","message":"safe message"}`),
+	)
 
-	for _, tt := range tests {
-		t.Run(tt.code, func(t *testing.T) {
-			err := decodeAPIError(400, "400 Bad Request", []byte(
-				`{"code":"`+tt.code+`","message":"safe message"}`,
-			))
-			if !errors.Is(err, tt.want) {
-				t.Fatalf("decodeAPIError() error = %v, want %v", err, tt.want)
-			}
-		})
+	var apiError *APIError
+	if !errors.As(err, &apiError) {
+		t.Fatalf("decodeAPIError() error = %T, want *APIError", err)
+	}
+	if apiError.cause != nil {
+		t.Errorf("decodeAPIError() cause = %v, want nil", apiError.cause)
 	}
 }
