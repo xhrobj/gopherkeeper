@@ -3,20 +3,20 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
 	"github.com/xhrobj/gopherkeeper/internal/client/session"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 const testRecordID = "550e8400-e29b-41d4-a716-446655440000"
 
-type recordClientStub struct {
-	create func(context.Context, string, httpclient.CreateRecordRequest) (model.Record, error)
+type recordGatewayStub struct {
+	create func(context.Context, string, string, model.RecordPayload) (model.Record, error)
 	list   func(context.Context, string) ([]model.RecordMetadata, error)
 	get    func(context.Context, string, string) (model.Record, error)
 	update func(
@@ -24,40 +24,43 @@ type recordClientStub struct {
 		string,
 		string,
 		int64,
-		httpclient.UpdateRecordRequest,
+		string,
+		model.RecordPayload,
 	) (model.Record, error)
 	delete func(context.Context, string, string, int64) error
 }
 
-func (s recordClientStub) CreateRecord(
+func (s recordGatewayStub) CreateRecord(
 	ctx context.Context,
 	accessToken string,
-	request httpclient.CreateRecordRequest,
+	title string,
+	payload model.RecordPayload,
 ) (model.Record, error) {
-	return s.create(ctx, accessToken, request)
+	return s.create(ctx, accessToken, title, payload)
 }
 
-func (s recordClientStub) ListRecords(ctx context.Context, accessToken string) ([]model.RecordMetadata, error) {
+func (s recordGatewayStub) ListRecords(ctx context.Context, accessToken string) ([]model.RecordMetadata, error) {
 	return s.list(ctx, accessToken)
 }
 
-func (s recordClientStub) GetRecord(
+func (s recordGatewayStub) GetRecord(
 	ctx context.Context,
 	accessToken, recordID string,
 ) (model.Record, error) {
 	return s.get(ctx, accessToken, recordID)
 }
 
-func (s recordClientStub) UpdateRecord(
+func (s recordGatewayStub) UpdateRecord(
 	ctx context.Context,
 	accessToken, recordID string,
 	expectedRevision int64,
-	request httpclient.UpdateRecordRequest,
+	title string,
+	payload model.RecordPayload,
 ) (model.Record, error) {
-	return s.update(ctx, accessToken, recordID, expectedRevision, request)
+	return s.update(ctx, accessToken, recordID, expectedRevision, title, payload)
 }
 
-func (s recordClientStub) DeleteRecord(
+func (s recordGatewayStub) DeleteRecord(
 	ctx context.Context,
 	accessToken, recordID string,
 	expectedRevision int64,
@@ -129,32 +132,33 @@ func TestApplication_CreateRecord(t *testing.T) {
 			createdAt := time.Date(2026, time.July, 11, 12, 0, 0, 0, time.UTC)
 			application := newTestApplicationWithRecords(
 				userClientStub{},
-				recordClientStub{
+				recordGatewayStub{
 					create: func(
 						_ context.Context,
 						accessToken string,
-						request httpclient.CreateRecordRequest,
+						title string,
+						payload model.RecordPayload,
 					) (model.Record, error) {
 						if accessToken != "test.jwt.token" {
 							t.Errorf("access token = %q, want test.jwt.token", accessToken)
 						}
-						if request.Title != tt.title {
-							t.Errorf("title = %q, want %q", request.Title, tt.title)
+						if title != tt.title {
+							t.Errorf("title = %q, want %q", title, tt.title)
 						}
-						if !reflect.DeepEqual(request.Payload, tt.payload) {
-							t.Errorf("payload = %#v, want %#v", request.Payload, tt.payload)
+						if !reflect.DeepEqual(payload, tt.payload) {
+							t.Errorf("payload = %#v, want %#v", payload, tt.payload)
 						}
 
 						return model.Record{
 							Metadata: model.RecordMetadata{
 								ID:        testRecordID,
-								Type:      request.Payload.RecordType(),
-								Title:     request.Title,
+								Type:      payload.RecordType(),
+								Title:     title,
 								Revision:  1,
 								CreatedAt: createdAt,
 								UpdatedAt: createdAt,
 							},
-							Payload: request.Payload,
+							Payload: payload,
 						}, nil
 					},
 				},
@@ -220,8 +224,8 @@ func TestApplication_CreateRecordValidationError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			application := newTestApplicationWithRecords(userClientStub{}, recordClientStub{
-				create: func(context.Context, string, httpclient.CreateRecordRequest) (model.Record, error) {
+			application := newTestApplicationWithRecords(userClientStub{}, recordGatewayStub{
+				create: func(context.Context, string, string, model.RecordPayload) (model.Record, error) {
 					t.Fatal("record client must not be called")
 					return model.Record{}, nil
 				},
@@ -244,7 +248,7 @@ func TestApplication_ListRecords(t *testing.T) {
 	}}
 	application := newTestApplicationWithRecords(
 		userClientStub{},
-		recordClientStub{
+		recordGatewayStub{
 			list: func(_ context.Context, accessToken string) ([]model.RecordMetadata, error) {
 				if accessToken != "test.jwt.token" {
 					t.Errorf("access token = %q, want test.jwt.token", accessToken)
@@ -269,7 +273,7 @@ func TestApplication_ListRecords(t *testing.T) {
 func TestApplication_GetRecord(t *testing.T) {
 	application := newTestApplicationWithRecords(
 		userClientStub{},
-		recordClientStub{
+		recordGatewayStub{
 			get: func(_ context.Context, accessToken, recordID string) (model.Record, error) {
 				if accessToken != "test.jwt.token" {
 					t.Errorf("access token = %q, want test.jwt.token", accessToken)
@@ -319,7 +323,7 @@ func TestApplication_GetBinaryRecord(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			application := newTestApplicationWithRecords(
 				userClientStub{},
-				recordClientStub{
+				recordGatewayStub{
 					get: func(_ context.Context, accessToken, recordID string) (model.Record, error) {
 						if accessToken != "test.jwt.token" {
 							t.Errorf("access token = %q, want test.jwt.token", accessToken)
@@ -371,7 +375,7 @@ func TestApplication_GetRecordRejectsTypedNilPayload(t *testing.T) {
 	var payload *model.TextPayload
 	application := newTestApplicationWithRecords(
 		userClientStub{},
-		recordClientStub{
+		recordGatewayStub{
 			get: func(context.Context, string, string) (model.Record, error) {
 				return model.Record{
 					Metadata: model.RecordMetadata{Type: model.RecordTypeText},
@@ -392,7 +396,7 @@ func TestApplication_GetRecordRejectsTypedNilPayload(t *testing.T) {
 func TestApplication_GetRecordRejectsMismatchedPayload(t *testing.T) {
 	application := newTestApplicationWithRecords(
 		userClientStub{},
-		recordClientStub{
+		recordGatewayStub{
 			get: func(context.Context, string, string) (model.Record, error) {
 				return model.Record{
 					Metadata: model.RecordMetadata{Type: model.RecordTypeText},
@@ -460,28 +464,29 @@ func TestApplication_UpdateRecord(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			application := newTestApplicationWithRecords(
 				userClientStub{},
-				recordClientStub{
+				recordGatewayStub{
 					update: func(
 						_ context.Context,
 						accessToken, recordID string,
 						expectedRevision int64,
-						request httpclient.UpdateRecordRequest,
+						title string,
+						payload model.RecordPayload,
 					) (model.Record, error) {
 						if accessToken != "test.jwt.token" || recordID != testRecordID || expectedRevision != 1 {
 							t.Error("update request contains unexpected common values")
 						}
-						if request.Title != tt.title || !reflect.DeepEqual(request.Payload, tt.payload) {
-							t.Errorf("update request = %#v, want title and payload unchanged", request)
+						if title != tt.title || !reflect.DeepEqual(payload, tt.payload) {
+							t.Errorf("update title = %q, payload = %#v, want %q and %#v", title, payload, tt.title, tt.payload)
 						}
 
 						return model.Record{
 							Metadata: model.RecordMetadata{
 								ID:       testRecordID,
-								Type:     request.Payload.RecordType(),
-								Title:    request.Title,
+								Type:     payload.RecordType(),
+								Title:    title,
 								Revision: 2,
 							},
-							Payload: request.Payload,
+							Payload: payload,
 						}, nil
 					},
 				},
@@ -512,13 +517,9 @@ func TestApplication_UpdateRecordMapsAPIError(t *testing.T) {
 	password := "updated-correct-horse-battery-staple"
 	application := newTestApplicationWithRecords(
 		userClientStub{},
-		recordClientStub{
-			update: func(context.Context, string, string, int64, httpclient.UpdateRecordRequest) (model.Record, error) {
-				return model.Record{}, &httpclient.APIError{
-					StatusCode: 409,
-					Code:       "record_revision_conflict",
-					Message:    "record revision conflict",
-				}
+		recordGatewayStub{
+			update: func(context.Context, string, string, int64, string, model.RecordPayload) (model.Record, error) {
+				return model.Record{}, fmt.Errorf("remote update: %w", model.ErrRecordRevisionConflict)
 			},
 		},
 		onlineSessionStorage(),
@@ -548,7 +549,7 @@ func TestApplication_UpdateRecordMapsAPIError(t *testing.T) {
 func TestApplication_DeleteRecord(t *testing.T) {
 	application := newTestApplicationWithRecords(
 		userClientStub{},
-		recordClientStub{
+		recordGatewayStub{
 			delete: func(_ context.Context, accessToken, recordID string, expectedRevision int64) error {
 				if accessToken != "test.jwt.token" || recordID != testRecordID || expectedRevision != 2 {
 					t.Error("delete request contains unexpected values")

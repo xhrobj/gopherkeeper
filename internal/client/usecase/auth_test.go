@@ -3,12 +3,11 @@ package usecase
 import (
 	"context"
 	"errors"
-	"net/http"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
 	"github.com/xhrobj/gopherkeeper/internal/client/session"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
@@ -42,15 +41,11 @@ func TestApplication_Register(t *testing.T) {
 }
 
 func TestApplication_RegisterReturnsReadableDuplicateError(t *testing.T) {
-	apiError := &httpclient.APIError{
-		StatusCode: http.StatusConflict,
-		Code:       "login_already_exists",
-		Message:    "login is already registered",
-	}
+	remoteError := fmt.Errorf("remote registration: %w", model.ErrLoginAlreadyExists)
 	application := newTestApplication(
 		userClientStub{
 			register: func(context.Context, string, string) (model.User, error) {
-				return model.User{}, apiError
+				return model.User{}, remoteError
 			},
 		},
 		sessionStorageStub{},
@@ -64,7 +59,7 @@ func TestApplication_RegisterReturnsReadableDuplicateError(t *testing.T) {
 	if err.Error() != `login "ALICE" is already registered` {
 		t.Errorf("error = %q, want readable duplicate message", err)
 	}
-	if !errors.Is(err, apiError) {
+	if !errors.Is(err, remoteError) {
 		t.Error("duplicate error does not preserve API error")
 	}
 	if strings.Contains(err.Error(), testPassword) {
@@ -124,9 +119,9 @@ func TestApplication_LoginResolvesSessionStorageBeforeRequest(t *testing.T) {
 	clientCalled := false
 	application := &Application{
 		users: userClientStub{
-			login: func(context.Context, string, string) (httpclient.LoginResult, error) {
+			login: func(context.Context, string, string) (model.Authentication, error) {
 				clientCalled = true
-				return httpclient.LoginResult{}, nil
+				return model.Authentication{}, nil
 			},
 		},
 		sessions: func() (sessionStorage, error) {
@@ -150,7 +145,7 @@ func TestApplication_LoginSavesSession(t *testing.T) {
 	var savedSession session.Session
 	application := newTestApplication(
 		userClientStub{
-			login: func(_ context.Context, login, password string) (httpclient.LoginResult, error) {
+			login: func(_ context.Context, login, password string) (model.Authentication, error) {
 				if login != "alice" {
 					t.Errorf("login = %q, want alice", login)
 				}
@@ -158,7 +153,7 @@ func TestApplication_LoginSavesSession(t *testing.T) {
 					t.Error("login client received unexpected password")
 				}
 
-				return httpclient.LoginResult{
+				return model.Authentication{
 					AccessToken: "test.jwt.token",
 					ExpiresAt:   expiresAt,
 					User: model.User{
@@ -197,15 +192,11 @@ func TestApplication_LoginSavesSession(t *testing.T) {
 }
 
 func TestApplication_LoginReturnsReadableInvalidCredentialsError(t *testing.T) {
-	apiError := &httpclient.APIError{
-		StatusCode: http.StatusUnauthorized,
-		Code:       "invalid_credentials",
-		Message:    "invalid login or password",
-	}
+	remoteError := fmt.Errorf("remote login: %w", model.ErrInvalidCredentials)
 	application := newTestApplication(
 		userClientStub{
-			login: func(context.Context, string, string) (httpclient.LoginResult, error) {
-				return httpclient.LoginResult{}, apiError
+			login: func(context.Context, string, string) (model.Authentication, error) {
+				return model.Authentication{}, remoteError
 			},
 		},
 		sessionStorageStub{
@@ -224,7 +215,7 @@ func TestApplication_LoginReturnsReadableInvalidCredentialsError(t *testing.T) {
 	if err.Error() != "invalid login or password" {
 		t.Errorf("error = %q, want readable invalid credentials message", err)
 	}
-	if !errors.Is(err, apiError) {
+	if !errors.Is(err, remoteError) {
 		t.Error("login error does not preserve API error")
 	}
 	if strings.Contains(err.Error(), testPassword) {
@@ -236,8 +227,8 @@ func TestApplication_LoginDoesNotLeakPasswordInNetworkError(t *testing.T) {
 	networkError := errors.New("connection refused")
 	application := newTestApplication(
 		userClientStub{
-			login: func(context.Context, string, string) (httpclient.LoginResult, error) {
-				return httpclient.LoginResult{}, networkError
+			login: func(context.Context, string, string) (model.Authentication, error) {
+				return model.Authentication{}, networkError
 			},
 		},
 		sessionStorageStub{
@@ -265,8 +256,8 @@ func TestApplication_LoginDoesNotLeakTokenInSaveError(t *testing.T) {
 	saveError := errors.New("permission denied")
 	application := newTestApplication(
 		userClientStub{
-			login: func(context.Context, string, string) (httpclient.LoginResult, error) {
-				return httpclient.LoginResult{
+			login: func(context.Context, string, string) (model.Authentication, error) {
+				return model.Authentication{
 					AccessToken: "test.jwt.token",
 					ExpiresAt:   time.Date(2026, time.July, 5, 12, 15, 0, 0, time.UTC),
 					User: model.User{
@@ -404,15 +395,11 @@ func TestApplication_WhoamiMapsSessionErrors(t *testing.T) {
 }
 
 func TestApplication_WhoamiMapsUnauthorizedAPIError(t *testing.T) {
-	apiError := &httpclient.APIError{
-		StatusCode: http.StatusUnauthorized,
-		Code:       "unauthorized",
-		Message:    "missing or invalid bearer token",
-	}
+	remoteError := fmt.Errorf("remote current user: %w", model.ErrUnauthorized)
 	application := newTestApplication(
 		userClientStub{
 			whoami: func(context.Context, string) (model.User, error) {
-				return model.User{}, apiError
+				return model.User{}, remoteError
 			},
 		},
 		sessionStorageStub{
@@ -427,7 +414,7 @@ func TestApplication_WhoamiMapsUnauthorizedAPIError(t *testing.T) {
 	if err == nil {
 		t.Fatal("Whoami() error = nil, want unauthorized error")
 	}
-	if !errors.Is(err, apiError) {
+	if !errors.Is(err, remoteError) {
 		t.Error("whoami error does not preserve API error")
 	}
 	if !errors.Is(err, ErrNotLoggedIn) {

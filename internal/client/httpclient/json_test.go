@@ -2,10 +2,13 @@ package httpclient
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 func TestClient_DoJSONReturnsStatusErrorForInvalidErrorResponse(t *testing.T) {
@@ -113,5 +116,32 @@ func TestClient_DoJSONReturnsNetworkError(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "test.jwt.token") || strings.Contains(err.Error(), "private-payload") {
 		t.Errorf("doJSON() error contains access token or request payload: %q", err)
+	}
+}
+
+func TestDecodeAPIErrorMapsSemanticCause(t *testing.T) {
+	tests := []struct {
+		code string
+		want error
+	}{
+		{code: "login_already_exists", want: model.ErrLoginAlreadyExists},
+		{code: "invalid_credentials", want: model.ErrInvalidCredentials},
+		{code: "unauthorized", want: model.ErrUnauthorized},
+		{code: "record_not_found", want: model.ErrRecordNotFound},
+		{code: "record_revision_conflict", want: model.ErrRecordRevisionConflict},
+		{code: "precondition_required", want: model.ErrRecordPreconditionRequired},
+		{code: "payload_too_large", want: model.ErrPayloadTooLarge},
+		{code: "invalid_request", want: model.ErrInvalidRecordData},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.code, func(t *testing.T) {
+			err := decodeAPIError(400, "400 Bad Request", []byte(
+				`{"code":"`+tt.code+`","message":"safe message"}`,
+			))
+			if !errors.Is(err, tt.want) {
+				t.Fatalf("decodeAPIError() error = %v, want %v", err, tt.want)
+			}
+		})
 	}
 }

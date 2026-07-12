@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
-	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
 	"github.com/xhrobj/gopherkeeper/internal/client/session"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
@@ -15,7 +14,7 @@ const testPassword = "correct-horse-battery-staple"
 
 type userClientStub struct {
 	register func(context.Context, string, string) (model.User, error)
-	login    func(context.Context, string, string) (httpclient.LoginResult, error)
+	login    func(context.Context, string, string) (model.Authentication, error)
 	whoami   func(context.Context, string) (model.User, error)
 }
 
@@ -23,7 +22,7 @@ func (s userClientStub) Register(ctx context.Context, login, password string) (m
 	return s.register(ctx, login, password)
 }
 
-func (s userClientStub) Login(ctx context.Context, login, password string) (httpclient.LoginResult, error) {
+func (s userClientStub) Login(ctx context.Context, login, password string) (model.Authentication, error) {
 	return s.login(ctx, login, password)
 }
 
@@ -44,13 +43,13 @@ func (s sessionStorageStub) Load(expectedServerAddress string) (session.Session,
 	return s.load(expectedServerAddress)
 }
 
-func newTestApplication(users userClient, sessions sessionStorage, serverAddress string) *Application {
-	return newTestApplicationWithRecords(users, recordClientStub{}, sessions, serverAddress)
+func newTestApplication(users userGateway, sessions sessionStorage, serverAddress string) *Application {
+	return newTestApplicationWithRecords(users, recordGatewayStub{}, sessions, serverAddress)
 }
 
 func newTestApplicationWithRecords(
-	users userClient,
-	records recordClient,
+	users userGateway,
+	records recordGateway,
 	sessions sessionStorage,
 	serverAddress string,
 ) *Application {

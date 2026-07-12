@@ -59,6 +59,9 @@ var (
 
 	// ErrInvalidRecordRevision сообщает, что ревизия записи некорректна.
 	ErrInvalidRecordRevision = errors.New("invalid record revision")
+
+	// ErrInvalidRecordData сообщает, что данные приватной записи некорректны.
+	ErrInvalidRecordData = errors.New("invalid record data")
 )
 
 // RecordType описывает тип приватной записи.

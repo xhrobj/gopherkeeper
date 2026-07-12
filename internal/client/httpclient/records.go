@@ -19,24 +19,6 @@ const recordsPath = "/api/v1/records"
 
 var errRecordPayloadRequired = errors.New("record payload is required")
 
-// CreateRecordRequest содержит данные для создания записи через HTTP API.
-type CreateRecordRequest struct {
-	// Title содержит открытое название записи.
-	Title string
-
-	// Payload содержит типизированный приватный payload.
-	Payload model.RecordPayload
-}
-
-// UpdateRecordRequest содержит данные для изменения записи через HTTP API.
-type UpdateRecordRequest struct {
-	// Title содержит новое открытое название записи.
-	Title string
-
-	// Payload содержит новый типизированный приватный payload.
-	Payload model.RecordPayload
-}
-
 type recordRequest struct {
 	Type    model.RecordType    `json:"type"`
 	Title   string              `json:"title"`
@@ -70,9 +52,10 @@ type listRecordsResponse struct {
 func (c *Client) CreateRecord(
 	ctx context.Context,
 	accessToken string,
-	request CreateRecordRequest,
+	title string,
+	payload model.RecordPayload,
 ) (model.Record, error) {
-	body, err := newRecordRequest(request.Title, request.Payload)
+	body, err := newRecordRequest(title, payload)
 	if err != nil {
 		return model.Record{}, err
 	}
@@ -140,9 +123,10 @@ func (c *Client) UpdateRecord(
 	accessToken string,
 	recordID string,
 	expectedRevision int64,
-	request UpdateRecordRequest,
+	title string,
+	payload model.RecordPayload,
 ) (model.Record, error) {
-	body, err := newRecordRequest(request.Title, request.Payload)
+	body, err := newRecordRequest(title, payload)
 	if err != nil {
 		return model.Record{}, err
 	}

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
 	"github.com/xhrobj/gopherkeeper/internal/client/session"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
@@ -14,8 +13,7 @@ import (
 func (a *Application) Register(ctx context.Context, login, password string) (model.User, error) {
 	user, err := a.users.Register(ctx, login, password)
 	if err != nil {
-		var apiError *httpclient.APIError
-		if errors.As(err, &apiError) && apiError.Code == "login_already_exists" {
+		if errors.Is(err, model.ErrLoginAlreadyExists) {
 			return model.User{}, newUserError(fmt.Sprintf("login %q is already registered", login), err)
 		}
 
@@ -34,8 +32,7 @@ func (a *Application) Login(ctx context.Context, login, password string) (model.
 
 	result, err := a.users.Login(ctx, login, password)
 	if err != nil {
-		var apiError *httpclient.APIError
-		if errors.As(err, &apiError) && apiError.Code == "invalid_credentials" {
+		if errors.Is(err, model.ErrInvalidCredentials) {
 			return model.User{}, newUserError("invalid login or password", err)
 		}
 
@@ -96,8 +93,7 @@ func mapSessionLoadError(err error) error {
 }
 
 func mapCurrentUserError(err error) error {
-	var apiError *httpclient.APIError
-	if errors.As(err, &apiError) && apiError.Code == "unauthorized" {
+	if errors.Is(err, model.ErrUnauthorized) {
 		return newUserError("not logged in", errors.Join(ErrNotLoggedIn, err))
 	}
 

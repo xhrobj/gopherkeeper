@@ -10,18 +10,18 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-// Application выполняет клиентские online-сценарии поверх HTTP client'а
+// Application выполняет клиентские online-сценарии поверх удалённых gateway
 // и provider'а локального хранилища session.
 type Application struct {
-	users         userClient
-	records       recordClient
+	users         userGateway
+	records       recordGateway
 	sessions      sessionStorageProvider
 	serverAddress string
 }
 
-type userClient interface {
+type userGateway interface {
 	Register(ctx context.Context, login, password string) (model.User, error)
-	Login(ctx context.Context, login, password string) (httpclient.LoginResult, error)
+	Login(ctx context.Context, login, password string) (model.Authentication, error)
 	CurrentUser(ctx context.Context, accessToken string) (model.User, error)
 }
 

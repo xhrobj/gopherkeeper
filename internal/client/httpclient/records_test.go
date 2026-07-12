@@ -30,14 +30,16 @@ func TestClient_CreateRecord(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	record, err := client.CreateRecord(context.Background(), "test.jwt.token", CreateRecordRequest{
-		Title: "GitHub",
-		Payload: &model.CredentialsPayload{
+	record, err := client.CreateRecord(
+		context.Background(),
+		"test.jwt.token",
+		"GitHub",
+		&model.CredentialsPayload{
 			Login:    "alice",
 			Password: password,
 			URL:      "https://github.com",
 		},
-	})
+	)
 	if err != nil {
 		t.Fatalf("CreateRecord() error = %v", err)
 	}
@@ -170,15 +172,17 @@ func TestClient_CreateBinaryRecord(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	record, err := client.CreateRecord(context.Background(), "test.jwt.token", CreateRecordRequest{
-		Title: "Alice encrypted backup",
-		Payload: &model.BinaryPayload{
+	record, err := client.CreateRecord(
+		context.Background(),
+		"test.jwt.token",
+		"Alice encrypted backup",
+		&model.BinaryPayload{
 			Filename:    "backup.bin",
 			Data:        data,
 			ContentType: "application/octet-stream",
 			Metadata:    "private backup",
 		},
-	})
+	)
 	if err != nil {
 		t.Fatalf("CreateRecord() error = %v", err)
 	}
@@ -375,13 +379,17 @@ func TestClient_UpdateRecord(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	record, err := client.UpdateRecord(context.Background(), "test.jwt.token", testRecordID, 1, UpdateRecordRequest{
-		Title: "Updated GitHub",
-		Payload: &model.CredentialsPayload{
+	record, err := client.UpdateRecord(
+		context.Background(),
+		"test.jwt.token",
+		testRecordID,
+		1,
+		"Updated GitHub",
+		&model.CredentialsPayload{
 			Login:    "alice",
 			Password: "updated-correct-horse-battery-staple",
 		},
-	})
+	)
 	if err != nil {
 		t.Fatalf("UpdateRecord() error = %v", err)
 	}
@@ -406,10 +414,7 @@ func TestClient_UpdateRecordReturnsAPIError(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	_, err = client.UpdateRecord(context.Background(), "test.jwt.token", testRecordID, 1, UpdateRecordRequest{
-		Title:   "Updated note",
-		Payload: &model.TextPayload{Text: "updated secret"},
-	})
+	_, err = client.UpdateRecord(context.Background(), "test.jwt.token", testRecordID, 1, "Updated note", &model.TextPayload{Text: "updated secret"})
 	if err == nil {
 		t.Fatal("UpdateRecord() error = nil, want API error")
 	}

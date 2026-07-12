@@ -5,14 +5,18 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 var errUnexpectedRecordPayload = errors.New("unexpected record payload")
 
-type recordClient interface {
-	CreateRecord(ctx context.Context, accessToken string, request httpclient.CreateRecordRequest) (model.Record, error)
+type recordGateway interface {
+	CreateRecord(
+		ctx context.Context,
+		accessToken string,
+		title string,
+		payload model.RecordPayload,
+	) (model.Record, error)
 	ListRecords(ctx context.Context, accessToken string) ([]model.RecordMetadata, error)
 	GetRecord(ctx context.Context, accessToken string, recordID string) (model.Record, error)
 	UpdateRecord(
@@ -20,7 +24,8 @@ type recordClient interface {
 		accessToken string,
 		recordID string,
 		expectedRevision int64,
-		request httpclient.UpdateRecordRequest,
+		title string,
+		payload model.RecordPayload,
 	) (model.Record, error)
 	DeleteRecord(ctx context.Context, accessToken string, recordID string, expectedRevision int64) error
 }
@@ -75,10 +80,12 @@ func (a *Application) CreateRecord(ctx context.Context, request CreateRecordRequ
 		return model.Record{}, err
 	}
 
-	record, err := a.records.CreateRecord(ctx, storedSession.AccessToken, httpclient.CreateRecordRequest{
-		Title:   request.Title,
-		Payload: request.Payload,
-	})
+	record, err := a.records.CreateRecord(
+		ctx,
+		storedSession.AccessToken,
+		request.Title,
+		request.Payload,
+	)
 	if err != nil {
 		return model.Record{}, mapRecordClientError(fmt.Sprintf("create %s record", request.Payload.RecordType()), err)
 	}
@@ -149,10 +156,8 @@ func (a *Application) UpdateRecord(ctx context.Context, request UpdateRecordRequ
 		storedSession.AccessToken,
 		request.RecordID,
 		request.ExpectedRevision,
-		httpclient.UpdateRecordRequest{
-			Title:   request.Title,
-			Payload: request.Payload,
-		},
+		request.Title,
+		request.Payload,
 	)
 	if err != nil {
 		return model.Record{}, mapRecordClientError(fmt.Sprintf("update %s record", request.Payload.RecordType()), err)
@@ -183,25 +188,22 @@ func (a *Application) DeleteRecord(ctx context.Context, request DeleteRecordRequ
 }
 
 func mapRecordClientError(operation string, err error) error {
-	var apiError *httpclient.APIError
-	if errors.As(err, &apiError) {
-		switch apiError.Code {
-		case "unauthorized":
-			return newUserError("not logged in", errors.Join(ErrNotLoggedIn, err))
-		case "record_not_found":
-			return newUserError("record not found", err)
-		case "record_revision_conflict":
-			return newUserError("record revision conflict", err)
-		case "precondition_required":
-			return newUserError("record revision is required", err)
-		case "payload_too_large":
-			return newUserError("payload is too large", err)
-		case "invalid_request":
-			return newUserError("invalid record data", err)
-		}
+	switch {
+	case errors.Is(err, model.ErrUnauthorized):
+		return newUserError("not logged in", errors.Join(ErrNotLoggedIn, err))
+	case errors.Is(err, model.ErrRecordNotFound):
+		return newUserError("record not found", err)
+	case errors.Is(err, model.ErrRecordRevisionConflict):
+		return newUserError("record revision conflict", err)
+	case errors.Is(err, model.ErrRecordPreconditionRequired):
+		return newUserError("record revision is required", err)
+	case errors.Is(err, model.ErrPayloadTooLarge):
+		return newUserError("payload is too large", err)
+	case errors.Is(err, model.ErrInvalidRecordData):
+		return newUserError("invalid record data", err)
+	default:
+		return fmt.Errorf("%s: %w", operation, err)
 	}
-
-	return fmt.Errorf("%s: %w", operation, err)
 }
 
 func recordFromClient(record model.Record) (model.Record, error) {
