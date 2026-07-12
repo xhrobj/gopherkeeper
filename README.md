@@ -18,6 +18,7 @@
 - `client records create-text` / `update-text` — создание и изменение text-записей;
 - `client records create-credentials` / `update-credentials` — создание и изменение credentials-записей;
 - `client records create-card` / `update-card` — создание и изменение card-записей;
+- `client records create-binary` / `update-binary` — создание и изменение binary-записей;
 - `client records list`, `get`, `delete` — общие операции для всех реализованных типов записей.
 
 ## Локальный запуск с нуля
@@ -251,12 +252,6 @@ User alice registered successfully.
 
 Пароль не передаётся через аргументы процесса и не попадает в shell history.
 
-Для CI и скриптов password можно передать одной строкой через stdin. Значение переменной должно поступать из безопасного хранилища секретов, а не записываться буквально в команду:
-
-```bash
-printf '%s\n' "$GKEEP_PASSWORD" | ./bin/gkeep register -l alice --password-stdin
-```
-
 ### 10. Войти под пользователем
 
 ```bash
@@ -330,15 +325,6 @@ URL (optional):
 
 Password вводится без отображения в терминале. Необязательную приватную метаинформацию можно прочитать из файла через `--metadata-file <path>`.
 
-Для CI и скриптов credentials можно передать одним JSON-значением через stdin:
-
-```bash
-printf '%s' "$GKEEP_CREDENTIALS_JSON" | \
-  gkeep records create-credentials --title 'GitHub' --credentials-stdin
-```
-
-`GKEEP_CREDENTIALS_JSON` должен поступать из безопасного хранилища секретов. Не записывайте JSON с password непосредственно в команду или shell script.
-
 Ожидаемый результат:
 
 ```text
@@ -369,7 +355,34 @@ CVV (optional):
 Created card record <record-id> with revision 1.
 ```
 
-### 15. Получить список записей
+### 15. Создать binary-запись
+
+Подготовить файл с приватными бинарными данными:
+
+```bash
+printf '\x00\x01\x02\xff' > .tmp/backup.bin
+```
+
+Создать запись:
+
+```bash
+gkeep records create-binary \
+  --title 'backup' \
+  --binary-file .tmp/backup.bin \
+  --content-type application/octet-stream
+```
+
+Ожидаемый результат:
+
+```text
+Created binary record <record-id> with revision 1.
+```
+
+Имя `backup.bin` сохраняется внутри зашифрованного payload. Необязательные `content_type` и metadata также
+хранятся приватно. Размер бинарных данных после Base64-декодирования не должен превышать 2 МиБ; пустой файл
+допустим.
+
+### 16. Получить список записей
 
 ```bash
 gkeep records list
@@ -382,21 +395,48 @@ ID                                    TYPE         TITLE       REVISION  UPDATED
 <text-record-id>                      text         my note     1         2026-07-08T12:00:00Z
 <credentials-record-id>               credentials  GitHub      1         2026-07-10T12:01:00Z
 <card-record-id>                      card         Joel's card 1         2026-07-11T12:02:00Z
+<binary-record-id>                    binary       backup      1         2026-07-12T12:03:00Z
 ```
 
-### 16. Получить запись
+### 17. Получить запись
+
+Для text, credentials и card используется общая команда:
 
 ```bash
 gkeep records get <record-id>
 ```
 
-Клиент определяет тип записи и выводит расшифрованный `text`, `credentials` или `card` payload владельцу.
+Клиент определяет тип записи и выводит расшифрованный payload владельцу. Для credentials вывод содержит login,
+password, URL и metadata. Для card вывод содержит полный номер карты, cardholder, срок действия, CVV и metadata.
+Это секретный вывод: не запускайте команду в общем терминале и не перенаправляйте результат в небезопасные логи
+или файлы.
 
-Для credentials вывод содержит login, password, URL и metadata. Для card вывод содержит полный номер карты,
-cardholder, срок действия, CVV и metadata. Это секретный вывод: не запускайте команду в общем терминале и не
-перенаправляйте результат в небезопасные логи или файлы.
+Binary-запись сохраняется только в явно указанный файл:
 
-### 17. Обновить text-запись
+```bash
+gkeep records get <binary-record-id> --output .tmp/restored-backup.bin
+```
+
+Ожидаемый вывод содержит приватные metadata файла, но не сами бинарные данные:
+
+```text
+ID: <binary-record-id>
+Type: binary
+Title: backup
+Revision: 1
+Created at: 2026-07-12T12:03:00Z
+Updated at: 2026-07-12T12:03:00Z
+
+Filename: backup.bin
+Size: 4 bytes
+Saved to: .tmp/restored-backup.bin
+Content type: application/octet-stream
+```
+
+Stored filename не используется как локальный путь. Клиент не перезаписывает существующий output-файл: для
+повторного сохранения нужно удалить его или указать новый путь.
+
+### 18. Обновить text-запись
 
 Подготовить новый файл с приватным текстом:
 
@@ -416,7 +456,7 @@ gkeep records update-text <record-id> --revision 1 --title 'updated note' --text
 Updated text record <record-id> to revision 2.
 ```
 
-### 18. Обновить credentials-запись
+### 19. Обновить credentials-запись
 
 Интерактивное обновление использует те же безопасные prompts, что и создание:
 
@@ -430,7 +470,7 @@ gkeep records update-credentials <record-id> --revision 1 --title 'Updated GitHu
 Updated credentials record <record-id> to revision 2.
 ```
 
-### 19. Обновить card-запись
+### 20. Обновить card-запись
 
 Интерактивное обновление использует те же безопасные prompts, что и создание:
 
@@ -438,17 +478,30 @@ Updated credentials record <record-id> to revision 2.
 gkeep records update-card <record-id> --revision 1 --title "Joel's card updated"
 ```
 
-Для автоматизации можно передать новый полный payload через stdin:
+Ожидаемый результат:
+
+```text
+Updated card record <record-id> to revision 2.
+```
+
+### 21. Обновить binary-запись
+
+Подготовить новый файл и передать ожидаемую текущую ревизию:
 
 ```bash
-printf '%s' "$GKEEP_CARD_JSON" | \
-  gkeep records update-card <record-id> --revision 1 --title "Joel's card updated" --card-stdin
+printf '\x10\x20\x30\x40' > .tmp/backup-updated.bin
+
+gkeep records update-binary <record-id> \
+  --revision 1 \
+  --title 'updated backup' \
+  --binary-file .tmp/backup-updated.bin \
+  --content-type application/octet-stream
 ```
 
 Ожидаемый результат:
 
 ```text
-Updated card record <record-id> to revision 2.
+Updated binary record <record-id> to revision 2.
 ```
 
 Для всех update-команд `--revision` обязателен. Клиент передаёт её Серверу в HTTP-заголовке `If-Match`, чтобы
@@ -459,9 +512,9 @@ record revision conflict
 ```
 
 Тип записи изменить нельзя: text-запись обновляется только через `update-text`, credentials-запись — через
-`update-credentials`, card-запись — через `update-card`.
+`update-credentials`, card-запись — через `update-card`, binary-запись — через `update-binary`.
 
-### 20. Удалить запись
+### 22. Удалить запись
 
 Удалить запись любого реализованного типа можно общей командой с актуальной ревизией:
 
@@ -477,7 +530,7 @@ Deleted record <record-id>.
 
 Если ревизия устарела, Сервер возвращает конфликт и запись не удаляется. После успешного удаления повторный `gkeep records get <record-id>` вернёт `record not found`.
 
-### 21. Выйти из online-сессии
+### 23. Выйти из online-сессии
 
 ```bash
 gkeep logout
