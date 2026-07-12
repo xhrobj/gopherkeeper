@@ -37,16 +37,6 @@ type UpdateRecordRequest struct {
 	Payload model.RecordPayload
 }
 
-// Record содержит открытую metadata и расшифрованный типизированный payload,
-// возвращённые Сервером.
-type Record struct {
-	// Metadata содержит открытые поля записи.
-	Metadata model.RecordMetadata
-
-	// Payload содержит приватный payload согласно типу записи.
-	Payload model.RecordPayload
-}
-
 type recordRequest struct {
 	Type    model.RecordType    `json:"type"`
 	Title   string              `json:"title"`
@@ -81,10 +71,10 @@ func (c *Client) CreateRecord(
 	ctx context.Context,
 	accessToken string,
 	request CreateRecordRequest,
-) (Record, error) {
+) (model.Record, error) {
 	body, err := newRecordRequest(request.Title, request.Payload)
 	if err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 
 	var created recordResponse
@@ -97,7 +87,7 @@ func (c *Client) CreateRecord(
 		expectedStatus: http.StatusCreated,
 		responseBody:   &created,
 	}); err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 
 	return recordFromResponse(created)
@@ -127,7 +117,7 @@ func (c *Client) ListRecords(ctx context.Context, accessToken string) ([]model.R
 }
 
 // GetRecord возвращает запись текущего пользователя с payload согласно её типу.
-func (c *Client) GetRecord(ctx context.Context, accessToken string, recordID string) (Record, error) {
+func (c *Client) GetRecord(ctx context.Context, accessToken string, recordID string) (model.Record, error) {
 	var record recordResponse
 
 	if err := c.doJSON(ctx, jsonRequest{
@@ -138,7 +128,7 @@ func (c *Client) GetRecord(ctx context.Context, accessToken string, recordID str
 		expectedStatus: http.StatusOK,
 		responseBody:   &record,
 	}); err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 
 	return recordFromResponse(record)
@@ -151,10 +141,10 @@ func (c *Client) UpdateRecord(
 	recordID string,
 	expectedRevision int64,
 	request UpdateRecordRequest,
-) (Record, error) {
+) (model.Record, error) {
 	body, err := newRecordRequest(request.Title, request.Payload)
 	if err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 
 	var updated recordResponse
@@ -170,7 +160,7 @@ func (c *Client) UpdateRecord(
 		expectedStatus: http.StatusOK,
 		responseBody:   &updated,
 	}); err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 
 	return recordFromResponse(updated)
@@ -210,19 +200,19 @@ func newRecordRequest(title string, payload model.RecordPayload) (recordRequest,
 	}, nil
 }
 
-func recordFromResponse(response recordResponse) (Record, error) {
+func recordFromResponse(response recordResponse) (model.Record, error) {
 	payload, err := model.NewRecordPayload(response.Type)
 	if err != nil {
-		return Record{}, fmt.Errorf("select record payload: %w", err)
+		return model.Record{}, fmt.Errorf("select record payload: %w", err)
 	}
 	if err := decodeRecordPayload(response.Payload, payload); err != nil {
-		return Record{}, fmt.Errorf("decode record payload: %w", err)
+		return model.Record{}, fmt.Errorf("decode record payload: %w", err)
 	}
 	if err := payload.Validate(); err != nil {
-		return Record{}, fmt.Errorf("validate record payload: %w", err)
+		return model.Record{}, fmt.Errorf("validate record payload: %w", err)
 	}
 
-	return Record{
+	return model.Record{
 		Metadata: recordMetadataFromResponse(recordMetadataResponse{
 			ID:        response.ID,
 			Type:      response.Type,

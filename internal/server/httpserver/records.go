@@ -33,16 +33,16 @@ var (
 // RecordManager выполняет серверные сценарии приватных записей.
 type RecordManager interface {
 	// Create создаёт приватную запись пользователя.
-	Create(ctx context.Context, request service.CreateRecordRequest) (service.DecryptedRecord, error)
+	Create(ctx context.Context, request service.CreateRecordRequest) (model.Record, error)
 
 	// List возвращает открытые поля записей пользователя.
 	List(ctx context.Context, userID int64) ([]model.RecordMetadata, error)
 
 	// Get возвращает запись пользователя с расшифрованным payload согласно её типу.
-	Get(ctx context.Context, userID int64, recordID string) (service.DecryptedRecord, error)
+	Get(ctx context.Context, userID int64, recordID string) (model.Record, error)
 
 	// Update изменяет приватную запись пользователя.
-	Update(ctx context.Context, request service.UpdateRecordRequest) (service.DecryptedRecord, error)
+	Update(ctx context.Context, request service.UpdateRecordRequest) (model.Record, error)
 
 	// Delete удаляет приватную запись пользователя.
 	Delete(ctx context.Context, request service.DeleteRecordRequest) error
@@ -388,7 +388,7 @@ func newRecordMetadataResponse(metadata model.RecordMetadata) recordMetadataResp
 	}
 }
 
-func newRecordResponse(record service.DecryptedRecord) (recordResponse, error) {
+func newRecordResponse(record model.Record) (recordResponse, error) {
 	if record.Payload == nil {
 		return recordResponse{}, errInvalidRecordResponse
 	}

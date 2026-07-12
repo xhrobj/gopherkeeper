@@ -54,7 +54,7 @@ func TestRecordsCreateCredentialsCommand(t *testing.T) {
 	input := strings.NewReader(`{"login":"alice","password":"vault-secret-42"}`)
 	var gotConfig config.Config
 	app := newApplicationStub(t)
-	app.createRecord = func(_ context.Context, request usecase.CreateRecordRequest) (usecase.Record, error) {
+	app.createRecord = func(_ context.Context, request usecase.CreateRecordRequest) (model.Record, error) {
 		payload, ok := request.Payload.(*model.CredentialsPayload)
 		if !ok {
 			t.Fatalf("payload type = %T, want *model.CredentialsPayload", request.Payload)
@@ -62,7 +62,7 @@ func TestRecordsCreateCredentialsCommand(t *testing.T) {
 		if request.Title != "GitHub" || payload.Login != "alice" || payload.Password != testCredentialsPassword {
 			t.Errorf("request = %+v, payload = %+v, want credentials values", request, payload)
 		}
-		return usecase.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 1}}, nil
+		return model.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 1}}, nil
 	}
 	factory := newClientFactoryStub(t)
 	factory.newApplication = func(cfg config.Config) (application, error) {
@@ -98,7 +98,7 @@ func TestRecordsUpdateCredentialsCommand(t *testing.T) {
 
 	input := strings.NewReader(`{"login":"alice","password":"vault-secret-42"}`)
 	app := newApplicationStub(t)
-	app.updateRecord = func(_ context.Context, request usecase.UpdateRecordRequest) (usecase.Record, error) {
+	app.updateRecord = func(_ context.Context, request usecase.UpdateRecordRequest) (model.Record, error) {
 		payload, ok := request.Payload.(*model.CredentialsPayload)
 		if !ok {
 			t.Fatalf("payload type = %T, want *model.CredentialsPayload", request.Payload)
@@ -107,7 +107,7 @@ func TestRecordsUpdateCredentialsCommand(t *testing.T) {
 			request.Title != "GitHub updated" || payload.Login != "alice" || payload.Password != testCredentialsPassword {
 			t.Errorf("request = %+v, payload = %+v, want update values", request, payload)
 		}
-		return usecase.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 3}}, nil
+		return model.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 3}}, nil
 	}
 	factory := newClientFactoryStub(t)
 	factory.newApplication = func(config.Config) (application, error) { return app, nil }
@@ -192,9 +192,9 @@ func TestExecuteCreateCredentialsRecord_Stdin(t *testing.T) {
 		recordCreatorFunc(func(
 			_ context.Context,
 			request usecase.CreateRecordRequest,
-		) (usecase.Record, error) {
+		) (model.Record, error) {
 			assertCreateCredentialsRequest(t, request)
-			return usecase.Record{
+			return model.Record{
 				Metadata: model.RecordMetadata{ID: testRecordID, Revision: 1},
 			}, nil
 		}),
@@ -235,7 +235,7 @@ func TestExecuteCreateCredentialsRecord_Interactive(t *testing.T) {
 		recordCreatorFunc(func(
 			_ context.Context,
 			request usecase.CreateRecordRequest,
-		) (usecase.Record, error) {
+		) (model.Record, error) {
 			payload := credentialsPayloadFromRequest(t, request.Payload)
 			if request.Title != "GitHub" || payload.Login != "alice" ||
 				payload.Password != testCredentialsPassword ||
@@ -244,7 +244,7 @@ func TestExecuteCreateCredentialsRecord_Interactive(t *testing.T) {
 				t.Errorf("request = %+v, payload = %+v, want interactive credentials", request, payload)
 			}
 
-			return usecase.Record{
+			return model.Record{
 				Metadata: model.RecordMetadata{ID: testRecordID, Revision: 1},
 			}, nil
 		}),
@@ -288,9 +288,9 @@ func TestExecuteCreateCredentialsRecord_RejectsConflictingInput(t *testing.T) {
 	creator := recordCreatorFunc(func(
 		context.Context,
 		usecase.CreateRecordRequest,
-	) (usecase.Record, error) {
+	) (model.Record, error) {
 		t.Fatal("creator must not be called")
-		return usecase.Record{}, nil
+		return model.Record{}, nil
 	})
 
 	err := executeCreateCredentialsRecord(
@@ -318,7 +318,7 @@ func TestExecuteUpdateCredentialsRecord(t *testing.T) {
 		recordUpdaterFunc(func(
 			_ context.Context,
 			request usecase.UpdateRecordRequest,
-		) (usecase.Record, error) {
+		) (model.Record, error) {
 			payload := credentialsPayloadFromRequest(t, request.Payload)
 			if request.RecordID != testRecordID || request.ExpectedRevision != 1 ||
 				request.Title != "GitHub updated" || payload.Login != "alice" ||
@@ -326,7 +326,7 @@ func TestExecuteUpdateCredentialsRecord(t *testing.T) {
 				t.Errorf("request = %+v, payload = %+v, want update credentials request", request, payload)
 			}
 
-			return usecase.Record{
+			return model.Record{
 				Metadata: model.RecordMetadata{ID: testRecordID, Revision: 2},
 			}, nil
 		}),
@@ -367,11 +367,11 @@ func TestExecuteGetRecord_Credentials(t *testing.T) {
 
 	err := executeGetRecord(
 		context.Background(),
-		recordGetterFunc(func(_ context.Context, recordID string) (usecase.Record, error) {
+		recordGetterFunc(func(_ context.Context, recordID string) (model.Record, error) {
 			if recordID != testRecordID {
 				t.Errorf("record ID = %q, want %q", recordID, testRecordID)
 			}
-			return usecase.Record{
+			return model.Record{
 				Metadata: model.RecordMetadata{
 					ID:        testRecordID,
 					Type:      model.RecordTypeCredentials,
@@ -414,8 +414,8 @@ func TestExecuteGetRecord_Text(t *testing.T) {
 
 	err := executeGetRecord(
 		context.Background(),
-		recordGetterFunc(func(context.Context, string) (usecase.Record, error) {
-			return usecase.Record{
+		recordGetterFunc(func(context.Context, string) (model.Record, error) {
+			return model.Record{
 				Metadata: model.RecordMetadata{
 					ID:       testRecordID,
 					Type:     model.RecordTypeText,

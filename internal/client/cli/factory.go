@@ -13,10 +13,10 @@ type application interface {
 	Register(ctx context.Context, login, password string) (model.User, error)
 	Login(ctx context.Context, login, password string) (model.User, error)
 	Whoami(ctx context.Context) (model.User, error)
-	CreateRecord(ctx context.Context, request usecase.CreateRecordRequest) (usecase.Record, error)
-	UpdateRecord(ctx context.Context, request usecase.UpdateRecordRequest) (usecase.Record, error)
+	CreateRecord(ctx context.Context, request usecase.CreateRecordRequest) (model.Record, error)
+	UpdateRecord(ctx context.Context, request usecase.UpdateRecordRequest) (model.Record, error)
 	ListRecords(ctx context.Context) ([]model.RecordMetadata, error)
-	GetRecord(ctx context.Context, recordID string) (usecase.Record, error)
+	GetRecord(ctx context.Context, recordID string) (model.Record, error)
 	DeleteRecord(ctx context.Context, request usecase.DeleteRecordRequest) error
 }
 

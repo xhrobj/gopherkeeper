@@ -583,7 +583,7 @@ func assertUpdateRecordPatch(
 	}
 }
 
-func assertUpdatedRecord(t *testing.T, got DecryptedRecord, fixture updateRecordFixture) {
+func assertUpdatedRecord(t *testing.T, got model.Record, fixture updateRecordFixture) {
 	t.Helper()
 
 	if got.Metadata.ID != fixture.recordID || got.Metadata.Title != "Updated Alice note" ||

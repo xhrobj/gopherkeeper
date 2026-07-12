@@ -16,16 +16,16 @@ import (
 const testRecordID = "550e8400-e29b-41d4-a716-446655440000"
 
 type recordClientStub struct {
-	create func(context.Context, string, httpclient.CreateRecordRequest) (httpclient.Record, error)
+	create func(context.Context, string, httpclient.CreateRecordRequest) (model.Record, error)
 	list   func(context.Context, string) ([]model.RecordMetadata, error)
-	get    func(context.Context, string, string) (httpclient.Record, error)
+	get    func(context.Context, string, string) (model.Record, error)
 	update func(
 		context.Context,
 		string,
 		string,
 		int64,
 		httpclient.UpdateRecordRequest,
-	) (httpclient.Record, error)
+	) (model.Record, error)
 	delete func(context.Context, string, string, int64) error
 }
 
@@ -33,7 +33,7 @@ func (s recordClientStub) CreateRecord(
 	ctx context.Context,
 	accessToken string,
 	request httpclient.CreateRecordRequest,
-) (httpclient.Record, error) {
+) (model.Record, error) {
 	return s.create(ctx, accessToken, request)
 }
 
@@ -44,7 +44,7 @@ func (s recordClientStub) ListRecords(ctx context.Context, accessToken string) (
 func (s recordClientStub) GetRecord(
 	ctx context.Context,
 	accessToken, recordID string,
-) (httpclient.Record, error) {
+) (model.Record, error) {
 	return s.get(ctx, accessToken, recordID)
 }
 
@@ -53,7 +53,7 @@ func (s recordClientStub) UpdateRecord(
 	accessToken, recordID string,
 	expectedRevision int64,
 	request httpclient.UpdateRecordRequest,
-) (httpclient.Record, error) {
+) (model.Record, error) {
 	return s.update(ctx, accessToken, recordID, expectedRevision, request)
 }
 
@@ -134,7 +134,7 @@ func TestApplication_CreateRecord(t *testing.T) {
 						_ context.Context,
 						accessToken string,
 						request httpclient.CreateRecordRequest,
-					) (httpclient.Record, error) {
+					) (model.Record, error) {
 						if accessToken != "test.jwt.token" {
 							t.Errorf("access token = %q, want test.jwt.token", accessToken)
 						}
@@ -145,7 +145,7 @@ func TestApplication_CreateRecord(t *testing.T) {
 							t.Errorf("payload = %#v, want %#v", request.Payload, tt.payload)
 						}
 
-						return httpclient.Record{
+						return model.Record{
 							Metadata: model.RecordMetadata{
 								ID:        testRecordID,
 								Type:      request.Payload.RecordType(),
@@ -221,9 +221,9 @@ func TestApplication_CreateRecordValidationError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			application := newTestApplicationWithRecords(userClientStub{}, recordClientStub{
-				create: func(context.Context, string, httpclient.CreateRecordRequest) (httpclient.Record, error) {
+				create: func(context.Context, string, httpclient.CreateRecordRequest) (model.Record, error) {
 					t.Fatal("record client must not be called")
-					return httpclient.Record{}, nil
+					return model.Record{}, nil
 				},
 			}, sessionStorageStub{}, "localhost:8080")
 
@@ -270,7 +270,7 @@ func TestApplication_GetRecord(t *testing.T) {
 	application := newTestApplicationWithRecords(
 		userClientStub{},
 		recordClientStub{
-			get: func(_ context.Context, accessToken, recordID string) (httpclient.Record, error) {
+			get: func(_ context.Context, accessToken, recordID string) (model.Record, error) {
 				if accessToken != "test.jwt.token" {
 					t.Errorf("access token = %q, want test.jwt.token", accessToken)
 				}
@@ -278,7 +278,7 @@ func TestApplication_GetRecord(t *testing.T) {
 					t.Errorf("record ID = %q, want %q", recordID, testRecordID)
 				}
 
-				return httpclient.Record{
+				return model.Record{
 					Metadata: model.RecordMetadata{
 						ID:       testRecordID,
 						Type:     model.RecordTypeCredentials,
@@ -320,7 +320,7 @@ func TestApplication_GetBinaryRecord(t *testing.T) {
 			application := newTestApplicationWithRecords(
 				userClientStub{},
 				recordClientStub{
-					get: func(_ context.Context, accessToken, recordID string) (httpclient.Record, error) {
+					get: func(_ context.Context, accessToken, recordID string) (model.Record, error) {
 						if accessToken != "test.jwt.token" {
 							t.Errorf("access token = %q, want test.jwt.token", accessToken)
 						}
@@ -328,7 +328,7 @@ func TestApplication_GetBinaryRecord(t *testing.T) {
 							t.Errorf("record ID = %q, want %q", recordID, testRecordID)
 						}
 
-						return httpclient.Record{
+						return model.Record{
 							Metadata: model.RecordMetadata{
 								ID:       testRecordID,
 								Type:     model.RecordTypeBinary,
@@ -372,8 +372,8 @@ func TestApplication_GetRecordRejectsTypedNilPayload(t *testing.T) {
 	application := newTestApplicationWithRecords(
 		userClientStub{},
 		recordClientStub{
-			get: func(context.Context, string, string) (httpclient.Record, error) {
-				return httpclient.Record{
+			get: func(context.Context, string, string) (model.Record, error) {
+				return model.Record{
 					Metadata: model.RecordMetadata{Type: model.RecordTypeText},
 					Payload:  payload,
 				}, nil
@@ -393,8 +393,8 @@ func TestApplication_GetRecordRejectsMismatchedPayload(t *testing.T) {
 	application := newTestApplicationWithRecords(
 		userClientStub{},
 		recordClientStub{
-			get: func(context.Context, string, string) (httpclient.Record, error) {
-				return httpclient.Record{
+			get: func(context.Context, string, string) (model.Record, error) {
+				return model.Record{
 					Metadata: model.RecordMetadata{Type: model.RecordTypeText},
 					Payload:  &model.CredentialsPayload{Login: "alice", Password: "secret"},
 				}, nil
@@ -466,7 +466,7 @@ func TestApplication_UpdateRecord(t *testing.T) {
 						accessToken, recordID string,
 						expectedRevision int64,
 						request httpclient.UpdateRecordRequest,
-					) (httpclient.Record, error) {
+					) (model.Record, error) {
 						if accessToken != "test.jwt.token" || recordID != testRecordID || expectedRevision != 1 {
 							t.Error("update request contains unexpected common values")
 						}
@@ -474,7 +474,7 @@ func TestApplication_UpdateRecord(t *testing.T) {
 							t.Errorf("update request = %#v, want title and payload unchanged", request)
 						}
 
-						return httpclient.Record{
+						return model.Record{
 							Metadata: model.RecordMetadata{
 								ID:       testRecordID,
 								Type:     request.Payload.RecordType(),
@@ -513,8 +513,8 @@ func TestApplication_UpdateRecordMapsAPIError(t *testing.T) {
 	application := newTestApplicationWithRecords(
 		userClientStub{},
 		recordClientStub{
-			update: func(context.Context, string, string, int64, httpclient.UpdateRecordRequest) (httpclient.Record, error) {
-				return httpclient.Record{}, &httpclient.APIError{
+			update: func(context.Context, string, string, int64, httpclient.UpdateRecordRequest) (model.Record, error) {
+				return model.Record{}, &httpclient.APIError{
 					StatusCode: 409,
 					Code:       "record_revision_conflict",
 					Message:    "record revision conflict",

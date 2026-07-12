@@ -53,12 +53,12 @@ func TestRecordsCreateCardCommand(t *testing.T) {
 	input := strings.NewReader(`{"number":"2013 0614 2020 0619","cvv":"014"}`)
 	var gotConfig config.Config
 	app := newApplicationStub(t)
-	app.createRecord = func(_ context.Context, request usecase.CreateRecordRequest) (usecase.Record, error) {
+	app.createRecord = func(_ context.Context, request usecase.CreateRecordRequest) (model.Record, error) {
 		payload := cardPayloadFromRequest(t, request.Payload)
 		if request.Title != "Joel's card" || payload.Number != testCardNumber || payload.CVV != testCardCVV {
 			t.Errorf("request = %+v, payload = %+v, want card values", request, payload)
 		}
-		return usecase.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 1}}, nil
+		return model.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 1}}, nil
 	}
 	factory := newClientFactoryStub(t)
 	factory.newApplication = func(cfg config.Config) (application, error) {
@@ -95,13 +95,13 @@ func TestRecordsUpdateCardCommand(t *testing.T) {
 
 	input := strings.NewReader(`{"number":"2013 0614 2020 0619","cvv":"014"}`)
 	app := newApplicationStub(t)
-	app.updateRecord = func(_ context.Context, request usecase.UpdateRecordRequest) (usecase.Record, error) {
+	app.updateRecord = func(_ context.Context, request usecase.UpdateRecordRequest) (model.Record, error) {
 		payload := cardPayloadFromRequest(t, request.Payload)
 		if request.RecordID != testRecordID || request.ExpectedRevision != 2 ||
 			request.Title != "Joel's card updated" || payload.Number != testCardNumber || payload.CVV != testCardCVV {
 			t.Errorf("request = %+v, payload = %+v, want update-card values", request, payload)
 		}
-		return usecase.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 3}}, nil
+		return model.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 3}}, nil
 	}
 	factory := newClientFactoryStub(t)
 	factory.newApplication = func(config.Config) (application, error) { return app, nil }
@@ -164,7 +164,7 @@ func TestExecuteCreateCardRecord_Interactive(t *testing.T) {
 		recordCreatorFunc(func(
 			_ context.Context,
 			request usecase.CreateRecordRequest,
-		) (usecase.Record, error) {
+		) (model.Record, error) {
 			payload := cardPayloadFromRequest(t, request.Payload)
 			if request.Title != "Joel's card" || payload.Number != testCardNumber ||
 				payload.Cardholder != "Joel Miller" || payload.ExpiryMonth == nil ||
@@ -173,7 +173,7 @@ func TestExecuteCreateCardRecord_Interactive(t *testing.T) {
 				t.Errorf("request = %+v, payload = %+v, want interactive card values", request, payload)
 			}
 
-			return usecase.Record{
+			return model.Record{
 				Metadata: model.RecordMetadata{ID: testRecordID, Revision: 1},
 			}, nil
 		}),
@@ -214,14 +214,14 @@ func TestExecuteUpdateCardRecord_Stdin(t *testing.T) {
 		recordUpdaterFunc(func(
 			_ context.Context,
 			request usecase.UpdateRecordRequest,
-		) (usecase.Record, error) {
+		) (model.Record, error) {
 			payload := cardPayloadFromRequest(t, request.Payload)
 			if request.RecordID != testRecordID || request.ExpectedRevision != 1 ||
 				payload.Number != testCardNumber || payload.CVV != testCardCVV {
 				t.Errorf("request = %+v, payload = %+v, want stdin card update", request, payload)
 			}
 
-			return usecase.Record{
+			return model.Record{
 				Metadata: model.RecordMetadata{ID: testRecordID, Revision: 2},
 			}, nil
 		}),
@@ -254,8 +254,8 @@ func TestExecuteGetRecord_Card(t *testing.T) {
 	expiryMonth := 3
 	expiryYear := 2038
 	recordedAt := time.Date(2026, time.July, 11, 12, 0, 0, 0, time.UTC)
-	getter := cardRecordGetterFunc(func(context.Context, string) (usecase.Record, error) {
-		return usecase.Record{
+	getter := cardRecordGetterFunc(func(context.Context, string) (model.Record, error) {
+		return model.Record{
 			Metadata: model.RecordMetadata{
 				ID:        testRecordID,
 				Type:      model.RecordTypeCard,

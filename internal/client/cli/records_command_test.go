@@ -25,9 +25,9 @@ func TestRecordsUpdateTextCommand(t *testing.T) {
 	metadataFile := writeTestFile(t, "metadata.txt", "updated private metadata")
 	var gotConfig config.Config
 	app := newApplicationStub(t)
-	app.updateRecord = func(_ context.Context, request usecase.UpdateRecordRequest) (usecase.Record, error) {
+	app.updateRecord = func(_ context.Context, request usecase.UpdateRecordRequest) (model.Record, error) {
 		assertTextUpdateRequest(t, request)
-		return usecase.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 2}}, nil
+		return model.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 2}}, nil
 	}
 	factory := newClientFactoryStub(t)
 	factory.newApplication = func(cfg config.Config) (application, error) {
@@ -149,9 +149,9 @@ func TestExecuteUpdateTextRecord(t *testing.T) {
 	metadataFile := writeTestFile(t, "metadata.txt", "updated private metadata")
 	updatedAt := time.Date(2026, time.July, 9, 12, 5, 0, 0, time.UTC)
 	app := newApplicationStub(t)
-	app.updateRecord = func(_ context.Context, request usecase.UpdateRecordRequest) (usecase.Record, error) {
+	app.updateRecord = func(_ context.Context, request usecase.UpdateRecordRequest) (model.Record, error) {
 		assertTextUpdateRequest(t, request)
-		return usecase.Record{
+		return model.Record{
 			Metadata: model.RecordMetadata{
 				ID:        testRecordID,
 				Type:      model.RecordTypeText,

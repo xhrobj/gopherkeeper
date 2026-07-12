@@ -20,17 +20,17 @@ import (
 const testRecordID = "7b4c2d7d-0e2f-4c4b-8d4b-8f4f7c4d3a21"
 
 type recordManagerStub struct {
-	create func(context.Context, service.CreateRecordRequest) (service.DecryptedRecord, error)
+	create func(context.Context, service.CreateRecordRequest) (model.Record, error)
 	list   func(context.Context, int64) ([]model.RecordMetadata, error)
-	get    func(context.Context, int64, string) (service.DecryptedRecord, error)
-	update func(context.Context, service.UpdateRecordRequest) (service.DecryptedRecord, error)
+	get    func(context.Context, int64, string) (model.Record, error)
+	update func(context.Context, service.UpdateRecordRequest) (model.Record, error)
 	delete func(context.Context, service.DeleteRecordRequest) error
 }
 
 func (s recordManagerStub) Create(
 	ctx context.Context,
 	request service.CreateRecordRequest,
-) (service.DecryptedRecord, error) {
+) (model.Record, error) {
 	return s.create(ctx, request)
 }
 
@@ -42,14 +42,14 @@ func (s recordManagerStub) Get(
 	ctx context.Context,
 	userID int64,
 	recordID string,
-) (service.DecryptedRecord, error) {
+) (model.Record, error) {
 	return s.get(ctx, userID, recordID)
 }
 
 func (s recordManagerStub) Update(
 	ctx context.Context,
 	request service.UpdateRecordRequest,
-) (service.DecryptedRecord, error) {
+) (model.Record, error) {
 	return s.update(ctx, request)
 }
 
@@ -102,10 +102,10 @@ func TestCreateRecordHandler_CreatesTextRecord(t *testing.T) {
 	updatedAt := time.Date(2026, time.July, 8, 12, 1, 0, 0, time.UTC)
 	var gotRequest service.CreateRecordRequest
 	records := recordManagerStub{
-		create: func(_ context.Context, request service.CreateRecordRequest) (service.DecryptedRecord, error) {
+		create: func(_ context.Context, request service.CreateRecordRequest) (model.Record, error) {
 			gotRequest = request
 
-			return service.DecryptedRecord{
+			return model.Record{
 				Metadata: model.RecordMetadata{
 					ID:        testRecordID,
 					Type:      model.RecordTypeText,
@@ -173,10 +173,10 @@ func TestCreateRecordHandler_CreatesCredentialsRecord(t *testing.T) {
 		create: func(
 			_ context.Context,
 			request service.CreateRecordRequest,
-		) (service.DecryptedRecord, error) {
+		) (model.Record, error) {
 			gotRequest = request
 
-			return service.DecryptedRecord{
+			return model.Record{
 				Metadata: model.RecordMetadata{
 					ID:        testRecordID,
 					Type:      model.RecordTypeCredentials,
@@ -248,10 +248,10 @@ func TestCreateRecordHandler_CreatesCardRecord(t *testing.T) {
 		create: func(
 			_ context.Context,
 			request service.CreateRecordRequest,
-		) (service.DecryptedRecord, error) {
+		) (model.Record, error) {
 			gotRequest = request
 
-			return service.DecryptedRecord{
+			return model.Record{
 				Metadata: model.RecordMetadata{
 					ID:        testRecordID,
 					Type:      model.RecordTypeCard,
@@ -321,10 +321,10 @@ func TestCreateRecordHandler_CreatesBinaryRecord(t *testing.T) {
 		create: func(
 			_ context.Context,
 			request service.CreateRecordRequest,
-		) (service.DecryptedRecord, error) {
+		) (model.Record, error) {
 			gotRequest = request
 
-			return service.DecryptedRecord{
+			return model.Record{
 				Metadata: model.RecordMetadata{
 					ID:        testRecordID,
 					Type:      model.RecordTypeBinary,
@@ -393,7 +393,7 @@ func TestCreateRecordHandler_AcceptsEmptyBinaryFile(t *testing.T) {
 		create: func(
 			_ context.Context,
 			request service.CreateRecordRequest,
-		) (service.DecryptedRecord, error) {
+		) (model.Record, error) {
 			payload := requireBinaryPayload(t, request.Payload)
 			if payload.Data == nil {
 				t.Fatal("Create() binary data = nil, want present empty slice")
@@ -402,7 +402,7 @@ func TestCreateRecordHandler_AcceptsEmptyBinaryFile(t *testing.T) {
 				t.Fatalf("Create() binary data length = %d, want 0", len(payload.Data))
 			}
 
-			return service.DecryptedRecord{
+			return model.Record{
 				Metadata: model.RecordMetadata{
 					ID:       testRecordID,
 					Type:     model.RecordTypeBinary,
@@ -462,8 +462,8 @@ func TestCreateRecordHandler_MapsBinaryPayloadValidation(t *testing.T) {
 				create: func(
 					_ context.Context,
 					request service.CreateRecordRequest,
-				) (service.DecryptedRecord, error) {
-					return service.DecryptedRecord{}, request.Payload.Validate()
+				) (model.Record, error) {
+					return model.Record{}, request.Payload.Validate()
 				},
 			}
 			request := newCreateRecordRequest(t, tt.body)
@@ -574,9 +574,9 @@ func TestCreateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			records := recordManagerStub{
-				create: func(context.Context, service.CreateRecordRequest) (service.DecryptedRecord, error) {
+				create: func(context.Context, service.CreateRecordRequest) (model.Record, error) {
 					t.Fatal("record service must not be called")
-					return service.DecryptedRecord{}, nil
+					return model.Record{}, nil
 				},
 			}
 			request := httptest.NewRequest(http.MethodPost, "/api/v1/records", strings.NewReader(tt.body))
@@ -594,9 +594,9 @@ func TestCreateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 
 func TestCreateRecordHandler_RejectsOversizedBody(t *testing.T) {
 	records := recordManagerStub{
-		create: func(context.Context, service.CreateRecordRequest) (service.DecryptedRecord, error) {
+		create: func(context.Context, service.CreateRecordRequest) (model.Record, error) {
 			t.Fatal("record service must not be called")
-			return service.DecryptedRecord{}, nil
+			return model.Record{}, nil
 		},
 	}
 	body := `{"type":"text","title":"my note","payload":{"text":"` +
@@ -619,8 +619,8 @@ func TestCreateRecordHandler_RejectsOversizedBody(t *testing.T) {
 func TestCreateRecordHandler_MapsServiceError(t *testing.T) {
 	internalError := errors.New("database connection details")
 	records := recordManagerStub{
-		create: func(context.Context, service.CreateRecordRequest) (service.DecryptedRecord, error) {
-			return service.DecryptedRecord{}, internalError
+		create: func(context.Context, service.CreateRecordRequest) (model.Record, error) {
+			return model.Record{}, internalError
 		},
 	}
 	request := newCreateRecordRequest(t, createTextRecordRequestBody(t, "my note", "secret", ""))
@@ -698,11 +698,11 @@ func TestGetRecordHandler_ReturnsTextRecord(t *testing.T) {
 	var gotUserID int64
 	var gotRecordID string
 	records := recordManagerStub{
-		get: func(_ context.Context, userID int64, recordID string) (service.DecryptedRecord, error) {
+		get: func(_ context.Context, userID int64, recordID string) (model.Record, error) {
 			gotUserID = userID
 			gotRecordID = recordID
 
-			return service.DecryptedRecord{
+			return model.Record{
 				Metadata: model.RecordMetadata{
 					ID:        testRecordID,
 					Type:      model.RecordTypeText,
@@ -757,7 +757,7 @@ func TestGetRecordHandler_ReturnsCredentialsRecord(t *testing.T) {
 		Metadata: "personal account",
 	}
 	records := recordManagerStub{
-		get: func(_ context.Context, userID int64, recordID string) (service.DecryptedRecord, error) {
+		get: func(_ context.Context, userID int64, recordID string) (model.Record, error) {
 			if userID != 42 {
 				t.Fatalf("Get() userID = %d, want 42", userID)
 			}
@@ -765,7 +765,7 @@ func TestGetRecordHandler_ReturnsCredentialsRecord(t *testing.T) {
 				t.Fatalf("Get() recordID = %q, want %q", recordID, testRecordID)
 			}
 
-			return service.DecryptedRecord{
+			return model.Record{
 				Metadata: model.RecordMetadata{
 					ID:        testRecordID,
 					Type:      model.RecordTypeCredentials,
@@ -814,7 +814,7 @@ func TestGetRecordHandler_ReturnsBinaryRecord(t *testing.T) {
 		Metadata:    "encrypted backup",
 	}
 	records := recordManagerStub{
-		get: func(_ context.Context, userID int64, recordID string) (service.DecryptedRecord, error) {
+		get: func(_ context.Context, userID int64, recordID string) (model.Record, error) {
 			if userID != 42 {
 				t.Fatalf("Get() userID = %d, want 42", userID)
 			}
@@ -822,7 +822,7 @@ func TestGetRecordHandler_ReturnsBinaryRecord(t *testing.T) {
 				t.Fatalf("Get() recordID = %q, want %q", recordID, testRecordID)
 			}
 
-			return service.DecryptedRecord{
+			return model.Record{
 				Metadata: model.RecordMetadata{
 					ID:        testRecordID,
 					Type:      model.RecordTypeBinary,
@@ -872,8 +872,8 @@ func TestGetRecordHandler_ReturnsBinaryRecord(t *testing.T) {
 
 func TestGetRecordHandler_RejectsInvalidServiceResult(t *testing.T) {
 	records := recordManagerStub{
-		get: func(context.Context, int64, string) (service.DecryptedRecord, error) {
-			return service.DecryptedRecord{
+		get: func(context.Context, int64, string) (model.Record, error) {
+			return model.Record{
 				Metadata: model.RecordMetadata{
 					ID:       testRecordID,
 					Type:     model.RecordTypeCredentials,
@@ -904,7 +904,7 @@ func TestGetRecordHandler_RejectsInvalidServiceResult(t *testing.T) {
 func TestNewRecordResponse_RejectsNilPayload(t *testing.T) {
 	var payload *model.TextPayload
 
-	_, err := newRecordResponse(service.DecryptedRecord{
+	_, err := newRecordResponse(model.Record{
 		Metadata: model.RecordMetadata{Type: model.RecordTypeText},
 		Payload:  payload,
 	})
@@ -918,10 +918,10 @@ func TestUpdateRecordHandler_UpdatesTextRecord(t *testing.T) {
 	updatedAt := time.Date(2026, time.July, 9, 12, 1, 0, 0, time.UTC)
 	var gotRequest service.UpdateRecordRequest
 	records := recordManagerStub{
-		update: func(_ context.Context, request service.UpdateRecordRequest) (service.DecryptedRecord, error) {
+		update: func(_ context.Context, request service.UpdateRecordRequest) (model.Record, error) {
 			gotRequest = request
 
-			return service.DecryptedRecord{
+			return model.Record{
 				Metadata: model.RecordMetadata{
 					ID:        request.RecordID,
 					Type:      model.RecordTypeText,
@@ -996,10 +996,10 @@ func TestUpdateRecordHandler_UpdatesCredentialsRecord(t *testing.T) {
 		update: func(
 			_ context.Context,
 			request service.UpdateRecordRequest,
-		) (service.DecryptedRecord, error) {
+		) (model.Record, error) {
 			gotRequest = request
 
-			return service.DecryptedRecord{
+			return model.Record{
 				Metadata: model.RecordMetadata{
 					ID:        request.RecordID,
 					Type:      model.RecordTypeCredentials,
@@ -1164,9 +1164,9 @@ func TestUpdateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			records := recordManagerStub{
-				update: func(context.Context, service.UpdateRecordRequest) (service.DecryptedRecord, error) {
+				update: func(context.Context, service.UpdateRecordRequest) (model.Record, error) {
 					t.Fatal("record service must not be called")
-					return service.DecryptedRecord{}, nil
+					return model.Record{}, nil
 				},
 			}
 			request := httptest.NewRequest(http.MethodPut, "/api/v1/records/"+testRecordID, strings.NewReader(tt.body))
@@ -1188,9 +1188,9 @@ func TestUpdateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 
 func TestUpdateRecordHandler_RejectsOversizedBody(t *testing.T) {
 	records := recordManagerStub{
-		update: func(context.Context, service.UpdateRecordRequest) (service.DecryptedRecord, error) {
+		update: func(context.Context, service.UpdateRecordRequest) (model.Record, error) {
 			t.Fatal("record service must not be called")
-			return service.DecryptedRecord{}, nil
+			return model.Record{}, nil
 		},
 	}
 	body := `{"type":"text","title":"my note","payload":{"text":"` +
@@ -1213,8 +1213,8 @@ func TestUpdateRecordHandler_RejectsOversizedBody(t *testing.T) {
 
 func TestUpdateRecordHandler_MapsServiceError(t *testing.T) {
 	records := recordManagerStub{
-		update: func(context.Context, service.UpdateRecordRequest) (service.DecryptedRecord, error) {
-			return service.DecryptedRecord{}, model.ErrRecordRevisionConflict
+		update: func(context.Context, service.UpdateRecordRequest) (model.Record, error) {
+			return model.Record{}, model.ErrRecordRevisionConflict
 		},
 	}
 	request := newUpdateRecordRequest(t, testRecordID, updateTextRecordRequestBody(t, "my note", "secret", ""))
@@ -1482,21 +1482,21 @@ func TestParseIfMatchRevision(t *testing.T) {
 
 func TestRecordHandlers_RequireAuthentication(t *testing.T) {
 	records := recordManagerStub{
-		create: func(context.Context, service.CreateRecordRequest) (service.DecryptedRecord, error) {
+		create: func(context.Context, service.CreateRecordRequest) (model.Record, error) {
 			t.Fatal("record service must not be called")
-			return service.DecryptedRecord{}, nil
+			return model.Record{}, nil
 		},
 		list: func(context.Context, int64) ([]model.RecordMetadata, error) {
 			t.Fatal("record service must not be called")
 			return nil, nil
 		},
-		get: func(context.Context, int64, string) (service.DecryptedRecord, error) {
+		get: func(context.Context, int64, string) (model.Record, error) {
 			t.Fatal("record service must not be called")
-			return service.DecryptedRecord{}, nil
+			return model.Record{}, nil
 		},
-		update: func(context.Context, service.UpdateRecordRequest) (service.DecryptedRecord, error) {
+		update: func(context.Context, service.UpdateRecordRequest) (model.Record, error) {
 			t.Fatal("record service must not be called")
-			return service.DecryptedRecord{}, nil
+			return model.Record{}, nil
 		},
 		delete: func(context.Context, service.DeleteRecordRequest) error {
 			t.Fatal("record service must not be called")
@@ -1548,8 +1548,8 @@ func TestRecordHandlers_RequireAuthentication(t *testing.T) {
 
 func TestRecordHandlers_MapRecordNotFound(t *testing.T) {
 	records := recordManagerStub{
-		get: func(context.Context, int64, string) (service.DecryptedRecord, error) {
-			return service.DecryptedRecord{}, fmt.Errorf("get record: %w", model.ErrRecordNotFound)
+		get: func(context.Context, int64, string) (model.Record, error) {
+			return model.Record{}, fmt.Errorf("get record: %w", model.ErrRecordNotFound)
 		},
 	}
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/records/"+testRecordID, nil)

@@ -105,7 +105,7 @@ func decodeCredentialsRecordRequest(t *testing.T, r *http.Request) credentialsRe
 	return credentialsRecordRequest{Title: request.Title, Payload: payload}
 }
 
-func assertCreatedCredentialsRecord(t *testing.T, record Record, password string) {
+func assertCreatedCredentialsRecord(t *testing.T, record model.Record, password string) {
 	t.Helper()
 
 	payload, ok := record.Payload.(*model.CredentialsPayload)

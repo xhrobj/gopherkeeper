@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
-	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
@@ -23,7 +22,7 @@ func TestRecordsGetBinaryCommand(t *testing.T) {
 	recordedAt := time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
 	var gotConfig config.Config
 	app := newApplicationStub(t)
-	app.getRecord = func(_ context.Context, recordID string) (usecase.Record, error) {
+	app.getRecord = func(_ context.Context, recordID string) (model.Record, error) {
 		if recordID != testRecordID {
 			t.Errorf("record ID = %q, want %q", recordID, testRecordID)
 		}
@@ -82,7 +81,7 @@ func TestRecordsGetBinaryCommand(t *testing.T) {
 
 func TestExecuteGetRecord_BinaryRequiresOutput(t *testing.T) {
 	recordedAt := time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
-	getter := recordGetterFunc(func(context.Context, string) (usecase.Record, error) {
+	getter := recordGetterFunc(func(context.Context, string) (model.Record, error) {
 		return binaryTestRecord(recordedAt, []byte("backup")), nil
 	})
 
@@ -98,8 +97,8 @@ func TestExecuteGetRecord_BinaryRequiresOutput(t *testing.T) {
 
 func TestExecuteGetRecord_RejectsOutputForText(t *testing.T) {
 	outputPath := filepath.Join(t.TempDir(), "note.txt")
-	getter := recordGetterFunc(func(context.Context, string) (usecase.Record, error) {
-		return usecase.Record{
+	getter := recordGetterFunc(func(context.Context, string) (model.Record, error) {
+		return model.Record{
 			Metadata: model.RecordMetadata{
 				ID:       testRecordID,
 				Type:     model.RecordTypeText,
@@ -129,7 +128,7 @@ func TestExecuteGetRecord_DoesNotOverwriteBinaryFile(t *testing.T) {
 		t.Fatalf("write existing output: %v", err)
 	}
 	recordedAt := time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
-	getter := recordGetterFunc(func(context.Context, string) (usecase.Record, error) {
+	getter := recordGetterFunc(func(context.Context, string) (model.Record, error) {
 		return binaryTestRecord(recordedAt, []byte("replacement")), nil
 	})
 
@@ -147,8 +146,8 @@ func TestExecuteGetRecord_DoesNotOverwriteBinaryFile(t *testing.T) {
 }
 
 func TestExecuteGetRecord_RejectsNilBinaryPayload(t *testing.T) {
-	getter := recordGetterFunc(func(context.Context, string) (usecase.Record, error) {
-		return usecase.Record{
+	getter := recordGetterFunc(func(context.Context, string) (model.Record, error) {
+		return model.Record{
 			Metadata: model.RecordMetadata{ID: testRecordID, Type: model.RecordTypeBinary},
 			Payload:  (*model.BinaryPayload)(nil),
 		}, nil
@@ -166,8 +165,8 @@ func TestExecuteGetRecord_RejectsNilBinaryPayload(t *testing.T) {
 	}
 }
 
-func binaryTestRecord(recordedAt time.Time, data []byte) usecase.Record {
-	return usecase.Record{
+func binaryTestRecord(recordedAt time.Time, data []byte) model.Record {
+	return model.Record{
 		Metadata: model.RecordMetadata{
 			ID:        testRecordID,
 			Type:      model.RecordTypeBinary,

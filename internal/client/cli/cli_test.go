@@ -17,10 +17,10 @@ type applicationStub struct {
 	register     func(context.Context, string, string) (model.User, error)
 	login        func(context.Context, string, string) (model.User, error)
 	whoami       func(context.Context) (model.User, error)
-	createRecord func(context.Context, usecase.CreateRecordRequest) (usecase.Record, error)
-	updateRecord func(context.Context, usecase.UpdateRecordRequest) (usecase.Record, error)
+	createRecord func(context.Context, usecase.CreateRecordRequest) (model.Record, error)
+	updateRecord func(context.Context, usecase.UpdateRecordRequest) (model.Record, error)
 	listRecords  func(context.Context) ([]model.RecordMetadata, error)
-	getRecord    func(context.Context, string) (usecase.Record, error)
+	getRecord    func(context.Context, string) (model.Record, error)
 	deleteRecord func(context.Context, usecase.DeleteRecordRequest) error
 }
 
@@ -43,25 +43,25 @@ func newApplicationStub(t *testing.T) *applicationStub {
 			t.Fatal("Whoami must not be called")
 			return model.User{}, nil
 		},
-		createRecord: func(context.Context, usecase.CreateRecordRequest) (usecase.Record, error) {
+		createRecord: func(context.Context, usecase.CreateRecordRequest) (model.Record, error) {
 			t.Helper()
 			t.Fatal("CreateRecord must not be called")
-			return usecase.Record{}, nil
+			return model.Record{}, nil
 		},
-		updateRecord: func(context.Context, usecase.UpdateRecordRequest) (usecase.Record, error) {
+		updateRecord: func(context.Context, usecase.UpdateRecordRequest) (model.Record, error) {
 			t.Helper()
 			t.Fatal("UpdateRecord must not be called")
-			return usecase.Record{}, nil
+			return model.Record{}, nil
 		},
 		listRecords: func(context.Context) ([]model.RecordMetadata, error) {
 			t.Helper()
 			t.Fatal("ListRecords must not be called")
 			return nil, nil
 		},
-		getRecord: func(context.Context, string) (usecase.Record, error) {
+		getRecord: func(context.Context, string) (model.Record, error) {
 			t.Helper()
 			t.Fatal("GetRecord must not be called")
-			return usecase.Record{}, nil
+			return model.Record{}, nil
 		},
 		deleteRecord: func(context.Context, usecase.DeleteRecordRequest) error {
 			t.Helper()
@@ -86,14 +86,14 @@ func (s *applicationStub) Whoami(ctx context.Context) (model.User, error) {
 func (s *applicationStub) CreateRecord(
 	ctx context.Context,
 	request usecase.CreateRecordRequest,
-) (usecase.Record, error) {
+) (model.Record, error) {
 	return s.createRecord(ctx, request)
 }
 
 func (s *applicationStub) UpdateRecord(
 	ctx context.Context,
 	request usecase.UpdateRecordRequest,
-) (usecase.Record, error) {
+) (model.Record, error) {
 	return s.updateRecord(ctx, request)
 }
 
@@ -101,7 +101,7 @@ func (s *applicationStub) ListRecords(ctx context.Context) ([]model.RecordMetada
 	return s.listRecords(ctx)
 }
 
-func (s *applicationStub) GetRecord(ctx context.Context, recordID string) (usecase.Record, error) {
+func (s *applicationStub) GetRecord(ctx context.Context, recordID string) (model.Record, error) {
 	return s.getRecord(ctx, recordID)
 }
 
@@ -211,25 +211,25 @@ func runTestCommand(
 }
 
 func recordCreatorFunc(
-	fn func(context.Context, usecase.CreateRecordRequest) (usecase.Record, error),
+	fn func(context.Context, usecase.CreateRecordRequest) (model.Record, error),
 ) application {
 	return &applicationStub{createRecord: fn}
 }
 
 func recordUpdaterFunc(
-	fn func(context.Context, usecase.UpdateRecordRequest) (usecase.Record, error),
+	fn func(context.Context, usecase.UpdateRecordRequest) (model.Record, error),
 ) application {
 	return &applicationStub{updateRecord: fn}
 }
 
 func recordGetterFunc(
-	fn func(context.Context, string) (usecase.Record, error),
+	fn func(context.Context, string) (model.Record, error),
 ) application {
 	return &applicationStub{getRecord: fn}
 }
 
 func cardRecordGetterFunc(
-	fn func(context.Context, string) (usecase.Record, error),
+	fn func(context.Context, string) (model.Record, error),
 ) application {
 	return &applicationStub{getRecord: fn}
 }

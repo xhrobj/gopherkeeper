@@ -21,14 +21,14 @@ func TestRecordsCreateBinaryCommand(t *testing.T) {
 	metadataFile := writeTestFile(t, "metadata.txt", "private backup")
 	var gotConfig config.Config
 	app := newApplicationStub(t)
-	app.createRecord = func(_ context.Context, request usecase.CreateRecordRequest) (usecase.Record, error) {
+	app.createRecord = func(_ context.Context, request usecase.CreateRecordRequest) (model.Record, error) {
 		payload := binaryPayloadFromRequest(t, request.Payload)
 		if request.Title != "Encrypted backup" || payload.Filename != "backup.bin" ||
 			!bytes.Equal(payload.Data, []byte{0x00, 0x01, 0x02, 0xff}) ||
 			payload.ContentType != "application/octet-stream" || payload.Metadata != "private backup" {
 			t.Errorf("request = %+v, payload = %+v, want binary values", request, payload)
 		}
-		return usecase.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 1}}, nil
+		return model.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 1}}, nil
 	}
 	factory := newClientFactoryStub(t)
 	factory.newApplication = func(cfg config.Config) (application, error) {
@@ -70,14 +70,14 @@ func TestRecordsUpdateBinaryCommand(t *testing.T) {
 
 	binaryFile := writeBinaryTestFile(t, "backup-v2.bin", []byte("updated backup"))
 	app := newApplicationStub(t)
-	app.updateRecord = func(_ context.Context, request usecase.UpdateRecordRequest) (usecase.Record, error) {
+	app.updateRecord = func(_ context.Context, request usecase.UpdateRecordRequest) (model.Record, error) {
 		payload := binaryPayloadFromRequest(t, request.Payload)
 		if request.RecordID != testRecordID || request.ExpectedRevision != 1 ||
 			request.Title != "Updated backup" || payload.Filename != "backup-v2.bin" ||
 			string(payload.Data) != "updated backup" {
 			t.Errorf("request = %+v, payload = %+v, want binary update", request, payload)
 		}
-		return usecase.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 2}}, nil
+		return model.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 2}}, nil
 	}
 	factory := newClientFactoryStub(t)
 	factory.newApplication = func(config.Config) (application, error) { return app, nil }

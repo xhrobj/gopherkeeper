@@ -12,16 +12,16 @@ import (
 var errUnexpectedRecordPayload = errors.New("unexpected record payload")
 
 type recordClient interface {
-	CreateRecord(ctx context.Context, accessToken string, request httpclient.CreateRecordRequest) (httpclient.Record, error)
+	CreateRecord(ctx context.Context, accessToken string, request httpclient.CreateRecordRequest) (model.Record, error)
 	ListRecords(ctx context.Context, accessToken string) ([]model.RecordMetadata, error)
-	GetRecord(ctx context.Context, accessToken string, recordID string) (httpclient.Record, error)
+	GetRecord(ctx context.Context, accessToken string, recordID string) (model.Record, error)
 	UpdateRecord(
 		ctx context.Context,
 		accessToken string,
 		recordID string,
 		expectedRevision int64,
 		request httpclient.UpdateRecordRequest,
-	) (httpclient.Record, error)
+	) (model.Record, error)
 	DeleteRecord(ctx context.Context, accessToken string, recordID string, expectedRevision int64) error
 }
 
@@ -58,30 +58,21 @@ type DeleteRecordRequest struct {
 	ExpectedRevision int64
 }
 
-// Record содержит открытую metadata и расшифрованный типизированный payload.
-type Record struct {
-	// Metadata содержит открытые поля записи.
-	Metadata model.RecordMetadata
-
-	// Payload содержит приватный payload согласно типу записи.
-	Payload model.RecordPayload
-}
-
 // CreateRecord создаёт запись выбранного типа в online-режиме.
-func (a *Application) CreateRecord(ctx context.Context, request CreateRecordRequest) (Record, error) {
+func (a *Application) CreateRecord(ctx context.Context, request CreateRecordRequest) (model.Record, error) {
 	if err := model.ValidateRecordTitle(request.Title); err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 	if request.Payload == nil {
-		return Record{}, errUnexpectedRecordPayload
+		return model.Record{}, errUnexpectedRecordPayload
 	}
 	if err := request.Payload.Validate(); err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 
 	storedSession, err := a.loadSession()
 	if err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 
 	record, err := a.records.CreateRecord(ctx, storedSession.AccessToken, httpclient.CreateRecordRequest{
@@ -89,7 +80,7 @@ func (a *Application) CreateRecord(ctx context.Context, request CreateRecordRequ
 		Payload: request.Payload,
 	})
 	if err != nil {
-		return Record{}, mapRecordClientError(fmt.Sprintf("create %s record", request.Payload.RecordType()), err)
+		return model.Record{}, mapRecordClientError(fmt.Sprintf("create %s record", request.Payload.RecordType()), err)
 	}
 
 	return recordFromClient(record)
@@ -112,45 +103,45 @@ func (a *Application) ListRecords(ctx context.Context) ([]model.RecordMetadata, 
 }
 
 // GetRecord возвращает запись текущего пользователя с payload согласно её типу.
-func (a *Application) GetRecord(ctx context.Context, recordID string) (Record, error) {
+func (a *Application) GetRecord(ctx context.Context, recordID string) (model.Record, error) {
 	if err := model.ValidateRecordID(recordID); err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 
 	storedSession, err := a.loadSession()
 	if err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 
 	record, err := a.records.GetRecord(ctx, storedSession.AccessToken, recordID)
 	if err != nil {
-		return Record{}, mapRecordClientError("get record", err)
+		return model.Record{}, mapRecordClientError("get record", err)
 	}
 
 	return recordFromClient(record)
 }
 
 // UpdateRecord изменяет запись выбранного типа в online-режиме.
-func (a *Application) UpdateRecord(ctx context.Context, request UpdateRecordRequest) (Record, error) {
+func (a *Application) UpdateRecord(ctx context.Context, request UpdateRecordRequest) (model.Record, error) {
 	if err := model.ValidateRecordID(request.RecordID); err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 	if err := model.ValidateRecordRevision(request.ExpectedRevision); err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 	if err := model.ValidateRecordTitle(request.Title); err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 	if request.Payload == nil {
-		return Record{}, errUnexpectedRecordPayload
+		return model.Record{}, errUnexpectedRecordPayload
 	}
 	if err := request.Payload.Validate(); err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 
 	storedSession, err := a.loadSession()
 	if err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 
 	record, err := a.records.UpdateRecord(
@@ -164,7 +155,7 @@ func (a *Application) UpdateRecord(ctx context.Context, request UpdateRecordRequ
 		},
 	)
 	if err != nil {
-		return Record{}, mapRecordClientError(fmt.Sprintf("update %s record", request.Payload.RecordType()), err)
+		return model.Record{}, mapRecordClientError(fmt.Sprintf("update %s record", request.Payload.RecordType()), err)
 	}
 
 	return recordFromClient(record)
@@ -213,15 +204,15 @@ func mapRecordClientError(operation string, err error) error {
 	return fmt.Errorf("%s: %w", operation, err)
 }
 
-func recordFromClient(record httpclient.Record) (Record, error) {
+func recordFromClient(record model.Record) (model.Record, error) {
 	if record.Payload == nil {
-		return Record{}, fmt.Errorf("record payload: %w", errUnexpectedRecordPayload)
+		return model.Record{}, fmt.Errorf("record payload: %w", errUnexpectedRecordPayload)
 	}
 	if err := record.Payload.Validate(); err != nil || record.Metadata.Type != record.Payload.RecordType() {
-		return Record{}, fmt.Errorf("record payload: %w", errUnexpectedRecordPayload)
+		return model.Record{}, fmt.Errorf("record payload: %w", errUnexpectedRecordPayload)
 	}
 
-	return Record{
+	return model.Record{
 		Metadata: record.Metadata,
 		Payload:  record.Payload,
 	}, nil
