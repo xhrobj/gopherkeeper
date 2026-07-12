@@ -125,7 +125,7 @@ func TestRecordsUpdateCardCommand(t *testing.T) {
 	}
 }
 
-func TestRecordsCreateCardHelpDoesNotOfferSensitiveFlags(t *testing.T) {
+func TestRecordsCreateCardCommand_HelpDoesNotOfferSensitiveFlags(t *testing.T) {
 	isolateClientConfig(t)
 
 	var output bytes.Buffer

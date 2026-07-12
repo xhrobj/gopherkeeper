@@ -131,7 +131,7 @@ func TestRecordsUpdateCredentialsCommand(t *testing.T) {
 	}
 }
 
-func TestRecordsUpdateCredentialsCommandRequiresRecordID(t *testing.T) {
+func TestRecordsUpdateCredentialsCommand_RequiresRecordID(t *testing.T) {
 	isolateClientConfig(t)
 
 	err := runTestCommand(
@@ -153,7 +153,7 @@ func TestRecordsUpdateCredentialsCommandRequiresRecordID(t *testing.T) {
 	}
 }
 
-func TestRecordsCreateCredentialsHelpDoesNotOfferPasswordFlag(t *testing.T) {
+func TestRecordsCreateCredentialsCommand_HelpDoesNotOfferPasswordFlag(t *testing.T) {
 	isolateClientConfig(t)
 
 	var output bytes.Buffer
@@ -266,7 +266,7 @@ func TestExecuteCreateCredentialsRecord_Interactive(t *testing.T) {
 	}
 }
 
-func TestReadCredentialsPayloadInteractiveSuggestsCredentialsStdin(t *testing.T) {
+func TestReadCredentialsPayload_InteractiveSuggestsCredentialsStdin(t *testing.T) {
 	reader := &credentialsReaderStub{
 		lineValues: []string{"alice"},
 		hiddenErr:  fmt.Errorf("%w; use --password-stdin", errPasswordInputNotTerminal),
@@ -284,7 +284,7 @@ func TestReadCredentialsPayloadInteractiveSuggestsCredentialsStdin(t *testing.T)
 	}
 }
 
-func TestExecuteCreateCredentialsRecordRejectsConflictingInput(t *testing.T) {
+func TestExecuteCreateCredentialsRecord_RejectsConflictingInput(t *testing.T) {
 	creator := recordCreatorFunc(func(
 		context.Context,
 		usecase.CreateRecordRequest,
@@ -349,7 +349,7 @@ func TestExecuteUpdateCredentialsRecord(t *testing.T) {
 	}
 }
 
-func TestReadCredentialsPayloadJSONRejectsUnknownFieldWithoutSecretLeak(t *testing.T) {
+func TestReadCredentialsPayloadJSON_RejectsUnknownFieldWithoutSecretLeak(t *testing.T) {
 	errPayload := `{"login":"alice","password":"vault-secret-42","unexpected":true}`
 	_, err := readCredentialsPayloadJSON(strings.NewReader(errPayload))
 	if err == nil {

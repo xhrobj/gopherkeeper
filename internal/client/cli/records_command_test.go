@@ -63,7 +63,7 @@ func TestRecordsUpdateTextCommand(t *testing.T) {
 	}
 }
 
-func TestRecordsUpdateTextCommandRequiresRecordID(t *testing.T) {
+func TestRecordsUpdateTextCommand_RequiresRecordID(t *testing.T) {
 	isolateClientConfig(t)
 
 	textFile := writeTestFile(t, "note.txt", "updated secret")
@@ -128,7 +128,7 @@ func TestRecordsDeleteCommand(t *testing.T) {
 	}
 }
 
-func TestRecordsDeleteCommandRequiresRecordID(t *testing.T) {
+func TestRecordsDeleteCommand_RequiresRecordID(t *testing.T) {
 	isolateClientConfig(t)
 
 	err := runTestCommand(
@@ -185,7 +185,7 @@ func TestExecuteUpdateTextRecord(t *testing.T) {
 	}
 }
 
-func TestExecuteUpdateTextRecordReturnsReadError(t *testing.T) {
+func TestExecuteUpdateTextRecord_ReturnsReadError(t *testing.T) {
 	app := newApplicationStub(t)
 	err := executeUpdateTextRecord(
 		context.Background(),
@@ -223,7 +223,7 @@ func TestExecuteDeleteRecord(t *testing.T) {
 	}
 }
 
-func TestExecuteDeleteRecordReturnsUsecaseError(t *testing.T) {
+func TestExecuteDeleteRecord_ReturnsUsecaseError(t *testing.T) {
 	wantErr := errors.New("record revision conflict")
 	app := newApplicationStub(t)
 	app.deleteRecord = func(context.Context, usecase.DeleteRecordRequest) error {

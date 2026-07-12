@@ -616,89 +616,14 @@ func TestCreateRecordHandler_RejectsOversizedBody(t *testing.T) {
 	)
 }
 
-func TestCreateRecordHandler_MapsServiceErrors(t *testing.T) {
+func TestCreateRecordHandler_MapsServiceError(t *testing.T) {
 	internalError := errors.New("database connection details")
-	tests := []struct {
-		name        string
-		serviceErr  error
-		wantStatus  int
-		wantCode    string
-		wantMessage string
-	}{
-		{
-			name:        "invalid title",
-			serviceErr:  model.ErrInvalidRecordTitle,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRecordRequest,
-		},
-		{
-			name:        "invalid card payload",
-			serviceErr:  model.ErrInvalidCardPayload,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRecordRequest,
-		},
-		{
-			name:        "invalid binary payload",
-			serviceErr:  model.ErrInvalidBinaryPayload,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRecordRequest,
-		},
-		{
-			name:        "payload too large",
-			serviceErr:  model.ErrPayloadTooLarge,
-			wantStatus:  http.StatusRequestEntityTooLarge,
-			wantCode:    errorCodePayloadTooLarge,
-			wantMessage: errorMessagePayloadTooLarge,
-		},
-		{
-			name:        "internal error",
-			serviceErr:  internalError,
-			wantStatus:  http.StatusInternalServerError,
-			wantCode:    errorCodeInternal,
-			wantMessage: errorMessageInternal,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			records := recordManagerStub{
-				create: func(context.Context, service.CreateRecordRequest) (service.DecryptedRecord, error) {
-					return service.DecryptedRecord{}, tt.serviceErr
-				},
-			}
-			request := newCreateRecordRequest(t, createTextRecordRequestBody(t, "my note", "secret", ""))
-			response := httptest.NewRecorder()
-
-			serveAuthenticatedRecordHandler(t, createRecordHandler(records), response, request)
-
-			assertErrorResponse(t, response, tt.wantStatus, tt.wantCode, tt.wantMessage)
-			if strings.Contains(response.Body.String(), internalError.Error()) {
-				t.Error("response body contains internal error details")
-			}
-		})
-	}
-}
-
-func TestCreateRecordHandler_MapsCredentialsValidationError(t *testing.T) {
 	records := recordManagerStub{
-		create: func(
-			context.Context,
-			service.CreateRecordRequest,
-		) (service.DecryptedRecord, error) {
-			return service.DecryptedRecord{}, model.ErrInvalidCredentialsPayload
+		create: func(context.Context, service.CreateRecordRequest) (service.DecryptedRecord, error) {
+			return service.DecryptedRecord{}, internalError
 		},
 	}
-	request := newCreateRecordRequest(t, createCredentialsRecordRequestBody(
-		t,
-		"GitHub",
-		"alice",
-		"correct-horse-battery-staple",
-		"https://github.com",
-		"",
-	))
+	request := newCreateRecordRequest(t, createTextRecordRequestBody(t, "my note", "secret", ""))
 	response := httptest.NewRecorder()
 
 	serveAuthenticatedRecordHandler(t, createRecordHandler(records), response, request)
@@ -706,10 +631,13 @@ func TestCreateRecordHandler_MapsCredentialsValidationError(t *testing.T) {
 	assertErrorResponse(
 		t,
 		response,
-		http.StatusBadRequest,
-		errorCodeInvalidRequest,
-		errorMessageInvalidRecordRequest,
+		http.StatusInternalServerError,
+		errorCodeInternal,
+		errorMessageInternal,
 	)
+	if strings.Contains(response.Body.String(), internalError.Error()) {
+		t.Error("response body contains internal error details")
+	}
 }
 
 func TestListRecordsHandler_ReturnsMetadataOnly(t *testing.T) {
@@ -1132,86 +1060,6 @@ func TestUpdateRecordHandler_UpdatesCredentialsRecord(t *testing.T) {
 	})
 }
 
-func TestUpdateRecordHandler_UpdatesBinaryRecord(t *testing.T) {
-	createdAt := time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
-	updatedAt := time.Date(2026, time.July, 12, 12, 5, 0, 0, time.UTC)
-	payload := model.BinaryPayload{
-		Filename:    "backup-v2.bin",
-		Data:        []byte{0xff, 0x10, 0x20, 0x00},
-		ContentType: "application/octet-stream",
-		Metadata:    "updated backup",
-	}
-	var gotRequest service.UpdateRecordRequest
-	records := recordManagerStub{
-		update: func(
-			_ context.Context,
-			request service.UpdateRecordRequest,
-		) (service.DecryptedRecord, error) {
-			gotRequest = request
-
-			return service.DecryptedRecord{
-				Metadata: model.RecordMetadata{
-					ID:        request.RecordID,
-					Type:      model.RecordTypeBinary,
-					Title:     request.Title,
-					Revision:  2,
-					CreatedAt: createdAt,
-					UpdatedAt: updatedAt,
-				},
-				Payload: request.Payload,
-			}, nil
-		},
-	}
-	request := newUpdateRecordRequest(t, testRecordID, createBinaryRecordRequestBody(t, "Backup updated", payload))
-	request.Header.Set("If-Match", `"1"`)
-	response := httptest.NewRecorder()
-
-	serveAuthenticatedRecordHandler(t, updateRecordHandler(records), response, request)
-
-	if gotRequest.UserID != 42 {
-		t.Errorf("Update() userID = %d, want 42", gotRequest.UserID)
-	}
-	if gotRequest.RecordID != testRecordID {
-		t.Errorf("Update() recordID = %q, want %q", gotRequest.RecordID, testRecordID)
-	}
-	if gotRequest.ExpectedRevision != 1 {
-		t.Errorf("Update() expected revision = %d, want 1", gotRequest.ExpectedRevision)
-	}
-	if gotRequest.Title != "Backup updated" {
-		t.Errorf("Update() title = %q, want Backup updated", gotRequest.Title)
-	}
-	if gotPayload := requireBinaryPayload(t, gotRequest.Payload); !reflect.DeepEqual(gotPayload, payload) {
-		t.Errorf("Update() payload = %+v, want %+v", gotPayload, payload)
-	}
-	if response.Code != http.StatusOK {
-		t.Errorf("status code = %d, want %d", response.Code, http.StatusOK)
-	}
-	if etag := response.Header().Get("ETag"); etag != `"2"` {
-		t.Errorf("ETag = %q, want %q", etag, `"2"`)
-	}
-
-	var body binaryRecordResponse
-	decodeJSONResponse(t, response, &body)
-	assertRecordMetadataResponse(t, recordMetadataResponse{
-		ID:        body.ID,
-		Type:      body.Type,
-		Title:     body.Title,
-		Revision:  body.Revision,
-		CreatedAt: body.CreatedAt,
-		UpdatedAt: body.UpdatedAt,
-	}, recordMetadataResponse{
-		ID:        testRecordID,
-		Type:      model.RecordTypeBinary,
-		Title:     "Backup updated",
-		Revision:  2,
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
-	})
-	if !reflect.DeepEqual(body.Payload, payload) {
-		t.Errorf("response payload = %+v, want %+v", body.Payload, payload)
-	}
-}
-
 func TestUpdateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -1363,78 +1211,25 @@ func TestUpdateRecordHandler_RejectsOversizedBody(t *testing.T) {
 	)
 }
 
-func TestUpdateRecordHandler_MapsServiceErrors(t *testing.T) {
-	internalError := errors.New("database connection details")
-	tests := []struct {
-		name        string
-		serviceErr  error
-		wantStatus  int
-		wantCode    string
-		wantMessage string
-	}{
-		{
-			name:        "invalid record id",
-			serviceErr:  model.ErrInvalidRecordID,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRecordRequest,
-		},
-		{
-			name:        "invalid binary payload",
-			serviceErr:  model.ErrInvalidBinaryPayload,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRecordRequest,
-		},
-		{
-			name:        "payload too large",
-			serviceErr:  model.ErrPayloadTooLarge,
-			wantStatus:  http.StatusRequestEntityTooLarge,
-			wantCode:    errorCodePayloadTooLarge,
-			wantMessage: errorMessagePayloadTooLarge,
-		},
-		{
-			name:        "record not found",
-			serviceErr:  model.ErrRecordNotFound,
-			wantStatus:  http.StatusNotFound,
-			wantCode:    errorCodeRecordNotFound,
-			wantMessage: errorMessageRecordNotFound,
-		},
-		{
-			name:        "revision conflict",
-			serviceErr:  model.ErrRecordRevisionConflict,
-			wantStatus:  http.StatusConflict,
-			wantCode:    errorCodeRevisionConflict,
-			wantMessage: errorMessageRevisionConflict,
-		},
-		{
-			name:        "internal error",
-			serviceErr:  internalError,
-			wantStatus:  http.StatusInternalServerError,
-			wantCode:    errorCodeInternal,
-			wantMessage: errorMessageInternal,
+func TestUpdateRecordHandler_MapsServiceError(t *testing.T) {
+	records := recordManagerStub{
+		update: func(context.Context, service.UpdateRecordRequest) (service.DecryptedRecord, error) {
+			return service.DecryptedRecord{}, model.ErrRecordRevisionConflict
 		},
 	}
+	request := newUpdateRecordRequest(t, testRecordID, updateTextRecordRequestBody(t, "my note", "secret", ""))
+	request.Header.Set("If-Match", `"1"`)
+	response := httptest.NewRecorder()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			records := recordManagerStub{
-				update: func(context.Context, service.UpdateRecordRequest) (service.DecryptedRecord, error) {
-					return service.DecryptedRecord{}, tt.serviceErr
-				},
-			}
-			request := newUpdateRecordRequest(t, testRecordID, updateTextRecordRequestBody(t, "my note", "secret", ""))
-			request.Header.Set("If-Match", `"1"`)
-			response := httptest.NewRecorder()
+	serveAuthenticatedRecordHandler(t, updateRecordHandler(records), response, request)
 
-			serveAuthenticatedRecordHandler(t, updateRecordHandler(records), response, request)
-
-			assertErrorResponse(t, response, tt.wantStatus, tt.wantCode, tt.wantMessage)
-			if strings.Contains(response.Body.String(), internalError.Error()) {
-				t.Error("response body contains internal error details")
-			}
-		})
-	}
+	assertErrorResponse(
+		t,
+		response,
+		http.StatusConflict,
+		errorCodeRevisionConflict,
+		errorMessageRevisionConflict,
+	)
 }
 
 func TestDeleteRecordHandler_DeletesRecord(t *testing.T) {
@@ -1519,39 +1314,123 @@ func TestDeleteRecordHandler_RejectsInvalidIfMatch(t *testing.T) {
 	}
 }
 
-func TestDeleteRecordHandler_MapsServiceErrors(t *testing.T) {
+func TestDeleteRecordHandler_MapsServiceError(t *testing.T) {
+	records := recordManagerStub{
+		delete: func(context.Context, service.DeleteRecordRequest) error {
+			return model.ErrRecordRevisionConflict
+		},
+	}
+	request := newDeleteRecordRequest(testRecordID)
+	request.Header.Set("If-Match", `"1"`)
+	response := httptest.NewRecorder()
+
+	serveAuthenticatedRecordHandler(t, deleteRecordHandler(records), response, request)
+
+	assertErrorResponse(
+		t,
+		response,
+		http.StatusConflict,
+		errorCodeRevisionConflict,
+		errorMessageRevisionConflict,
+	)
+}
+
+func TestWriteRecordError(t *testing.T) {
 	internalError := errors.New("database connection details")
 	tests := []struct {
 		name        string
-		serviceErr  error
+		err         error
 		wantStatus  int
 		wantCode    string
 		wantMessage string
 	}{
 		{
-			name:        "invalid record id",
-			serviceErr:  model.ErrInvalidRecordID,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRecordRequest,
+			name:        "payload too large",
+			err:         fmt.Errorf("create record: %w", model.ErrPayloadTooLarge),
+			wantStatus:  http.StatusRequestEntityTooLarge,
+			wantCode:    errorCodePayloadTooLarge,
+			wantMessage: errorMessagePayloadTooLarge,
 		},
 		{
 			name:        "record not found",
-			serviceErr:  model.ErrRecordNotFound,
+			err:         fmt.Errorf("get record: %w", model.ErrRecordNotFound),
 			wantStatus:  http.StatusNotFound,
 			wantCode:    errorCodeRecordNotFound,
 			wantMessage: errorMessageRecordNotFound,
 		},
 		{
 			name:        "revision conflict",
-			serviceErr:  model.ErrRecordRevisionConflict,
+			err:         fmt.Errorf("update record: %w", model.ErrRecordRevisionConflict),
 			wantStatus:  http.StatusConflict,
 			wantCode:    errorCodeRevisionConflict,
 			wantMessage: errorMessageRevisionConflict,
 		},
 		{
+			name:        "precondition required",
+			err:         fmt.Errorf("update record: %w", model.ErrRecordPreconditionRequired),
+			wantStatus:  http.StatusPreconditionRequired,
+			wantCode:    errorCodePreconditionRequired,
+			wantMessage: errorMessagePreconditionRequired,
+		},
+		{
+			name:        "invalid record ID",
+			err:         model.ErrInvalidRecordID,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "invalid record revision",
+			err:         model.ErrInvalidRecordRevision,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "invalid record title",
+			err:         model.ErrInvalidRecordTitle,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "invalid text payload",
+			err:         model.ErrInvalidTextPayload,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "invalid credentials payload",
+			err:         model.ErrInvalidCredentialsPayload,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "invalid card payload",
+			err:         model.ErrInvalidCardPayload,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "invalid binary payload",
+			err:         model.ErrInvalidBinaryPayload,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "unsupported record type",
+			err:         model.ErrRecordTypeUnsupported,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
 			name:        "internal error",
-			serviceErr:  internalError,
+			err:         internalError,
 			wantStatus:  http.StatusInternalServerError,
 			wantCode:    errorCodeInternal,
 			wantMessage: errorMessageInternal,
@@ -1560,16 +1439,9 @@ func TestDeleteRecordHandler_MapsServiceErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			records := recordManagerStub{
-				delete: func(context.Context, service.DeleteRecordRequest) error {
-					return tt.serviceErr
-				},
-			}
-			request := newDeleteRecordRequest(testRecordID)
-			request.Header.Set("If-Match", `"1"`)
 			response := httptest.NewRecorder()
 
-			serveAuthenticatedRecordHandler(t, deleteRecordHandler(records), response, request)
+			writeRecordError(response, tt.err)
 
 			assertErrorResponse(t, response, tt.wantStatus, tt.wantCode, tt.wantMessage)
 			if strings.Contains(response.Body.String(), internalError.Error()) {

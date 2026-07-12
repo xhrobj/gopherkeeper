@@ -190,7 +190,7 @@ func TestFileStorage_SaveRejectsInvalidSession(t *testing.T) {
 	}
 }
 
-func TestNewFileStorageUsesDefaultPath(t *testing.T) {
+func TestNewFileStorage_UsesDefaultPath(t *testing.T) {
 	storage, err := NewFileStorage("")
 	if err != nil {
 		t.Fatalf("NewFileStorage() error = %v", err)

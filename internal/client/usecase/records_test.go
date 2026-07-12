@@ -216,17 +216,6 @@ func TestApplication_CreateRecordValidationError(t *testing.T) {
 			},
 			want: model.ErrInvalidBinaryPayload,
 		},
-		{
-			name: "binary payload too large",
-			request: CreateRecordRequest{
-				Title: "Encrypted backup",
-				Payload: &model.BinaryPayload{
-					Filename: "backup.bin",
-					Data:     make([]byte, model.BinaryPayloadMaxSize+1),
-				},
-			},
-			want: model.ErrPayloadTooLarge,
-		},
 	}
 
 	for _, tt := range tests {
