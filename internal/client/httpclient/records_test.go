@@ -1,6 +1,7 @@
 package httpclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -119,6 +120,78 @@ func assertCreatedCredentialsRecord(t *testing.T, record Record, password string
 	}
 }
 
+func TestClient_CreateBinaryRecord(t *testing.T) {
+	createdAt := time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
+	data := []byte{0x00, 0x01, 0x02, 0xff}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want %s", r.Method, http.MethodPost)
+		}
+
+		var request struct {
+			Type    model.RecordType `json:"type"`
+			Title   string           `json:"title"`
+			Payload struct {
+				Filename    string `json:"filename"`
+				Data        string `json:"data"`
+				ContentType string `json:"content_type"`
+				Metadata    string `json:"metadata"`
+			} `json:"payload"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if request.Type != model.RecordTypeBinary {
+			t.Errorf("type = %q, want binary", request.Type)
+		}
+		if request.Payload.Data != "AAEC/w==" {
+			t.Errorf("data = %q, want Base64-encoded bytes", request.Payload.Data)
+		}
+
+		payload := &model.BinaryPayload{
+			Filename:    request.Payload.Filename,
+			Data:        data,
+			ContentType: request.Payload.ContentType,
+			Metadata:    request.Payload.Metadata,
+		}
+		writeRecordResponse(t, w, http.StatusCreated, recordResponse{
+			ID:        testRecordID,
+			Type:      model.RecordTypeBinary,
+			Title:     request.Title,
+			Revision:  1,
+			CreatedAt: createdAt,
+			UpdatedAt: createdAt,
+		}, payload)
+	}))
+	defer server.Close()
+
+	client, err := New(serverAddress(server), writeServerCertificate(t, server))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	record, err := client.CreateRecord(context.Background(), "test.jwt.token", CreateRecordRequest{
+		Title: "Alice encrypted backup",
+		Payload: &model.BinaryPayload{
+			Filename:    "backup.bin",
+			Data:        data,
+			ContentType: "application/octet-stream",
+			Metadata:    "private backup",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateRecord() error = %v", err)
+	}
+
+	payload, ok := record.Payload.(*model.BinaryPayload)
+	if !ok {
+		t.Fatalf("payload type = %T, want *model.BinaryPayload", record.Payload)
+	}
+	if !bytes.Equal(payload.Data, data) {
+		t.Errorf("data = %v, want %v", payload.Data, data)
+	}
+}
+
 type clientGetRecordTestCase struct {
 	name       string
 	recordType model.RecordType
@@ -152,6 +225,24 @@ func TestClient_GetRecord(t *testing.T) {
 				ExpiryYear:  &expiryYear,
 				CVV:         "014",
 				Metadata:    "test card",
+			},
+		},
+		{
+			name:       "binary",
+			recordType: model.RecordTypeBinary,
+			payload: &model.BinaryPayload{
+				Filename:    "backup.bin",
+				Data:        []byte{0x00, 0x01, 0x02, 0xff},
+				ContentType: "application/octet-stream",
+				Metadata:    "private backup",
+			},
+		},
+		{
+			name:       "empty binary",
+			recordType: model.RecordTypeBinary,
+			payload: &model.BinaryPayload{
+				Filename: "empty.bin",
+				Data:     []byte{},
 			},
 		},
 	}
@@ -231,6 +322,11 @@ func assertClientRecordPayloadEqual(t *testing.T, got, want model.RecordPayload)
 		if !ok || !reflect.DeepEqual(payload, want) {
 			t.Fatalf("payload = %#v, want card payload %#v", got, want)
 		}
+	case *model.BinaryPayload:
+		payload, ok := got.(*model.BinaryPayload)
+		if !ok || !reflect.DeepEqual(payload, want) {
+			t.Fatalf("payload = %#v, want binary payload %#v", got, want)
+		}
 	default:
 		t.Fatalf("unsupported expected payload type %T", want)
 	}
@@ -297,6 +393,72 @@ func TestClient_UpdateRecord(t *testing.T) {
 	}
 }
 
+func TestClient_UpdateBinaryRecord(t *testing.T) {
+	updatedAt := time.Date(2026, time.July, 12, 12, 5, 0, 0, time.UTC)
+	data := []byte{0xff, 0x02, 0x01, 0x00}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %s, want %s", r.Method, http.MethodPut)
+		}
+		if got := r.Header.Get("If-Match"); got != `"1"` {
+			t.Errorf("If-Match = %q, want quoted revision", got)
+		}
+
+		var request struct {
+			Type    model.RecordType    `json:"type"`
+			Title   string              `json:"title"`
+			Payload model.BinaryPayload `json:"payload"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if request.Type != model.RecordTypeBinary {
+			t.Errorf("type = %q, want binary", request.Type)
+		}
+		if !bytes.Equal(request.Payload.Data, data) {
+			t.Errorf("data = %v, want %v", request.Payload.Data, data)
+		}
+
+		writeRecordResponse(t, w, http.StatusOK, recordResponse{
+			ID:        testRecordID,
+			Type:      model.RecordTypeBinary,
+			Title:     request.Title,
+			Revision:  2,
+			CreatedAt: time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC),
+			UpdatedAt: updatedAt,
+		}, &request.Payload)
+	}))
+	defer server.Close()
+
+	client, err := New(serverAddress(server), writeServerCertificate(t, server))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	record, err := client.UpdateRecord(context.Background(), "test.jwt.token", testRecordID, 1, UpdateRecordRequest{
+		Title: "Alice updated backup",
+		Payload: &model.BinaryPayload{
+			Filename:    "backup-v2.bin",
+			Data:        data,
+			ContentType: "application/octet-stream",
+			Metadata:    "updated private backup",
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateRecord() error = %v", err)
+	}
+	if record.Metadata.Revision != 2 {
+		t.Errorf("revision = %d, want 2", record.Metadata.Revision)
+	}
+	payload, ok := record.Payload.(*model.BinaryPayload)
+	if !ok {
+		t.Fatalf("payload type = %T, want *model.BinaryPayload", record.Payload)
+	}
+	if !bytes.Equal(payload.Data, data) {
+		t.Errorf("data = %v, want %v", payload.Data, data)
+	}
+}
+
 func TestClient_UpdateRecordReturnsAPIError(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -356,6 +518,35 @@ func TestClient_GetRecordRejectsInvalidPayload(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "correct-horse-battery-staple") {
 		t.Error("decode error contains credentials password")
+	}
+}
+
+func TestClient_GetRecordRejectsInvalidBinaryPayload(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"550e8400-e29b-41d4-a716-446655440000",
+			"type":"binary",
+			"title":"Alice encrypted backup",
+			"revision":1,
+			"created_at":"2026-07-12T12:00:00Z",
+			"updated_at":"2026-07-12T12:00:00Z",
+			"payload":{"filename":"backup.bin","data":"not-base64***"}
+		}`))
+	}))
+	defer server.Close()
+
+	client, err := New(serverAddress(server), writeServerCertificate(t, server))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, err = client.GetRecord(context.Background(), "test.jwt.token", testRecordID)
+	if err == nil {
+		t.Fatal("GetRecord() error = nil, want invalid binary payload error")
+	}
+	if strings.Contains(err.Error(), "test.jwt.token") || strings.Contains(err.Error(), "not-base64") {
+		t.Error("decode error contains access token or binary data")
 	}
 }
 

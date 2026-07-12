@@ -350,6 +350,7 @@ func writeRecordError(w http.ResponseWriter, err error) {
 		errors.Is(err, model.ErrInvalidTextPayload),
 		errors.Is(err, model.ErrInvalidCredentialsPayload),
 		errors.Is(err, model.ErrInvalidCardPayload),
+		errors.Is(err, model.ErrInvalidBinaryPayload),
 		errors.Is(err, model.ErrRecordTypeUnsupported):
 		writeInvalidRecordRequest(w)
 

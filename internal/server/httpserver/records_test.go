@@ -87,6 +87,16 @@ type cardRecordResponse struct {
 	Payload   model.CardPayload `json:"payload"`
 }
 
+type binaryRecordResponse struct {
+	ID        string              `json:"id"`
+	Type      model.RecordType    `json:"type"`
+	Title     string              `json:"title"`
+	Revision  int64               `json:"revision"`
+	CreatedAt time.Time           `json:"created_at"`
+	UpdatedAt time.Time           `json:"updated_at"`
+	Payload   model.BinaryPayload `json:"payload"`
+}
+
 func TestCreateRecordHandler_CreatesTextRecord(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 8, 12, 0, 0, 0, time.UTC)
 	updatedAt := time.Date(2026, time.July, 8, 12, 1, 0, 0, time.UTC)
@@ -297,6 +307,178 @@ func TestCreateRecordHandler_CreatesCardRecord(t *testing.T) {
 	}
 }
 
+func TestCreateRecordHandler_CreatesBinaryRecord(t *testing.T) {
+	createdAt := time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, time.July, 12, 12, 1, 0, 0, time.UTC)
+	payload := model.BinaryPayload{
+		Filename:    "backup.bin",
+		Data:        []byte{0x00, 0x01, 0x02, 0xff},
+		ContentType: "application/octet-stream",
+		Metadata:    "encrypted backup",
+	}
+	var gotRequest service.CreateRecordRequest
+	records := recordManagerStub{
+		create: func(
+			_ context.Context,
+			request service.CreateRecordRequest,
+		) (service.DecryptedRecord, error) {
+			gotRequest = request
+
+			return service.DecryptedRecord{
+				Metadata: model.RecordMetadata{
+					ID:        testRecordID,
+					Type:      model.RecordTypeBinary,
+					Title:     request.Title,
+					Revision:  model.RecordInitialRevision,
+					CreatedAt: createdAt,
+					UpdatedAt: updatedAt,
+				},
+				Payload: request.Payload,
+			}, nil
+		},
+	}
+	requestBody := createBinaryRecordRequestBody(t, "Backup", payload)
+	if !strings.Contains(requestBody, `"data":"AAEC/w=="`) {
+		t.Fatalf("request body does not contain expected Base64 data: %s", requestBody)
+	}
+	request := newCreateRecordRequest(t, requestBody)
+	response := httptest.NewRecorder()
+
+	serveAuthenticatedRecordHandler(t, createRecordHandler(records), response, request)
+
+	if gotRequest.UserID != 42 {
+		t.Errorf("Create() userID = %d, want 42", gotRequest.UserID)
+	}
+	if gotRequest.Title != "Backup" {
+		t.Errorf("Create() title = %q, want Backup", gotRequest.Title)
+	}
+	if gotPayload := requireBinaryPayload(t, gotRequest.Payload); !reflect.DeepEqual(gotPayload, payload) {
+		t.Errorf("Create() payload = %+v, want %+v", gotPayload, payload)
+	}
+	if response.Code != http.StatusCreated {
+		t.Errorf("status code = %d, want %d", response.Code, http.StatusCreated)
+	}
+	if etag := response.Header().Get("ETag"); etag != `"1"` {
+		t.Errorf("ETag = %q, want %q", etag, `"1"`)
+	}
+
+	if !strings.Contains(response.Body.String(), `"data":"AAEC/w=="`) {
+		t.Errorf("response body does not contain expected Base64 data: %s", response.Body.String())
+	}
+
+	var body binaryRecordResponse
+	decodeJSONResponse(t, response, &body)
+	assertRecordMetadataResponse(t, recordMetadataResponse{
+		ID:        body.ID,
+		Type:      body.Type,
+		Title:     body.Title,
+		Revision:  body.Revision,
+		CreatedAt: body.CreatedAt,
+		UpdatedAt: body.UpdatedAt,
+	}, recordMetadataResponse{
+		ID:        testRecordID,
+		Type:      model.RecordTypeBinary,
+		Title:     "Backup",
+		Revision:  model.RecordInitialRevision,
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+	})
+	if !reflect.DeepEqual(body.Payload, payload) {
+		t.Errorf("response payload = %+v, want %+v", body.Payload, payload)
+	}
+}
+
+func TestCreateRecordHandler_AcceptsEmptyBinaryFile(t *testing.T) {
+	records := recordManagerStub{
+		create: func(
+			_ context.Context,
+			request service.CreateRecordRequest,
+		) (service.DecryptedRecord, error) {
+			payload := requireBinaryPayload(t, request.Payload)
+			if payload.Data == nil {
+				t.Fatal("Create() binary data = nil, want present empty slice")
+			}
+			if len(payload.Data) != 0 {
+				t.Fatalf("Create() binary data length = %d, want 0", len(payload.Data))
+			}
+
+			return service.DecryptedRecord{
+				Metadata: model.RecordMetadata{
+					ID:       testRecordID,
+					Type:     model.RecordTypeBinary,
+					Title:    request.Title,
+					Revision: model.RecordInitialRevision,
+				},
+				Payload: request.Payload,
+			}, nil
+		},
+	}
+	request := newCreateRecordRequest(
+		t,
+		`{"type":"binary","title":"Empty","payload":{"filename":"empty.bin","data":""}}`,
+	)
+	response := httptest.NewRecorder()
+
+	serveAuthenticatedRecordHandler(t, createRecordHandler(records), response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Errorf("status code = %d, want %d", response.Code, http.StatusCreated)
+	}
+}
+
+func TestCreateRecordHandler_MapsBinaryPayloadValidation(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		wantStatus int
+		wantCode   string
+	}{
+		{
+			name:       "missing data",
+			body:       `{"type":"binary","title":"Empty","payload":{"filename":"empty.bin"}}`,
+			wantStatus: http.StatusBadRequest,
+			wantCode:   errorCodeInvalidRequest,
+		},
+		{
+			name:       "null data",
+			body:       `{"type":"binary","title":"Empty","payload":{"filename":"empty.bin","data":null}}`,
+			wantStatus: http.StatusBadRequest,
+			wantCode:   errorCodeInvalidRequest,
+		},
+		{
+			name: "decoded data too large",
+			body: createBinaryRecordRequestBody(t, "Large", model.BinaryPayload{
+				Filename: "large.bin",
+				Data:     make([]byte, model.BinaryPayloadMaxSize+1),
+			}),
+			wantStatus: http.StatusRequestEntityTooLarge,
+			wantCode:   errorCodePayloadTooLarge,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			records := recordManagerStub{
+				create: func(
+					_ context.Context,
+					request service.CreateRecordRequest,
+				) (service.DecryptedRecord, error) {
+					return service.DecryptedRecord{}, request.Payload.Validate()
+				},
+			}
+			request := newCreateRecordRequest(t, tt.body)
+			response := httptest.NewRecorder()
+
+			serveAuthenticatedRecordHandler(t, createRecordHandler(records), response, request)
+
+			assertErrorResponse(t, response, tt.wantStatus, tt.wantCode, map[int]string{
+				http.StatusBadRequest:            errorMessageInvalidRecordRequest,
+				http.StatusRequestEntityTooLarge: errorMessagePayloadTooLarge,
+			}[tt.wantStatus])
+		})
+	}
+}
+
 func TestCreateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -325,6 +507,14 @@ func TestCreateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 			name:        "malformed JSON",
 			contentType: "application/json",
 			body:        `{"type":"text"`,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "malformed binary Base64",
+			contentType: "application/json",
+			body:        `{"type":"binary","title":"Backup","payload":{"filename":"backup.bin","data":"not-base64***"}}`,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
 			wantMessage: errorMessageInvalidRecordRequest,
@@ -445,6 +635,13 @@ func TestCreateRecordHandler_MapsServiceErrors(t *testing.T) {
 		{
 			name:        "invalid card payload",
 			serviceErr:  model.ErrInvalidCardPayload,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "invalid binary payload",
+			serviceErr:  model.ErrInvalidBinaryPayload,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
 			wantMessage: errorMessageInvalidRecordRequest,
@@ -679,6 +876,72 @@ func TestGetRecordHandler_ReturnsCredentialsRecord(t *testing.T) {
 	})
 }
 
+func TestGetRecordHandler_ReturnsBinaryRecord(t *testing.T) {
+	createdAt := time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, time.July, 12, 12, 1, 0, 0, time.UTC)
+	payload := model.BinaryPayload{
+		Filename:    "backup.bin",
+		Data:        []byte{0x00, 0x01, 0x02, 0xff},
+		ContentType: "application/octet-stream",
+		Metadata:    "encrypted backup",
+	}
+	records := recordManagerStub{
+		get: func(_ context.Context, userID int64, recordID string) (service.DecryptedRecord, error) {
+			if userID != 42 {
+				t.Fatalf("Get() userID = %d, want 42", userID)
+			}
+			if recordID != testRecordID {
+				t.Fatalf("Get() recordID = %q, want %q", recordID, testRecordID)
+			}
+
+			return service.DecryptedRecord{
+				Metadata: model.RecordMetadata{
+					ID:        testRecordID,
+					Type:      model.RecordTypeBinary,
+					Title:     "Backup",
+					Revision:  model.RecordInitialRevision,
+					CreatedAt: createdAt,
+					UpdatedAt: updatedAt,
+				},
+				Payload: &payload,
+			}, nil
+		},
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/records/"+testRecordID, nil)
+	request.SetPathValue("id", testRecordID)
+	response := httptest.NewRecorder()
+
+	serveAuthenticatedRecordHandler(t, getRecordHandler(records), response, request)
+
+	if response.Code != http.StatusOK {
+		t.Errorf("status code = %d, want %d", response.Code, http.StatusOK)
+	}
+	if etag := response.Header().Get("ETag"); etag != `"1"` {
+		t.Errorf("ETag = %q, want %q", etag, `"1"`)
+	}
+
+	var body binaryRecordResponse
+	decodeJSONResponse(t, response, &body)
+	assertRecordMetadataResponse(t, recordMetadataResponse{
+		ID:        body.ID,
+		Type:      body.Type,
+		Title:     body.Title,
+		Revision:  body.Revision,
+		CreatedAt: body.CreatedAt,
+		UpdatedAt: body.UpdatedAt,
+	}, recordMetadataResponse{
+		ID:        testRecordID,
+		Type:      model.RecordTypeBinary,
+		Title:     "Backup",
+		Revision:  model.RecordInitialRevision,
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+	})
+	if !reflect.DeepEqual(body.Payload, payload) {
+		t.Errorf("response payload = %+v, want %+v", body.Payload, payload)
+	}
+}
+
 func TestGetRecordHandler_RejectsInvalidServiceResult(t *testing.T) {
 	records := recordManagerStub{
 		get: func(context.Context, int64, string) (service.DecryptedRecord, error) {
@@ -869,6 +1132,86 @@ func TestUpdateRecordHandler_UpdatesCredentialsRecord(t *testing.T) {
 	})
 }
 
+func TestUpdateRecordHandler_UpdatesBinaryRecord(t *testing.T) {
+	createdAt := time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, time.July, 12, 12, 5, 0, 0, time.UTC)
+	payload := model.BinaryPayload{
+		Filename:    "backup-v2.bin",
+		Data:        []byte{0xff, 0x10, 0x20, 0x00},
+		ContentType: "application/octet-stream",
+		Metadata:    "updated backup",
+	}
+	var gotRequest service.UpdateRecordRequest
+	records := recordManagerStub{
+		update: func(
+			_ context.Context,
+			request service.UpdateRecordRequest,
+		) (service.DecryptedRecord, error) {
+			gotRequest = request
+
+			return service.DecryptedRecord{
+				Metadata: model.RecordMetadata{
+					ID:        request.RecordID,
+					Type:      model.RecordTypeBinary,
+					Title:     request.Title,
+					Revision:  2,
+					CreatedAt: createdAt,
+					UpdatedAt: updatedAt,
+				},
+				Payload: request.Payload,
+			}, nil
+		},
+	}
+	request := newUpdateRecordRequest(t, testRecordID, createBinaryRecordRequestBody(t, "Backup updated", payload))
+	request.Header.Set("If-Match", `"1"`)
+	response := httptest.NewRecorder()
+
+	serveAuthenticatedRecordHandler(t, updateRecordHandler(records), response, request)
+
+	if gotRequest.UserID != 42 {
+		t.Errorf("Update() userID = %d, want 42", gotRequest.UserID)
+	}
+	if gotRequest.RecordID != testRecordID {
+		t.Errorf("Update() recordID = %q, want %q", gotRequest.RecordID, testRecordID)
+	}
+	if gotRequest.ExpectedRevision != 1 {
+		t.Errorf("Update() expected revision = %d, want 1", gotRequest.ExpectedRevision)
+	}
+	if gotRequest.Title != "Backup updated" {
+		t.Errorf("Update() title = %q, want Backup updated", gotRequest.Title)
+	}
+	if gotPayload := requireBinaryPayload(t, gotRequest.Payload); !reflect.DeepEqual(gotPayload, payload) {
+		t.Errorf("Update() payload = %+v, want %+v", gotPayload, payload)
+	}
+	if response.Code != http.StatusOK {
+		t.Errorf("status code = %d, want %d", response.Code, http.StatusOK)
+	}
+	if etag := response.Header().Get("ETag"); etag != `"2"` {
+		t.Errorf("ETag = %q, want %q", etag, `"2"`)
+	}
+
+	var body binaryRecordResponse
+	decodeJSONResponse(t, response, &body)
+	assertRecordMetadataResponse(t, recordMetadataResponse{
+		ID:        body.ID,
+		Type:      body.Type,
+		Title:     body.Title,
+		Revision:  body.Revision,
+		CreatedAt: body.CreatedAt,
+		UpdatedAt: body.UpdatedAt,
+	}, recordMetadataResponse{
+		ID:        testRecordID,
+		Type:      model.RecordTypeBinary,
+		Title:     "Backup updated",
+		Revision:  2,
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+	})
+	if !reflect.DeepEqual(body.Payload, payload) {
+		t.Errorf("response payload = %+v, want %+v", body.Payload, payload)
+	}
+}
+
 func TestUpdateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -927,6 +1270,15 @@ func TestUpdateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 			ifMatch:     `"1"`,
 			contentType: "application/json",
 			body:        `{"type":"text"`,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "malformed binary Base64",
+			ifMatch:     `"1"`,
+			contentType: "application/json",
+			body:        `{"type":"binary","title":"Backup","payload":{"filename":"backup.bin","data":"not-base64***"}}`,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
 			wantMessage: errorMessageInvalidRecordRequest,
@@ -1023,6 +1375,13 @@ func TestUpdateRecordHandler_MapsServiceErrors(t *testing.T) {
 		{
 			name:        "invalid record id",
 			serviceErr:  model.ErrInvalidRecordID,
+			wantStatus:  http.StatusBadRequest,
+			wantCode:    errorCodeInvalidRequest,
+			wantMessage: errorMessageInvalidRecordRequest,
+		},
+		{
+			name:        "invalid binary payload",
+			serviceErr:  model.ErrInvalidBinaryPayload,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
 			wantMessage: errorMessageInvalidRecordRequest,
@@ -1409,6 +1768,12 @@ func createCardRecordRequestBody(t *testing.T, title string, payload model.CardP
 	return recordRequestBody(t, model.RecordTypeCard, title, payload)
 }
 
+func createBinaryRecordRequestBody(t *testing.T, title string, payload model.BinaryPayload) string {
+	t.Helper()
+
+	return recordRequestBody(t, model.RecordTypeBinary, title, payload)
+}
+
 func updateTextRecordRequestBody(t *testing.T, title string, text string, metadata string) string {
 	t.Helper()
 
@@ -1509,6 +1874,17 @@ func requireCardPayload(t *testing.T, payload model.RecordPayload) model.CardPay
 	value, ok := payload.(*model.CardPayload)
 	if !ok || value == nil {
 		t.Fatalf("payload type = %T, want non-nil *CardPayload", payload)
+	}
+
+	return *value
+}
+
+func requireBinaryPayload(t *testing.T, payload model.RecordPayload) model.BinaryPayload {
+	t.Helper()
+
+	value, ok := payload.(*model.BinaryPayload)
+	if !ok || value == nil {
+		t.Fatalf("payload type = %T, want non-nil *BinaryPayload", payload)
 	}
 
 	return *value
