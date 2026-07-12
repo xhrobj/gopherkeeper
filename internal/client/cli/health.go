@@ -6,30 +6,24 @@ import (
 	"io"
 
 	urfavecli "github.com/urfave/cli/v3"
-	"github.com/xhrobj/gopherkeeper/internal/client/config"
-	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
 )
 
-func newHealthCommand(health outputRunner) *urfavecli.Command {
+func newHealthCommand(factory clientFactory) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "health",
 		Usage: "check Server availability",
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			return health(ctx, configFromCommand(command), command.Root().Writer)
+			client, err := factory.NewHealthClient(configFromCommand(command))
+			if err != nil {
+				return err
+			}
+
+			return executeHealth(ctx, client, command.Root().Writer)
 		},
 	}
 }
 
-func runHealth(
-	ctx context.Context,
-	cfg config.Config,
-	output io.Writer,
-) error {
-	client, err := httpclient.New(cfg.Address, cfg.CACertFile)
-	if err != nil {
-		return err
-	}
-
+func executeHealth(ctx context.Context, client healthClient, output io.Writer) error {
 	status, err := client.Health(ctx)
 	if err != nil {
 		return err

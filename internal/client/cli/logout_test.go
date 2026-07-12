@@ -8,12 +8,6 @@ import (
 	"testing"
 )
 
-type userLogoutterFunc func(context.Context) error
-
-func (f userLogoutterFunc) Logout(ctx context.Context) error {
-	return f(ctx)
-}
-
 func TestExecuteLogout(t *testing.T) {
 	var output bytes.Buffer
 	var called bool

@@ -20,12 +20,6 @@ const (
 	testCardCVV    = "014"
 )
 
-type cardRecordGetterFunc func(context.Context, string) (usecase.Record, error)
-
-func (f cardRecordGetterFunc) GetRecord(ctx context.Context, recordID string) (usecase.Record, error) {
-	return f(ctx, recordID)
-}
-
 type cardReaderStub struct {
 	hiddenValues []string
 	lineValues   []string
@@ -57,9 +51,23 @@ func TestRecordsCreateCardCommand(t *testing.T) {
 	isolateClientConfig(t)
 
 	input := strings.NewReader(`{"number":"2013 0614 2020 0619","cvv":"014"}`)
+	var gotConfig config.Config
+	app := newApplicationStub(t)
+	app.createRecord = func(_ context.Context, request usecase.CreateRecordRequest) (usecase.Record, error) {
+		payload := cardPayloadFromRequest(t, request.Payload)
+		if request.Title != "Joel's card" || payload.Number != testCardNumber || payload.CVV != testCardCVV {
+			t.Errorf("request = %+v, payload = %+v, want card values", request, payload)
+		}
+		return usecase.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 1}}, nil
+	}
+	factory := newClientFactoryStub(t)
+	factory.newApplication = func(cfg config.Config) (application, error) {
+		gotConfig = cfg
+		return app, nil
+	}
+
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-
 	err := runTestCommand(
 		t,
 		[]string{
@@ -72,30 +80,13 @@ func TestRecordsCreateCardCommand(t *testing.T) {
 		input,
 		&stdout,
 		&stderr,
-		commandRunners{
-			createCardRecord: func(
-				_ context.Context,
-				cfg config.Config,
-				commandInput io.Reader,
-				output io.Writer,
-				promptOutput io.Writer,
-				request cardRecordCreateCommandRequest,
-			) error {
-				if cfg.Address != "localhost:9090" {
-					t.Errorf("address = %q, want localhost:9090", cfg.Address)
-				}
-				if commandInput != input || output != &stdout || promptOutput != &stderr {
-					t.Error("command streams were not passed to runner")
-				}
-				if request.title != "Joel's card" || !request.cardStdin {
-					t.Errorf("request = %+v, want title and card-stdin", request)
-				}
-				return nil
-			},
-		},
+		factory,
 	)
 	if err != nil {
 		t.Fatalf("run create-card command error = %v", err)
+	}
+	if gotConfig.Address != "localhost:9090" {
+		t.Errorf("address = %q, want localhost:9090", gotConfig.Address)
 	}
 }
 
@@ -103,6 +94,18 @@ func TestRecordsUpdateCardCommand(t *testing.T) {
 	isolateClientConfig(t)
 
 	input := strings.NewReader(`{"number":"2013 0614 2020 0619","cvv":"014"}`)
+	app := newApplicationStub(t)
+	app.updateRecord = func(_ context.Context, request usecase.UpdateRecordRequest) (usecase.Record, error) {
+		payload := cardPayloadFromRequest(t, request.Payload)
+		if request.RecordID != testRecordID || request.ExpectedRevision != 2 ||
+			request.Title != "Joel's card updated" || payload.Number != testCardNumber || payload.CVV != testCardCVV {
+			t.Errorf("request = %+v, payload = %+v, want update-card values", request, payload)
+		}
+		return usecase.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 3}}, nil
+	}
+	factory := newClientFactoryStub(t)
+	factory.newApplication = func(config.Config) (application, error) { return app, nil }
+
 	err := runTestCommand(
 		t,
 		[]string{
@@ -115,25 +118,7 @@ func TestRecordsUpdateCardCommand(t *testing.T) {
 		input,
 		io.Discard,
 		io.Discard,
-		commandRunners{
-			updateCardRecord: func(
-				_ context.Context,
-				_ config.Config,
-				commandInput io.Reader,
-				_ io.Writer,
-				_ io.Writer,
-				request cardRecordUpdateCommandRequest,
-			) error {
-				if commandInput != input {
-					t.Error("standard input was not passed to runner")
-				}
-				if request.recordID != testRecordID || request.expectedRevision != 2 ||
-					request.title != "Joel's card updated" || !request.cardStdin {
-					t.Errorf("request = %+v, want update-card values", request)
-				}
-				return nil
-			},
-		},
+		factory,
 	)
 	if err != nil {
 		t.Fatalf("run update-card command error = %v", err)
@@ -150,7 +135,7 @@ func TestRecordsCreateCardHelpDoesNotOfferSensitiveFlags(t *testing.T) {
 		nil,
 		&output,
 		io.Discard,
-		commandRunners{},
+		nil,
 	); err != nil {
 		t.Fatalf("run create-card help error = %v", err)
 	}

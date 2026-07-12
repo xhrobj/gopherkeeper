@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
+	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 func TestLoginCommand_ConfigurationAndInput(t *testing.T) {
@@ -15,11 +16,23 @@ func TestLoginCommand_ConfigurationAndInput(t *testing.T) {
 
 	input := strings.NewReader(testRegistrationPassword + "\n")
 	var gotConfig config.Config
-	var gotInput io.Reader
 	var gotLogin string
-	var gotPasswordStdin bool
-	var output bytes.Buffer
+	var gotPassword string
 
+	app := newApplicationStub(t)
+	app.login = func(_ context.Context, login, password string) (model.User, error) {
+		gotLogin = login
+		gotPassword = password
+		return model.User{Login: login}, nil
+	}
+
+	factory := newClientFactoryStub(t)
+	factory.newApplication = func(cfg config.Config) (application, error) {
+		gotConfig = cfg
+		return app, nil
+	}
+
+	var output bytes.Buffer
 	err := runTestCommand(
 		t,
 		[]string{
@@ -34,23 +47,7 @@ func TestLoginCommand_ConfigurationAndInput(t *testing.T) {
 		input,
 		&output,
 		io.Discard,
-		commandRunners{
-			login: func(
-				_ context.Context,
-				cfg config.Config,
-				commandInput io.Reader,
-				_ io.Writer,
-				_ io.Writer,
-				login string,
-				passwordStdin bool,
-			) error {
-				gotConfig = cfg
-				gotInput = commandInput
-				gotLogin = login
-				gotPasswordStdin = passwordStdin
-				return nil
-			},
-		},
+		factory,
 	)
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
@@ -64,14 +61,14 @@ func TestLoginCommand_ConfigurationAndInput(t *testing.T) {
 	if gotConfig != wantConfig {
 		t.Errorf("configuration = %+v, want %+v", gotConfig, wantConfig)
 	}
-	if gotInput != input {
-		t.Error("login command did not receive standard input")
-	}
 	if gotLogin != "alice" {
 		t.Errorf("login = %q, want alice", gotLogin)
 	}
-	if !gotPasswordStdin {
-		t.Error("password-stdin = false, want true")
+	if gotPassword != testRegistrationPassword {
+		t.Errorf("password = %q, want stdin password", gotPassword)
+	}
+	if got := output.String(); got != "User alice logged in successfully.\n" {
+		t.Errorf("output = %q, want login result", got)
 	}
 }
 
@@ -84,20 +81,7 @@ func TestLoginCommand_RequiresLogin(t *testing.T) {
 		strings.NewReader(testRegistrationPassword+"\n"),
 		io.Discard,
 		io.Discard,
-		commandRunners{
-			login: func(
-				context.Context,
-				config.Config,
-				io.Reader,
-				io.Writer,
-				io.Writer,
-				string,
-				bool,
-			) error {
-				t.Fatal("login runner was called without login")
-				return nil
-			},
-		},
+		nil,
 	)
 	if err == nil {
 		t.Fatal("run() error = nil, want required login error")
@@ -108,27 +92,13 @@ func TestLoginCommand_HelpDoesNotOfferPasswordFlag(t *testing.T) {
 	isolateClientConfig(t)
 
 	var output bytes.Buffer
-
 	err := runTestCommand(
 		t,
 		[]string{"gkeep", "login", "--help"},
 		strings.NewReader(""),
 		&output,
 		io.Discard,
-		commandRunners{
-			login: func(
-				context.Context,
-				config.Config,
-				io.Reader,
-				io.Writer,
-				io.Writer,
-				string,
-				bool,
-			) error {
-				t.Fatal("login runner was called for help")
-				return nil
-			},
-		},
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("run() error = %v", err)

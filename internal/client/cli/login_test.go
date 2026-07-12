@@ -12,16 +12,6 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-type userLoggerFunc func(context.Context, string, string) (model.User, error)
-
-func (f userLoggerFunc) Login(
-	ctx context.Context,
-	login string,
-	password string,
-) (model.User, error) {
-	return f(ctx, login, password)
-}
-
 func TestExecuteLogin_Interactive(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 4, 12, 0, 0, 0, time.UTC)
 	passwords := &passwordReaderStub{

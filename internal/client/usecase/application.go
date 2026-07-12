@@ -11,11 +11,11 @@ import (
 )
 
 // Application выполняет клиентские online-сценарии поверх HTTP client'а
-// и локального хранилища session.
+// и provider'а локального хранилища session.
 type Application struct {
 	users         userClient
 	records       recordClient
-	sessions      sessionStorage
+	sessions      sessionStorageProvider
 	serverAddress string
 }
 
@@ -30,6 +30,8 @@ type sessionStorage interface {
 	Load(expectedServerAddress string) (session.Session, error)
 }
 
+type sessionStorageProvider func() (sessionStorage, error)
+
 // New создаёт полностью сконфигурированное клиентское application-приложение.
 func New(cfg config.Config) (*Application, error) {
 	client, err := httpclient.New(cfg.Address, cfg.CACertFile)
@@ -37,15 +39,21 @@ func New(cfg config.Config) (*Application, error) {
 		return nil, err
 	}
 
-	sessions, err := session.NewFileStorage(cfg.SessionFile)
-	if err != nil {
-		return nil, fmt.Errorf("create online session storage: %w", err)
-	}
-
 	return &Application{
 		users:         client,
 		records:       client,
-		sessions:      sessions,
+		sessions:      fileSessionStorageProvider(cfg.SessionFile),
 		serverAddress: cfg.Address,
 	}, nil
+}
+
+func fileSessionStorageProvider(path string) sessionStorageProvider {
+	return func() (sessionStorage, error) {
+		storage, err := session.NewFileStorage(path)
+		if err != nil {
+			return nil, fmt.Errorf("create online session storage: %w", err)
+		}
+
+		return storage, nil
+	}
 }

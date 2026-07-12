@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
+	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 func TestRegisterCommand_ConfigurationAndInput(t *testing.T) {
@@ -15,11 +16,23 @@ func TestRegisterCommand_ConfigurationAndInput(t *testing.T) {
 
 	input := strings.NewReader(testRegistrationPassword + "\n")
 	var gotConfig config.Config
-	var gotInput io.Reader
 	var gotLogin string
-	var gotPasswordStdin bool
-	var output bytes.Buffer
+	var gotPassword string
 
+	app := newApplicationStub(t)
+	app.register = func(_ context.Context, login, password string) (model.User, error) {
+		gotLogin = login
+		gotPassword = password
+		return model.User{Login: login}, nil
+	}
+
+	factory := newClientFactoryStub(t)
+	factory.newApplication = func(cfg config.Config) (application, error) {
+		gotConfig = cfg
+		return app, nil
+	}
+
+	var output bytes.Buffer
 	err := runTestCommand(
 		t,
 		[]string{
@@ -33,43 +46,24 @@ func TestRegisterCommand_ConfigurationAndInput(t *testing.T) {
 		input,
 		&output,
 		io.Discard,
-		commandRunners{
-			register: func(
-				_ context.Context,
-				cfg config.Config,
-				commandInput io.Reader,
-				_ io.Writer,
-				_ io.Writer,
-				login string,
-				passwordStdin bool,
-			) error {
-				gotConfig = cfg
-				gotInput = commandInput
-				gotLogin = login
-				gotPasswordStdin = passwordStdin
-				return nil
-			},
-		},
+		factory,
 	)
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
 
-	wantConfig := config.Config{
-		Address:    "localhost:8082",
-		CACertFile: "flag-ca.pem",
-	}
+	wantConfig := config.Config{Address: "localhost:8082", CACertFile: "flag-ca.pem"}
 	if gotConfig != wantConfig {
 		t.Errorf("configuration = %+v, want %+v", gotConfig, wantConfig)
-	}
-	if gotInput != input {
-		t.Error("register command did not receive standard input")
 	}
 	if gotLogin != "alice" {
 		t.Errorf("login = %q, want alice", gotLogin)
 	}
-	if !gotPasswordStdin {
-		t.Error("password-stdin = false, want true")
+	if gotPassword != testRegistrationPassword {
+		t.Errorf("password = %q, want stdin password", gotPassword)
+	}
+	if got := output.String(); got != "User alice registered successfully.\n" {
+		t.Errorf("output = %q, want registration result", got)
 	}
 }
 
@@ -82,20 +76,7 @@ func TestRegisterCommand_RequiresLogin(t *testing.T) {
 		strings.NewReader(testRegistrationPassword+"\n"),
 		io.Discard,
 		io.Discard,
-		commandRunners{
-			register: func(
-				context.Context,
-				config.Config,
-				io.Reader,
-				io.Writer,
-				io.Writer,
-				string,
-				bool,
-			) error {
-				t.Fatal("register runner was called without login")
-				return nil
-			},
-		},
+		nil,
 	)
 	if err == nil {
 		t.Fatal("run() error = nil, want required login error")
@@ -106,27 +87,13 @@ func TestRegisterCommand_HelpDoesNotOfferPasswordFlag(t *testing.T) {
 	isolateClientConfig(t)
 
 	var output bytes.Buffer
-
 	err := runTestCommand(
 		t,
 		[]string{"gkeep", "register", "--help"},
 		strings.NewReader(""),
 		&output,
 		io.Discard,
-		commandRunners{
-			register: func(
-				context.Context,
-				config.Config,
-				io.Reader,
-				io.Writer,
-				io.Writer,
-				string,
-				bool,
-			) error {
-				t.Fatal("register runner was called for help")
-				return nil
-			},
-		},
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("run() error = %v", err)

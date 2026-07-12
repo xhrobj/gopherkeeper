@@ -10,7 +10,6 @@ import (
 	"time"
 
 	urfavecli "github.com/urfave/cli/v3"
-	"github.com/xhrobj/gopherkeeper/internal/client/config"
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
@@ -23,45 +22,33 @@ const (
 	recordIDArgsUsage = "<record-id>"
 )
 
-type recordCreator interface {
-	CreateRecord(ctx context.Context, request usecase.CreateRecordRequest) (usecase.Record, error)
+type textRecordUpdateCommandRequest struct {
+	recordID         string
+	expectedRevision int64
+	title            string
+	textFile         string
+	metadataFile     string
 }
 
-type recordUpdater interface {
-	UpdateRecord(ctx context.Context, request usecase.UpdateRecordRequest) (usecase.Record, error)
-}
-
-type recordLister interface {
-	ListRecords(ctx context.Context) ([]model.RecordMetadata, error)
-}
-
-type recordGetter interface {
-	GetRecord(ctx context.Context, recordID string) (usecase.Record, error)
-}
-
-type recordDeleter interface {
-	DeleteRecord(ctx context.Context, request usecase.DeleteRecordRequest) error
-}
-
-func newRecordsCommand(input io.Reader, runners commandRunners) *urfavecli.Command {
+func newRecordsCommand(input io.Reader, factory clientFactory) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "records",
 		Usage: "manage private records",
 		Commands: []*urfavecli.Command{
-			newCreateTextRecordCommand(runners.createTextRecord),
-			newCreateCredentialsRecordCommand(input, runners.createCredentialsRecord),
-			newCreateCardRecordCommand(input, runners.createCardRecord),
-			newUpdateTextRecordCommand(runners.updateTextRecord),
-			newUpdateCredentialsRecordCommand(input, runners.updateCredentialsRecord),
-			newUpdateCardRecordCommand(input, runners.updateCardRecord),
-			newListRecordsCommand(runners.listRecords),
-			newGetRecordCommand(runners.getRecord),
-			newDeleteRecordCommand(runners.deleteRecord),
+			newCreateTextRecordCommand(factory),
+			newCreateCredentialsRecordCommand(input, factory),
+			newCreateCardRecordCommand(input, factory),
+			newUpdateTextRecordCommand(factory),
+			newUpdateCredentialsRecordCommand(input, factory),
+			newUpdateCardRecordCommand(input, factory),
+			newListRecordsCommand(factory),
+			newGetRecordCommand(factory),
+			newDeleteRecordCommand(factory),
 		},
 	}
 }
 
-func newCreateTextRecordCommand(create textRecordCreateRunner) *urfavecli.Command {
+func newCreateTextRecordCommand(factory clientFactory) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "create-text",
 		Usage: "create a private text record",
@@ -82,9 +69,14 @@ func newCreateTextRecordCommand(create textRecordCreateRunner) *urfavecli.Comman
 			},
 		},
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			return create(
+			application, err := factory.NewApplication(configFromCommand(command))
+			if err != nil {
+				return err
+			}
+
+			return executeCreateTextRecord(
 				ctx,
-				configFromCommand(command),
+				application,
 				command.Root().Writer,
 				command.String(titleFlag),
 				command.String(textFileFlag),
@@ -94,7 +86,7 @@ func newCreateTextRecordCommand(create textRecordCreateRunner) *urfavecli.Comman
 	}
 }
 
-func newUpdateTextRecordCommand(update textRecordUpdateRunner) *urfavecli.Command {
+func newUpdateTextRecordCommand(factory clientFactory) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:      "update-text",
 		Usage:     "update a private text record",
@@ -127,9 +119,14 @@ func newUpdateTextRecordCommand(update textRecordUpdateRunner) *urfavecli.Comman
 				return errors.New("record id is required")
 			}
 
-			return update(
+			application, err := factory.NewApplication(configFromCommand(command))
+			if err != nil {
+				return err
+			}
+
+			return executeUpdateTextRecord(
 				ctx,
-				configFromCommand(command),
+				application,
 				command.Root().Writer,
 				textRecordUpdateCommandRequest{
 					recordID:         recordID,
@@ -143,17 +140,22 @@ func newUpdateTextRecordCommand(update textRecordUpdateRunner) *urfavecli.Comman
 	}
 }
 
-func newListRecordsCommand(list outputRunner) *urfavecli.Command {
+func newListRecordsCommand(factory clientFactory) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "list",
 		Usage: "list private record metadata",
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			return list(ctx, configFromCommand(command), command.Root().Writer)
+			application, err := factory.NewApplication(configFromCommand(command))
+			if err != nil {
+				return err
+			}
+
+			return executeListRecords(ctx, application, command.Root().Writer)
 		},
 	}
 }
 
-func newGetRecordCommand(get recordGetRunner) *urfavecli.Command {
+func newGetRecordCommand(factory clientFactory) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:      "get",
 		Usage:     "get a private record",
@@ -164,12 +166,17 @@ func newGetRecordCommand(get recordGetRunner) *urfavecli.Command {
 				return errors.New("record id is required")
 			}
 
-			return get(ctx, configFromCommand(command), command.Root().Writer, recordID)
+			application, err := factory.NewApplication(configFromCommand(command))
+			if err != nil {
+				return err
+			}
+
+			return executeGetRecord(ctx, application, command.Root().Writer, recordID)
 		},
 	}
 }
 
-func newDeleteRecordCommand(delete recordDeleteRunner) *urfavecli.Command {
+func newDeleteRecordCommand(factory clientFactory) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:      "delete",
 		Usage:     "delete a private record",
@@ -188,9 +195,14 @@ func newDeleteRecordCommand(delete recordDeleteRunner) *urfavecli.Command {
 				return errors.New("record id is required")
 			}
 
-			return delete(
+			application, err := factory.NewApplication(configFromCommand(command))
+			if err != nil {
+				return err
+			}
+
+			return executeDeleteRecord(
 				ctx,
-				configFromCommand(command),
+				application,
 				command.Root().Writer,
 				recordID,
 				command.Int64(revisionFlag),
@@ -199,81 +211,9 @@ func newDeleteRecordCommand(delete recordDeleteRunner) *urfavecli.Command {
 	}
 }
 
-func runCreateTextRecord(
-	ctx context.Context,
-	cfg config.Config,
-	output io.Writer,
-	title string,
-	textFile string,
-	metadataFile string,
-) error {
-	application, err := usecase.New(cfg)
-	if err != nil {
-		return err
-	}
-
-	return executeCreateTextRecord(ctx, application, output, title, textFile, metadataFile)
-}
-
-func runListRecords(
-	ctx context.Context,
-	cfg config.Config,
-	output io.Writer,
-) error {
-	application, err := usecase.New(cfg)
-	if err != nil {
-		return err
-	}
-
-	return executeListRecords(ctx, application, output)
-}
-
-func runUpdateTextRecord(
-	ctx context.Context,
-	cfg config.Config,
-	output io.Writer,
-	request textRecordUpdateCommandRequest,
-) error {
-	application, err := usecase.New(cfg)
-	if err != nil {
-		return err
-	}
-
-	return executeUpdateTextRecord(ctx, application, output, request)
-}
-
-func runDeleteRecord(
-	ctx context.Context,
-	cfg config.Config,
-	output io.Writer,
-	recordID string,
-	expectedRevision int64,
-) error {
-	application, err := usecase.New(cfg)
-	if err != nil {
-		return err
-	}
-
-	return executeDeleteRecord(ctx, application, output, recordID, expectedRevision)
-}
-
-func runGetRecord(
-	ctx context.Context,
-	cfg config.Config,
-	output io.Writer,
-	recordID string,
-) error {
-	application, err := usecase.New(cfg)
-	if err != nil {
-		return err
-	}
-
-	return executeGetRecord(ctx, application, output, recordID)
-}
-
 func executeCreateTextRecord(
 	ctx context.Context,
-	creator recordCreator,
+	application application,
 	output io.Writer,
 	title string,
 	textFile string,
@@ -289,7 +229,7 @@ func executeCreateTextRecord(
 		return err
 	}
 
-	record, err := creator.CreateRecord(ctx, usecase.CreateRecordRequest{
+	record, err := application.CreateRecord(ctx, usecase.CreateRecordRequest{
 		Title: title,
 		Payload: &model.TextPayload{
 			Text:     text,
@@ -314,7 +254,7 @@ func executeCreateTextRecord(
 
 func executeUpdateTextRecord(
 	ctx context.Context,
-	updater recordUpdater,
+	application application,
 	output io.Writer,
 	request textRecordUpdateCommandRequest,
 ) error {
@@ -328,7 +268,7 @@ func executeUpdateTextRecord(
 		return err
 	}
 
-	record, err := updater.UpdateRecord(ctx, usecase.UpdateRecordRequest{
+	record, err := application.UpdateRecord(ctx, usecase.UpdateRecordRequest{
 		RecordID:         request.recordID,
 		ExpectedRevision: request.expectedRevision,
 		Title:            request.title,
@@ -355,12 +295,12 @@ func executeUpdateTextRecord(
 
 func executeDeleteRecord(
 	ctx context.Context,
-	deleter recordDeleter,
+	application application,
 	output io.Writer,
 	recordID string,
 	expectedRevision int64,
 ) error {
-	if err := deleter.DeleteRecord(ctx, usecase.DeleteRecordRequest{
+	if err := application.DeleteRecord(ctx, usecase.DeleteRecordRequest{
 		RecordID:         recordID,
 		ExpectedRevision: expectedRevision,
 	}); err != nil {
@@ -374,8 +314,8 @@ func executeDeleteRecord(
 	return nil
 }
 
-func executeListRecords(ctx context.Context, lister recordLister, output io.Writer) error {
-	records, err := lister.ListRecords(ctx)
+func executeListRecords(ctx context.Context, application application, output io.Writer) error {
+	records, err := application.ListRecords(ctx)
 	if err != nil {
 		return err
 	}
@@ -412,8 +352,8 @@ func executeListRecords(ctx context.Context, lister recordLister, output io.Writ
 	return nil
 }
 
-func executeGetRecord(ctx context.Context, getter recordGetter, output io.Writer, recordID string) error {
-	record, err := getter.GetRecord(ctx, recordID)
+func executeGetRecord(ctx context.Context, application application, output io.Writer, recordID string) error {
+	record, err := application.GetRecord(ctx, recordID)
 	if err != nil {
 		return err
 	}

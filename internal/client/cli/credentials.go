@@ -7,7 +7,6 @@ import (
 	"io"
 
 	urfavecli "github.com/urfave/cli/v3"
-	"github.com/xhrobj/gopherkeeper/internal/client/config"
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
@@ -16,21 +15,43 @@ const credentialsStdinFlag = "credentials-stdin"
 
 var errMultipleCredentialsValues = errors.New("credentials stdin must contain one JSON value")
 
+type credentialsRecordCreateCommandRequest struct {
+	title            string
+	metadataFile     string
+	credentialsStdin bool
+}
+
+type credentialsRecordUpdateCommandRequest struct {
+	recordID         string
+	expectedRevision int64
+	title            string
+	metadataFile     string
+	credentialsStdin bool
+}
+
 func newCreateCredentialsRecordCommand(
 	input io.Reader,
-	create credentialsRecordCreateRunner,
+	factory clientFactory,
 ) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "create-credentials",
 		Usage: "create a private credentials record",
 		Flags: credentialsRecordFlags(false),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			return create(
+			application, err := factory.NewApplication(configFromCommand(command))
+			if err != nil {
+				return err
+			}
+
+			return executeCreateCredentialsRecord(
 				ctx,
-				configFromCommand(command),
-				input,
-				command.Root().Writer,
-				command.Root().ErrWriter,
+				application,
+				terminalPasswordReader{},
+				passwordStreams{
+					input:        input,
+					output:       command.Root().Writer,
+					promptOutput: command.Root().ErrWriter,
+				},
 				credentialsRecordCreateCommandRequest{
 					title:            command.String(titleFlag),
 					metadataFile:     command.String(metadataFileFlag),
@@ -43,7 +64,7 @@ func newCreateCredentialsRecordCommand(
 
 func newUpdateCredentialsRecordCommand(
 	input io.Reader,
-	update credentialsRecordUpdateRunner,
+	factory clientFactory,
 ) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:      "update-credentials",
@@ -56,12 +77,20 @@ func newUpdateCredentialsRecordCommand(
 				return errors.New("record id is required")
 			}
 
-			return update(
+			application, err := factory.NewApplication(configFromCommand(command))
+			if err != nil {
+				return err
+			}
+
+			return executeUpdateCredentialsRecord(
 				ctx,
-				configFromCommand(command),
-				input,
-				command.Root().Writer,
-				command.Root().ErrWriter,
+				application,
+				terminalPasswordReader{},
+				passwordStreams{
+					input:        input,
+					output:       command.Root().Writer,
+					promptOutput: command.Root().ErrWriter,
+				},
 				credentialsRecordUpdateCommandRequest{
 					recordID:         recordID,
 					expectedRevision: command.Int64(revisionFlag),
@@ -102,61 +131,9 @@ func credentialsRecordFlags(withRevision bool) []urfavecli.Flag {
 	)
 }
 
-func runCreateCredentialsRecord(
-	ctx context.Context,
-	cfg config.Config,
-	input io.Reader,
-	output io.Writer,
-	promptOutput io.Writer,
-	request credentialsRecordCreateCommandRequest,
-) error {
-	application, err := usecase.New(cfg)
-	if err != nil {
-		return err
-	}
-
-	return executeCreateCredentialsRecord(
-		ctx,
-		application,
-		terminalPasswordReader{},
-		passwordStreams{
-			input:        input,
-			output:       output,
-			promptOutput: promptOutput,
-		},
-		request,
-	)
-}
-
-func runUpdateCredentialsRecord(
-	ctx context.Context,
-	cfg config.Config,
-	input io.Reader,
-	output io.Writer,
-	promptOutput io.Writer,
-	request credentialsRecordUpdateCommandRequest,
-) error {
-	application, err := usecase.New(cfg)
-	if err != nil {
-		return err
-	}
-
-	return executeUpdateCredentialsRecord(
-		ctx,
-		application,
-		terminalPasswordReader{},
-		passwordStreams{
-			input:        input,
-			output:       output,
-			promptOutput: promptOutput,
-		},
-		request,
-	)
-}
-
 func executeCreateCredentialsRecord(
 	ctx context.Context,
-	creator recordCreator,
+	application application,
 	reader passwordReader,
 	streams passwordStreams,
 	request credentialsRecordCreateCommandRequest,
@@ -172,7 +149,7 @@ func executeCreateCredentialsRecord(
 		return err
 	}
 
-	record, err := creator.CreateRecord(ctx, usecase.CreateRecordRequest{
+	record, err := application.CreateRecord(ctx, usecase.CreateRecordRequest{
 		Title:   request.title,
 		Payload: &payload,
 	})
@@ -194,7 +171,7 @@ func executeCreateCredentialsRecord(
 
 func executeUpdateCredentialsRecord(
 	ctx context.Context,
-	updater recordUpdater,
+	application application,
 	reader passwordReader,
 	streams passwordStreams,
 	request credentialsRecordUpdateCommandRequest,
@@ -210,7 +187,7 @@ func executeUpdateCredentialsRecord(
 		return err
 	}
 
-	record, err := updater.UpdateRecord(ctx, usecase.UpdateRecordRequest{
+	record, err := application.UpdateRecord(ctx, usecase.UpdateRecordRequest{
 		RecordID:         request.recordID,
 		ExpectedRevision: request.expectedRevision,
 		Title:            request.title,

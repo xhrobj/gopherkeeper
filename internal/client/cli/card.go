@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	urfavecli "github.com/urfave/cli/v3"
-	"github.com/xhrobj/gopherkeeper/internal/client/config"
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
@@ -18,18 +17,40 @@ const cardStdinFlag = "card-stdin"
 
 var errMultipleCardValues = errors.New("card stdin must contain one JSON value")
 
-func newCreateCardRecordCommand(input io.Reader, create cardRecordCreateRunner) *urfavecli.Command {
+type cardRecordCreateCommandRequest struct {
+	title        string
+	metadataFile string
+	cardStdin    bool
+}
+
+type cardRecordUpdateCommandRequest struct {
+	recordID         string
+	expectedRevision int64
+	title            string
+	metadataFile     string
+	cardStdin        bool
+}
+
+func newCreateCardRecordCommand(input io.Reader, factory clientFactory) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "create-card",
 		Usage: "create a private card record",
 		Flags: cardRecordFlags(false),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			return create(
+			application, err := factory.NewApplication(configFromCommand(command))
+			if err != nil {
+				return err
+			}
+
+			return executeCreateCardRecord(
 				ctx,
-				configFromCommand(command),
-				input,
-				command.Root().Writer,
-				command.Root().ErrWriter,
+				application,
+				terminalPasswordReader{},
+				passwordStreams{
+					input:        input,
+					output:       command.Root().Writer,
+					promptOutput: command.Root().ErrWriter,
+				},
 				cardRecordCreateCommandRequest{
 					title:        command.String(titleFlag),
 					metadataFile: command.String(metadataFileFlag),
@@ -40,7 +61,7 @@ func newCreateCardRecordCommand(input io.Reader, create cardRecordCreateRunner) 
 	}
 }
 
-func newUpdateCardRecordCommand(input io.Reader, update cardRecordUpdateRunner) *urfavecli.Command {
+func newUpdateCardRecordCommand(input io.Reader, factory clientFactory) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:      "update-card",
 		Usage:     "update a private card record",
@@ -52,12 +73,20 @@ func newUpdateCardRecordCommand(input io.Reader, update cardRecordUpdateRunner) 
 				return errors.New("record id is required")
 			}
 
-			return update(
+			application, err := factory.NewApplication(configFromCommand(command))
+			if err != nil {
+				return err
+			}
+
+			return executeUpdateCardRecord(
 				ctx,
-				configFromCommand(command),
-				input,
-				command.Root().Writer,
-				command.Root().ErrWriter,
+				application,
+				terminalPasswordReader{},
+				passwordStreams{
+					input:        input,
+					output:       command.Root().Writer,
+					promptOutput: command.Root().ErrWriter,
+				},
 				cardRecordUpdateCommandRequest{
 					recordID:         recordID,
 					expectedRevision: command.Int64(revisionFlag),
@@ -98,53 +127,9 @@ func cardRecordFlags(withRevision bool) []urfavecli.Flag {
 	)
 }
 
-func runCreateCardRecord(
-	ctx context.Context,
-	cfg config.Config,
-	input io.Reader,
-	output io.Writer,
-	promptOutput io.Writer,
-	request cardRecordCreateCommandRequest,
-) error {
-	application, err := usecase.New(cfg)
-	if err != nil {
-		return err
-	}
-
-	return executeCreateCardRecord(
-		ctx,
-		application,
-		terminalPasswordReader{},
-		passwordStreams{input: input, output: output, promptOutput: promptOutput},
-		request,
-	)
-}
-
-func runUpdateCardRecord(
-	ctx context.Context,
-	cfg config.Config,
-	input io.Reader,
-	output io.Writer,
-	promptOutput io.Writer,
-	request cardRecordUpdateCommandRequest,
-) error {
-	application, err := usecase.New(cfg)
-	if err != nil {
-		return err
-	}
-
-	return executeUpdateCardRecord(
-		ctx,
-		application,
-		terminalPasswordReader{},
-		passwordStreams{input: input, output: output, promptOutput: promptOutput},
-		request,
-	)
-}
-
 func executeCreateCardRecord(
 	ctx context.Context,
-	creator recordCreator,
+	application application,
 	reader passwordReader,
 	streams passwordStreams,
 	request cardRecordCreateCommandRequest,
@@ -160,7 +145,7 @@ func executeCreateCardRecord(
 		return err
 	}
 
-	record, err := creator.CreateRecord(ctx, usecase.CreateRecordRequest{
+	record, err := application.CreateRecord(ctx, usecase.CreateRecordRequest{
 		Title:   request.title,
 		Payload: &payload,
 	})
@@ -182,7 +167,7 @@ func executeCreateCardRecord(
 
 func executeUpdateCardRecord(
 	ctx context.Context,
-	updater recordUpdater,
+	application application,
 	reader passwordReader,
 	streams passwordStreams,
 	request cardRecordUpdateCommandRequest,
@@ -198,7 +183,7 @@ func executeUpdateCardRecord(
 		return err
 	}
 
-	record, err := updater.UpdateRecord(ctx, usecase.UpdateRecordRequest{
+	record, err := application.UpdateRecord(ctx, usecase.UpdateRecordRequest{
 		RecordID:         request.recordID,
 		ExpectedRevision: request.expectedRevision,
 		Title:            request.title,

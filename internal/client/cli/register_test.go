@@ -13,16 +13,6 @@ import (
 
 const testRegistrationPassword = "correct-horse-battery-staple"
 
-type userRegistererFunc func(context.Context, string, string) (model.User, error)
-
-func (f userRegistererFunc) Register(
-	ctx context.Context,
-	login string,
-	password string,
-) (model.User, error) {
-	return f(ctx, login, password)
-}
-
 type passwordReaderStub struct {
 	hiddenValues []string
 	lineValue    string

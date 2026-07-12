@@ -27,6 +27,11 @@ func (a *Application) Register(ctx context.Context, login, password string) (mod
 
 // Login аутентифицирует пользователя и сохраняет online-сессию локально.
 func (a *Application) Login(ctx context.Context, login, password string) (model.User, error) {
+	sessions, err := a.sessions()
+	if err != nil {
+		return model.User{}, err
+	}
+
 	result, err := a.users.Login(ctx, login, password)
 	if err != nil {
 		var apiError *httpclient.APIError
@@ -37,7 +42,7 @@ func (a *Application) Login(ctx context.Context, login, password string) (model.
 		return model.User{}, fmt.Errorf("login user: %w", err)
 	}
 
-	if err := a.sessions.Save(session.Session{
+	if err := sessions.Save(session.Session{
 		ServerAddress: a.serverAddress,
 		AccessToken:   result.AccessToken,
 		ExpiresAt:     result.ExpiresAt,
@@ -64,7 +69,12 @@ func (a *Application) Whoami(ctx context.Context) (model.User, error) {
 }
 
 func (a *Application) loadSession() (session.Session, error) {
-	storedSession, err := a.sessions.Load(a.serverAddress)
+	sessions, err := a.sessions()
+	if err != nil {
+		return session.Session{}, err
+	}
+
+	storedSession, err := sessions.Load(a.serverAddress)
 	if err != nil {
 		return session.Session{}, mapSessionLoadError(err)
 	}

@@ -22,29 +22,12 @@ const banner = `
 
 `
 
-type commandRunners struct {
-	health                  outputRunner
-	register                passwordRunner
-	login                   passwordRunner
-	logout                  outputRunner
-	whoami                  outputRunner
-	createTextRecord        textRecordCreateRunner
-	createCredentialsRecord credentialsRecordCreateRunner
-	createCardRecord        cardRecordCreateRunner
-	updateTextRecord        textRecordUpdateRunner
-	updateCredentialsRecord credentialsRecordUpdateRunner
-	updateCardRecord        cardRecordUpdateRunner
-	listRecords             outputRunner
-	getRecord               recordGetRunner
-	deleteRecord            recordDeleteRunner
-}
-
 type runOptions struct {
 	input       io.Reader
 	output      io.Writer
 	errorOutput io.Writer
 	info        buildinfo.Info
-	runners     commandRunners
+	factory     clientFactory
 }
 
 // Run запускает командный интерфейс Клиента.
@@ -72,27 +55,8 @@ func RunWithInput(
 		output:      output,
 		errorOutput: errorOutput,
 		info:        info,
-		runners:     defaultCommandRunners(),
+		factory:     defaultClientFactory{},
 	})
-}
-
-func defaultCommandRunners() commandRunners {
-	return commandRunners{
-		health:                  runHealth,
-		register:                runRegister,
-		login:                   runLogin,
-		logout:                  runLogout,
-		whoami:                  runWhoami,
-		createTextRecord:        runCreateTextRecord,
-		createCredentialsRecord: runCreateCredentialsRecord,
-		createCardRecord:        runCreateCardRecord,
-		updateTextRecord:        runUpdateTextRecord,
-		updateCredentialsRecord: runUpdateCredentialsRecord,
-		updateCardRecord:        runUpdateCardRecord,
-		listRecords:             runListRecords,
-		getRecord:               runGetRecord,
-		deleteRecord:            runDeleteRecord,
-	}
 }
 
 func run(ctx context.Context, args []string, options runOptions) error {
@@ -109,7 +73,7 @@ func run(ctx context.Context, args []string, options runOptions) error {
 		options.output,
 		options.errorOutput,
 		options.info,
-		options.runners,
+		options.factory,
 		commandArgs(args),
 	)
 	if err != nil {
@@ -124,7 +88,7 @@ func newRootCommand(
 	output io.Writer,
 	errorOutput io.Writer,
 	info buildinfo.Info,
-	runners commandRunners,
+	factory clientFactory,
 	args []string,
 ) (*urfavecli.Command, error) {
 	defaults, err := config.Parse(args)
@@ -166,12 +130,12 @@ func newRootCommand(
 			},
 		},
 		Commands: []*urfavecli.Command{
-			newHealthCommand(runners.health),
-			newRegisterCommand(input, runners.register),
-			newLoginCommand(input, runners.login),
-			newLogoutCommand(runners.logout),
-			newWhoamiCommand(runners.whoami),
-			newRecordsCommand(input, runners),
+			newHealthCommand(factory),
+			newRegisterCommand(input, factory),
+			newLoginCommand(input, factory),
+			newLogoutCommand(factory),
+			newWhoamiCommand(factory),
+			newRecordsCommand(input, factory),
 		},
 		Action: func(_ context.Context, command *urfavecli.Command) error {
 			return urfavecli.ShowRootCommandHelp(command)

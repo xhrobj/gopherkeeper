@@ -7,14 +7,25 @@ import (
 	"testing"
 
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
+	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 func TestWhoamiCommand_Configuration(t *testing.T) {
 	isolateClientConfig(t)
 
 	var gotConfig config.Config
-	var output bytes.Buffer
+	app := newApplicationStub(t)
+	app.whoami = func(context.Context) (model.User, error) {
+		return model.User{Login: "alice"}, nil
+	}
 
+	factory := newClientFactoryStub(t)
+	factory.newApplication = func(cfg config.Config) (application, error) {
+		gotConfig = cfg
+		return app, nil
+	}
+
+	var output bytes.Buffer
 	err := runTestCommand(
 		t,
 		[]string{
@@ -27,12 +38,7 @@ func TestWhoamiCommand_Configuration(t *testing.T) {
 		nil,
 		&output,
 		io.Discard,
-		commandRunners{
-			whoami: func(_ context.Context, cfg config.Config, _ io.Writer) error {
-				gotConfig = cfg
-				return nil
-			},
-		},
+		factory,
 	)
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
@@ -45,5 +51,8 @@ func TestWhoamiCommand_Configuration(t *testing.T) {
 	}
 	if gotConfig != wantConfig {
 		t.Errorf("configuration = %+v, want %+v", gotConfig, wantConfig)
+	}
+	if got := output.String(); got != "alice\n" {
+		t.Errorf("output = %q, want alice", got)
 	}
 }

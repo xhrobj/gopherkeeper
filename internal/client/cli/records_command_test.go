@@ -23,8 +23,19 @@ func TestRecordsUpdateTextCommand(t *testing.T) {
 
 	textFile := writeTestFile(t, "note.txt", "updated secret")
 	metadataFile := writeTestFile(t, "metadata.txt", "updated private metadata")
-	var stdout bytes.Buffer
+	var gotConfig config.Config
+	app := newApplicationStub(t)
+	app.updateRecord = func(_ context.Context, request usecase.UpdateRecordRequest) (usecase.Record, error) {
+		assertTextUpdateRequest(t, request)
+		return usecase.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 2}}, nil
+	}
+	factory := newClientFactoryStub(t)
+	factory.newApplication = func(cfg config.Config) (application, error) {
+		gotConfig = cfg
+		return app, nil
+	}
 
+	var stdout bytes.Buffer
 	err := runTestCommand(
 		t,
 		[]string{
@@ -38,21 +49,17 @@ func TestRecordsUpdateTextCommand(t *testing.T) {
 		},
 		nil,
 		&stdout,
-		&bytes.Buffer{},
-		commandRunners{
-			updateTextRecord: func(
-				_ context.Context,
-				cfg config.Config,
-				output io.Writer,
-				request textRecordUpdateCommandRequest,
-			) error {
-				assertUpdateTextCommandRequest(t, cfg, output, &stdout, request)
-				return nil
-			},
-		},
+		io.Discard,
+		factory,
 	)
 	if err != nil {
 		t.Fatalf("run update-text command error = %v", err)
+	}
+	if gotConfig.Address != "localhost:9090" {
+		t.Errorf("address = %q, want localhost:9090", gotConfig.Address)
+	}
+	if got := stdout.String(); got != "Updated text record "+testRecordID+" to revision 2.\n" {
+		t.Errorf("output = %q", got)
 	}
 }
 
@@ -70,11 +77,9 @@ func TestRecordsUpdateTextCommandRequiresRecordID(t *testing.T) {
 			"--text-file", textFile,
 		},
 		nil,
-		&bytes.Buffer{},
-		&bytes.Buffer{},
-		commandRunners{
-			updateTextRecord: unexpectedUpdateTextRecordRunner(t),
-		},
+		io.Discard,
+		io.Discard,
+		nil,
 	)
 	if err == nil || err.Error() != "record id is required" {
 		t.Fatalf("run update-text command error = %v, want record id is required", err)
@@ -83,6 +88,20 @@ func TestRecordsUpdateTextCommandRequiresRecordID(t *testing.T) {
 
 func TestRecordsDeleteCommand(t *testing.T) {
 	isolateClientConfig(t)
+
+	var gotConfig config.Config
+	app := newApplicationStub(t)
+	app.deleteRecord = func(_ context.Context, request usecase.DeleteRecordRequest) error {
+		if request.RecordID != testRecordID || request.ExpectedRevision != 2 {
+			t.Errorf("request = %+v, want ID and revision 2", request)
+		}
+		return nil
+	}
+	factory := newClientFactoryStub(t)
+	factory.newApplication = func(cfg config.Config) (application, error) {
+		gotConfig = cfg
+		return app, nil
+	}
 
 	var stdout bytes.Buffer
 	err := runTestCommand(
@@ -95,34 +114,17 @@ func TestRecordsDeleteCommand(t *testing.T) {
 		},
 		nil,
 		&stdout,
-		&bytes.Buffer{},
-		commandRunners{
-			deleteRecord: func(
-				_ context.Context,
-				cfg config.Config,
-				output io.Writer,
-				recordID string,
-				expectedRevision int64,
-			) error {
-				if cfg.Address != "localhost:9090" {
-					t.Errorf("address = %q, want localhost:9090", cfg.Address)
-				}
-				if output != &stdout {
-					t.Error("output writer was not passed to runner")
-				}
-				if recordID != testRecordID {
-					t.Errorf("record ID = %q, want %q", recordID, testRecordID)
-				}
-				if expectedRevision != 2 {
-					t.Errorf("expected revision = %d, want 2", expectedRevision)
-				}
-
-				return nil
-			},
-		},
+		io.Discard,
+		factory,
 	)
 	if err != nil {
 		t.Fatalf("run delete command error = %v", err)
+	}
+	if gotConfig.Address != "localhost:9090" {
+		t.Errorf("address = %q, want localhost:9090", gotConfig.Address)
+	}
+	if got := stdout.String(); got != "Deleted record "+testRecordID+".\n" {
+		t.Errorf("output = %q", got)
 	}
 }
 
@@ -133,11 +135,9 @@ func TestRecordsDeleteCommandRequiresRecordID(t *testing.T) {
 		t,
 		[]string{"gkeep", "records", "delete", "--revision", "2"},
 		nil,
-		&bytes.Buffer{},
-		&bytes.Buffer{},
-		commandRunners{
-			deleteRecord: unexpectedDeleteRecordRunner(t),
-		},
+		io.Discard,
+		io.Discard,
+		nil,
 	)
 	if err == nil || err.Error() != "record id is required" {
 		t.Fatalf("run delete command error = %v, want record id is required", err)
@@ -148,27 +148,9 @@ func TestExecuteUpdateTextRecord(t *testing.T) {
 	textFile := writeTestFile(t, "note.txt", "updated secret")
 	metadataFile := writeTestFile(t, "metadata.txt", "updated private metadata")
 	updatedAt := time.Date(2026, time.July, 9, 12, 5, 0, 0, time.UTC)
-	updater := recordUpdaterFunc(func(_ context.Context, request usecase.UpdateRecordRequest) (usecase.Record, error) {
-		if request.RecordID != testRecordID {
-			t.Errorf("record ID = %q, want %q", request.RecordID, testRecordID)
-		}
-		if request.ExpectedRevision != 1 {
-			t.Errorf("expected revision = %d, want 1", request.ExpectedRevision)
-		}
-		if request.Title != "Updated note" {
-			t.Errorf("title = %q, want Updated note", request.Title)
-		}
-		payload, ok := request.Payload.(*model.TextPayload)
-		if !ok {
-			t.Fatalf("payload type = %T, want *model.TextPayload", request.Payload)
-		}
-		if payload.Text != "updated secret" {
-			t.Errorf("text = %q, want updated secret", payload.Text)
-		}
-		if payload.Metadata != "updated private metadata" {
-			t.Errorf("metadata = %q, want updated private metadata", payload.Metadata)
-		}
-
+	app := newApplicationStub(t)
+	app.updateRecord = func(_ context.Context, request usecase.UpdateRecordRequest) (usecase.Record, error) {
+		assertTextUpdateRequest(t, request)
 		return usecase.Record{
 			Metadata: model.RecordMetadata{
 				ID:        testRecordID,
@@ -177,14 +159,14 @@ func TestExecuteUpdateTextRecord(t *testing.T) {
 				Revision:  2,
 				UpdatedAt: updatedAt,
 			},
-			Payload: payload,
+			Payload: request.Payload,
 		}, nil
-	})
+	}
 
 	var output bytes.Buffer
 	if err := executeUpdateTextRecord(
 		context.Background(),
-		updater,
+		app,
 		&output,
 		textRecordUpdateCommandRequest{
 			recordID:         testRecordID,
@@ -204,14 +186,10 @@ func TestExecuteUpdateTextRecord(t *testing.T) {
 }
 
 func TestExecuteUpdateTextRecordReturnsReadError(t *testing.T) {
-	updater := recordUpdaterFunc(func(context.Context, usecase.UpdateRecordRequest) (usecase.Record, error) {
-		t.Fatal("updater must not be called")
-		return usecase.Record{}, nil
-	})
-
+	app := newApplicationStub(t)
 	err := executeUpdateTextRecord(
 		context.Background(),
-		updater,
+		app,
 		&bytes.Buffer{},
 		textRecordUpdateCommandRequest{
 			recordID:         testRecordID,
@@ -226,18 +204,16 @@ func TestExecuteUpdateTextRecordReturnsReadError(t *testing.T) {
 }
 
 func TestExecuteDeleteRecord(t *testing.T) {
-	deleter := recordDeleterFunc(func(_ context.Context, request usecase.DeleteRecordRequest) error {
-		if request.RecordID != testRecordID {
-			t.Errorf("record ID = %q, want %q", request.RecordID, testRecordID)
-		}
-		if request.ExpectedRevision != 2 {
-			t.Errorf("expected revision = %d, want 2", request.ExpectedRevision)
+	app := newApplicationStub(t)
+	app.deleteRecord = func(_ context.Context, request usecase.DeleteRecordRequest) error {
+		if request.RecordID != testRecordID || request.ExpectedRevision != 2 {
+			t.Errorf("request = %+v", request)
 		}
 		return nil
-	})
+	}
 
 	var output bytes.Buffer
-	if err := executeDeleteRecord(context.Background(), deleter, &output, testRecordID, 2); err != nil {
+	if err := executeDeleteRecord(context.Background(), app, &output, testRecordID, 2); err != nil {
 		t.Fatalf("executeDeleteRecord() error = %v", err)
 	}
 
@@ -249,59 +225,30 @@ func TestExecuteDeleteRecord(t *testing.T) {
 
 func TestExecuteDeleteRecordReturnsUsecaseError(t *testing.T) {
 	wantErr := errors.New("record revision conflict")
-	deleter := recordDeleterFunc(func(context.Context, usecase.DeleteRecordRequest) error {
+	app := newApplicationStub(t)
+	app.deleteRecord = func(context.Context, usecase.DeleteRecordRequest) error {
 		return wantErr
-	})
+	}
 
-	err := executeDeleteRecord(context.Background(), deleter, &bytes.Buffer{}, testRecordID, 1)
+	err := executeDeleteRecord(context.Background(), app, &bytes.Buffer{}, testRecordID, 1)
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("executeDeleteRecord() error = %v, want %v", err, wantErr)
 	}
 }
 
-func assertUpdateTextCommandRequest(
-	t *testing.T,
-	cfg config.Config,
-	output, wantOutput io.Writer,
-	request textRecordUpdateCommandRequest,
-) {
+func assertTextUpdateRequest(t *testing.T, request usecase.UpdateRecordRequest) {
 	t.Helper()
 
-	if cfg.Address != "localhost:9090" {
-		t.Errorf("address = %q, want localhost:9090", cfg.Address)
+	if request.RecordID != testRecordID || request.ExpectedRevision != 1 || request.Title != "Updated note" {
+		t.Errorf("request = %+v, want text update values", request)
 	}
-	if output != wantOutput {
-		t.Error("output writer was not passed to runner")
+	payload, ok := request.Payload.(*model.TextPayload)
+	if !ok {
+		t.Fatalf("payload type = %T, want *model.TextPayload", request.Payload)
 	}
-	if request.recordID != testRecordID {
-		t.Errorf("record ID = %q, want %q", request.recordID, testRecordID)
+	if payload.Text != "updated secret" || payload.Metadata != "updated private metadata" {
+		t.Errorf("payload = %+v, want updated values", payload)
 	}
-	if request.expectedRevision != 1 {
-		t.Errorf("expected revision = %d, want 1", request.expectedRevision)
-	}
-	if request.title != "Updated note" {
-		t.Errorf("title = %q, want Updated note", request.title)
-	}
-	assertFileContent(t, request.textFile, "updated secret")
-	assertFileContent(t, request.metadataFile, "updated private metadata")
-}
-
-func assertFileContent(t *testing.T, path string, want string) {
-	t.Helper()
-
-	got, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read file %q: %v", path, err)
-	}
-	if string(got) != want {
-		t.Errorf("file %q = %q, want %q", path, got, want)
-	}
-}
-
-type recordDeleterFunc func(context.Context, usecase.DeleteRecordRequest) error
-
-func (f recordDeleterFunc) DeleteRecord(ctx context.Context, request usecase.DeleteRecordRequest) error {
-	return f(ctx, request)
 }
 
 func writeTestFile(t *testing.T, filename, content string) string {

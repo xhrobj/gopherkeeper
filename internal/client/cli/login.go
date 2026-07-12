@@ -6,27 +6,28 @@ import (
 	"io"
 
 	urfavecli "github.com/urfave/cli/v3"
-	"github.com/xhrobj/gopherkeeper/internal/client/config"
-	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
-	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-type userLogger interface {
-	Login(ctx context.Context, login, password string) (model.User, error)
-}
-
-func newLoginCommand(input io.Reader, login passwordRunner) *urfavecli.Command {
+func newLoginCommand(input io.Reader, factory clientFactory) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "login",
 		Usage: "authenticate user and save online session",
 		Flags: loginPasswordFlags(),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			return login(
+			application, err := factory.NewApplication(configFromCommand(command))
+			if err != nil {
+				return err
+			}
+
+			return executeLogin(
 				ctx,
-				configFromCommand(command),
-				input,
-				command.Root().Writer,
-				command.Root().ErrWriter,
+				application,
+				terminalPasswordReader{},
+				passwordStreams{
+					input:        input,
+					output:       command.Root().Writer,
+					promptOutput: command.Root().ErrWriter,
+				},
 				command.String("login"),
 				command.Bool("password-stdin"),
 			)
@@ -34,37 +35,9 @@ func newLoginCommand(input io.Reader, login passwordRunner) *urfavecli.Command {
 	}
 }
 
-func runLogin(
-	ctx context.Context,
-	cfg config.Config,
-	input io.Reader,
-	output io.Writer,
-	promptOutput io.Writer,
-	login string,
-	passwordStdin bool,
-) error {
-	application, err := usecase.New(cfg)
-	if err != nil {
-		return err
-	}
-
-	return executeLogin(
-		ctx,
-		application,
-		terminalPasswordReader{},
-		passwordStreams{
-			input:        input,
-			output:       output,
-			promptOutput: promptOutput,
-		},
-		login,
-		passwordStdin,
-	)
-}
-
 func executeLogin(
 	ctx context.Context,
-	logger userLogger,
+	application application,
 	passwords passwordReader,
 	streams passwordStreams,
 	login string,
@@ -84,7 +57,7 @@ func executeLogin(
 		return err
 	}
 
-	user, err := logger.Login(ctx, login, password)
+	user, err := application.Login(ctx, login, password)
 	if err != nil {
 		return err
 	}

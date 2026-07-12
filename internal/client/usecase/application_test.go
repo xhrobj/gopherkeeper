@@ -55,9 +55,11 @@ func newTestApplicationWithRecords(
 	serverAddress string,
 ) *Application {
 	return &Application{
-		users:         users,
-		records:       records,
-		sessions:      sessions,
+		users:   users,
+		records: records,
+		sessions: func() (sessionStorage, error) {
+			return sessions, nil
+		},
 		serverAddress: serverAddress,
 	}
 }

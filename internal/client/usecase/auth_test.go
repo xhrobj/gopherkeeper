@@ -96,25 +96,19 @@ func TestApplication_RegisterDoesNotLeakPasswordInNetworkError(t *testing.T) {
 	}
 }
 
-func TestApplication_RegisterDoesNotUseSessionStorage(t *testing.T) {
-	application := newTestApplication(
-		userClientStub{
+func TestApplication_RegisterDoesNotResolveSessionStorage(t *testing.T) {
+	application := &Application{
+		users: userClientStub{
 			register: func(context.Context, string, string) (model.User, error) {
 				return model.User{Login: "alice"}, nil
 			},
 		},
-		sessionStorageStub{
-			save: func(session.Session) error {
-				t.Fatal("registration must not save session")
-				return nil
-			},
-			load: func(string) (session.Session, error) {
-				t.Fatal("registration must not load session")
-				return session.Session{}, nil
-			},
+		sessions: func() (sessionStorage, error) {
+			t.Fatal("registration must not resolve session storage")
+			return nil, nil
 		},
-		"localhost:8080",
-	)
+		serverAddress: "localhost:8080",
+	}
 
 	user, err := application.Register(context.Background(), "alice", testPassword)
 	if err != nil {
@@ -122,6 +116,31 @@ func TestApplication_RegisterDoesNotUseSessionStorage(t *testing.T) {
 	}
 	if user.Login != "alice" {
 		t.Errorf("registered login = %q, want alice", user.Login)
+	}
+}
+
+func TestApplication_LoginResolvesSessionStorageBeforeRequest(t *testing.T) {
+	storageError := errors.New("cache directory unavailable")
+	clientCalled := false
+	application := &Application{
+		users: userClientStub{
+			login: func(context.Context, string, string) (httpclient.LoginResult, error) {
+				clientCalled = true
+				return httpclient.LoginResult{}, nil
+			},
+		},
+		sessions: func() (sessionStorage, error) {
+			return nil, storageError
+		},
+		serverAddress: "localhost:8080",
+	}
+
+	_, err := application.Login(context.Background(), "alice", testPassword)
+	if !errors.Is(err, storageError) {
+		t.Fatalf("Login() error = %v, want session storage error", err)
+	}
+	if clientCalled {
+		t.Error("login client was called before session storage was resolved")
 	}
 }
 

@@ -214,7 +214,10 @@ func mapRecordClientError(operation string, err error) error {
 }
 
 func recordFromClient(record httpclient.Record) (Record, error) {
-	if record.Payload == nil || record.Metadata.Type != record.Payload.RecordType() {
+	if record.Payload == nil {
+		return Record{}, fmt.Errorf("record payload: %w", errUnexpectedRecordPayload)
+	}
+	if err := record.Payload.Validate(); err != nil || record.Metadata.Type != record.Payload.RecordType() {
 		return Record{}, fmt.Errorf("record payload: %w", errUnexpectedRecordPayload)
 	}
 

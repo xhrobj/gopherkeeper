@@ -16,22 +16,10 @@ func TestRun_RootHelpContainsBanner(t *testing.T) {
 		name string
 		args []string
 	}{
-		{
-			name: "without arguments",
-			args: []string{"gopherkeeper"},
-		},
-		{
-			name: "short help flag",
-			args: []string{"gopherkeeper", "-h"},
-		},
-		{
-			name: "long help flag",
-			args: []string{"gopherkeeper", "--help"},
-		},
-		{
-			name: "help command",
-			args: []string{"gopherkeeper", "help"},
-		},
+		{name: "without arguments", args: []string{"gopherkeeper"}},
+		{name: "short help flag", args: []string{"gopherkeeper", "-h"}},
+		{name: "long help flag", args: []string{"gopherkeeper", "--help"}},
+		{name: "help command", args: []string{"gopherkeeper", "help"}},
 	}
 
 	for _, tt := range tests {
@@ -39,15 +27,7 @@ func TestRun_RootHelpContainsBanner(t *testing.T) {
 			isolateClientConfig(t)
 
 			var output bytes.Buffer
-
-			err := runWithHealthRunner(
-				t,
-				tt.args,
-				&output,
-				io.Discard,
-				unexpectedHealthRunner(t),
-			)
-			if err != nil {
+			if err := runTestCommand(t, tt.args, nil, &output, io.Discard, nil); err != nil {
 				t.Fatalf("run() error = %v", err)
 			}
 
@@ -71,14 +51,8 @@ func TestRun_HealthHelpDoesNotContainBanner(t *testing.T) {
 		name string
 		args []string
 	}{
-		{
-			name: "help flag",
-			args: []string{"gopherkeeper", "health", "--help"},
-		},
-		{
-			name: "help command",
-			args: []string{"gopherkeeper", "help", "health"},
-		},
+		{name: "help flag", args: []string{"gopherkeeper", "health", "--help"}},
+		{name: "help command", args: []string{"gopherkeeper", "help", "health"}},
 	}
 
 	for _, tt := range tests {
@@ -86,15 +60,7 @@ func TestRun_HealthHelpDoesNotContainBanner(t *testing.T) {
 			isolateClientConfig(t)
 
 			var output bytes.Buffer
-
-			err := runWithHealthRunner(
-				t,
-				tt.args,
-				&output,
-				io.Discard,
-				unexpectedHealthRunner(t),
-			)
-			if err != nil {
+			if err := runTestCommand(t, tt.args, nil, &output, io.Discard, nil); err != nil {
 				t.Fatalf("run() error = %v", err)
 			}
 
@@ -102,7 +68,6 @@ func TestRun_HealthHelpDoesNotContainBanner(t *testing.T) {
 			if strings.Contains(got, banner) {
 				t.Errorf("health help contains banner: %q", got)
 			}
-
 			if !strings.Contains(got, "gopherkeeper health") {
 				t.Errorf("help = %q, want health command name", got)
 			}
@@ -115,14 +80,8 @@ func TestRun_VersionContainsBannerAndBuildInfo(t *testing.T) {
 		name string
 		args []string
 	}{
-		{
-			name: "short version flag",
-			args: []string{"gopherkeeper", "-v"},
-		},
-		{
-			name: "long version flag",
-			args: []string{"gopherkeeper", "--version"},
-		},
+		{name: "short version flag", args: []string{"gopherkeeper", "-v"}},
+		{name: "long version flag", args: []string{"gopherkeeper", "--version"}},
 	}
 
 	for _, tt := range tests {
@@ -130,15 +89,7 @@ func TestRun_VersionContainsBannerAndBuildInfo(t *testing.T) {
 			isolateClientConfig(t)
 
 			var output bytes.Buffer
-
-			err := runWithHealthRunner(
-				t,
-				tt.args,
-				&output,
-				io.Discard,
-				unexpectedHealthRunner(t),
-			)
-			if err != nil {
+			if err := runTestCommand(t, tt.args, nil, &output, io.Discard, nil); err != nil {
 				t.Fatalf("run() error = %v", err)
 			}
 
@@ -146,7 +97,6 @@ func TestRun_VersionContainsBannerAndBuildInfo(t *testing.T) {
 			if !strings.Contains(got, banner) {
 				t.Errorf("version does not contain banner: %q", got)
 			}
-
 			assertContainsAll(
 				t,
 				got,
@@ -154,7 +104,6 @@ func TestRun_VersionContainsBannerAndBuildInfo(t *testing.T) {
 				"Build date: 2026-06-30",
 				"Build commit: deadbeef",
 			)
-
 			if strings.Contains(got, "COMMANDS:") {
 				t.Errorf("version contains help text: %q", got)
 			}
@@ -165,24 +114,26 @@ func TestRun_VersionContainsBannerAndBuildInfo(t *testing.T) {
 func TestRun_HealthCommandOutputDoesNotContainBanner(t *testing.T) {
 	isolateClientConfig(t)
 
-	var output bytes.Buffer
+	factory := newClientFactoryStub(t)
+	factory.newHealthClient = func(config.Config) (healthClient, error) {
+		return healthClientStub{health: func(context.Context) (string, error) {
+			return "ok", nil
+		}}, nil
+	}
 
-	err := runWithHealthRunner(
+	var output bytes.Buffer
+	if err := runTestCommand(
 		t,
 		[]string{"gopherkeeper", "health"},
+		nil,
 		&output,
 		io.Discard,
-		func(_ context.Context, _ config.Config, output io.Writer) error {
-			_, err := io.WriteString(output, "Server status: ok\n")
-			return err
-		},
-	)
-	if err != nil {
+		factory,
+	); err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
 
-	got := output.String()
-	if got != "Server status: ok\n" {
+	if got := output.String(); got != "Server status: ok\n" {
 		t.Errorf("health output = %q, want %q", got, "Server status: ok\n")
 	}
 }
@@ -200,9 +151,7 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 		{
 			name: "defaults",
 			args: []string{"gopherkeeper", "health"},
-			want: config.Config{
-				Address: "localhost:8080",
-			},
+			want: config.Config{Address: "localhost:8080"},
 		},
 		{
 			name:      "config file",
@@ -262,44 +211,28 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			isolateClientConfig(t)
-
 			t.Setenv("ADDRESS", tt.envAddress)
 			t.Setenv("CA_CERT_FILE", tt.envCACert)
 			t.Setenv("SESSION_FILE", tt.envSessionFile)
 			t.Setenv("CONFIG", tt.envConfig)
 
 			var got config.Config
-			err := runWithHealthRunner(
-				t,
-				tt.args,
-				io.Discard,
-				io.Discard,
-				func(_ context.Context, cfg config.Config, _ io.Writer) error {
-					got = cfg
-					return nil
-				},
-			)
-			if err != nil {
-				t.Fatalf("run() error = %v", err)
+			factory := newClientFactoryStub(t)
+			factory.newHealthClient = func(cfg config.Config) (healthClient, error) {
+				got = cfg
+				return healthClientStub{health: func(context.Context) (string, error) {
+					return "ok", nil
+				}}, nil
 			}
 
+			if err := runTestCommand(t, tt.args, nil, io.Discard, io.Discard, factory); err != nil {
+				t.Fatalf("run() error = %v", err)
+			}
 			if got != tt.want {
 				t.Errorf("configuration = %+v, want %+v", got, tt.want)
 			}
 		})
 	}
-}
-
-func runWithHealthRunner(
-	t *testing.T,
-	args []string,
-	output io.Writer,
-	errorOutput io.Writer,
-	health outputRunner,
-) error {
-	t.Helper()
-
-	return runTestCommand(t, args, strings.NewReader(""), output, errorOutput, commandRunners{health: health})
 }
 
 func assertContainsAll(t *testing.T, got string, wants ...string) {

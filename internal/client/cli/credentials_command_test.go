@@ -17,12 +17,6 @@ import (
 
 const testCredentialsPassword = "vault-secret-42"
 
-type recordGetterFunc func(context.Context, string) (usecase.Record, error)
-
-func (f recordGetterFunc) GetRecord(ctx context.Context, recordID string) (usecase.Record, error) {
-	return f(ctx, recordID)
-}
-
 type credentialsReaderStub struct {
 	hiddenValue string
 	lineValues  []string
@@ -58,9 +52,25 @@ func TestRecordsCreateCredentialsCommand(t *testing.T) {
 	isolateClientConfig(t)
 
 	input := strings.NewReader(`{"login":"alice","password":"vault-secret-42"}`)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
+	var gotConfig config.Config
+	app := newApplicationStub(t)
+	app.createRecord = func(_ context.Context, request usecase.CreateRecordRequest) (usecase.Record, error) {
+		payload, ok := request.Payload.(*model.CredentialsPayload)
+		if !ok {
+			t.Fatalf("payload type = %T, want *model.CredentialsPayload", request.Payload)
+		}
+		if request.Title != "GitHub" || payload.Login != "alice" || payload.Password != testCredentialsPassword {
+			t.Errorf("request = %+v, payload = %+v, want credentials values", request, payload)
+		}
+		return usecase.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 1}}, nil
+	}
+	factory := newClientFactoryStub(t)
+	factory.newApplication = func(cfg config.Config) (application, error) {
+		gotConfig = cfg
+		return app, nil
+	}
 
+	var stdout bytes.Buffer
 	err := runTestCommand(
 		t,
 		[]string{
@@ -72,40 +82,14 @@ func TestRecordsCreateCredentialsCommand(t *testing.T) {
 		},
 		input,
 		&stdout,
-		&stderr,
-		commandRunners{
-			createCredentialsRecord: func(
-				_ context.Context,
-				cfg config.Config,
-				commandInput io.Reader,
-				output io.Writer,
-				promptOutput io.Writer,
-				request credentialsRecordCreateCommandRequest,
-			) error {
-				if cfg.Address != "localhost:9090" {
-					t.Errorf("address = %q, want localhost:9090", cfg.Address)
-				}
-				if commandInput != input {
-					t.Error("standard input was not passed to runner")
-				}
-				if output != &stdout {
-					t.Error("output writer was not passed to runner")
-				}
-				if promptOutput != &stderr {
-					t.Error("prompt writer was not passed to runner")
-				}
-				if request.title != "GitHub" {
-					t.Errorf("title = %q, want GitHub", request.title)
-				}
-				if !request.credentialsStdin {
-					t.Error("credentials-stdin = false, want true")
-				}
-				return nil
-			},
-		},
+		io.Discard,
+		factory,
 	)
 	if err != nil {
 		t.Fatalf("run create-credentials command error = %v", err)
+	}
+	if gotConfig.Address != "localhost:9090" {
+		t.Errorf("address = %q, want localhost:9090", gotConfig.Address)
 	}
 }
 
@@ -113,7 +97,20 @@ func TestRecordsUpdateCredentialsCommand(t *testing.T) {
 	isolateClientConfig(t)
 
 	input := strings.NewReader(`{"login":"alice","password":"vault-secret-42"}`)
-	var stdout bytes.Buffer
+	app := newApplicationStub(t)
+	app.updateRecord = func(_ context.Context, request usecase.UpdateRecordRequest) (usecase.Record, error) {
+		payload, ok := request.Payload.(*model.CredentialsPayload)
+		if !ok {
+			t.Fatalf("payload type = %T, want *model.CredentialsPayload", request.Payload)
+		}
+		if request.RecordID != testRecordID || request.ExpectedRevision != 2 ||
+			request.Title != "GitHub updated" || payload.Login != "alice" || payload.Password != testCredentialsPassword {
+			t.Errorf("request = %+v, payload = %+v, want update values", request, payload)
+		}
+		return usecase.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 3}}, nil
+	}
+	factory := newClientFactoryStub(t)
+	factory.newApplication = func(config.Config) (application, error) { return app, nil }
 
 	err := runTestCommand(
 		t,
@@ -125,38 +122,9 @@ func TestRecordsUpdateCredentialsCommand(t *testing.T) {
 			"--credentials-stdin",
 		},
 		input,
-		&stdout,
 		io.Discard,
-		commandRunners{
-			updateCredentialsRecord: func(
-				_ context.Context,
-				_ config.Config,
-				commandInput io.Reader,
-				output io.Writer,
-				_ io.Writer,
-				request credentialsRecordUpdateCommandRequest,
-			) error {
-				if commandInput != input {
-					t.Error("standard input was not passed to runner")
-				}
-				if output != &stdout {
-					t.Error("output writer was not passed to runner")
-				}
-				if request.recordID != testRecordID {
-					t.Errorf("record ID = %q, want %q", request.recordID, testRecordID)
-				}
-				if request.expectedRevision != 2 {
-					t.Errorf("expected revision = %d, want 2", request.expectedRevision)
-				}
-				if request.title != "GitHub updated" {
-					t.Errorf("title = %q, want GitHub updated", request.title)
-				}
-				if !request.credentialsStdin {
-					t.Error("credentials-stdin = false, want true")
-				}
-				return nil
-			},
-		},
+		io.Discard,
+		factory,
 	)
 	if err != nil {
 		t.Fatalf("run update-credentials command error = %v", err)
@@ -178,9 +146,7 @@ func TestRecordsUpdateCredentialsCommandRequiresRecordID(t *testing.T) {
 		strings.NewReader(`{"login":"alice","password":"vault-secret-42"}`),
 		io.Discard,
 		io.Discard,
-		commandRunners{
-			updateCredentialsRecord: unexpectedUpdateCredentialsRecordRunner(t),
-		},
+		nil,
 	)
 	if err == nil || err.Error() != "record id is required" {
 		t.Fatalf("run update-credentials command error = %v, want record id is required", err)
@@ -197,7 +163,7 @@ func TestRecordsCreateCredentialsHelpDoesNotOfferPasswordFlag(t *testing.T) {
 		nil,
 		&output,
 		io.Discard,
-		commandRunners{},
+		nil,
 	); err != nil {
 		t.Fatalf("run create-credentials help error = %v", err)
 	}
