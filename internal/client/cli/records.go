@@ -18,6 +18,7 @@ const (
 	titleFlag         = "title"
 	textFileFlag      = "text-file"
 	metadataFileFlag  = "metadata-file"
+	outputFlag        = "output"
 	revisionFlag      = "revision"
 	recordIDArgsUsage = "<record-id>"
 )
@@ -38,9 +39,11 @@ func newRecordsCommand(input io.Reader, factory clientFactory) *urfavecli.Comman
 			newCreateTextRecordCommand(factory),
 			newCreateCredentialsRecordCommand(input, factory),
 			newCreateCardRecordCommand(input, factory),
+			newCreateBinaryRecordCommand(factory),
 			newUpdateTextRecordCommand(factory),
 			newUpdateCredentialsRecordCommand(input, factory),
 			newUpdateCardRecordCommand(input, factory),
+			newUpdateBinaryRecordCommand(factory),
 			newListRecordsCommand(factory),
 			newGetRecordCommand(factory),
 			newDeleteRecordCommand(factory),
@@ -160,6 +163,12 @@ func newGetRecordCommand(factory clientFactory) *urfavecli.Command {
 		Name:      "get",
 		Usage:     "get a private record",
 		ArgsUsage: recordIDArgsUsage,
+		Flags: []urfavecli.Flag{
+			&urfavecli.StringFlag{
+				Name:  outputFlag,
+				Usage: "path for saving a binary record",
+			},
+		},
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			recordID := command.Args().First()
 			if recordID == "" {
@@ -171,7 +180,13 @@ func newGetRecordCommand(factory clientFactory) *urfavecli.Command {
 				return err
 			}
 
-			return executeGetRecord(ctx, application, command.Root().Writer, recordID)
+			return executeGetRecord(
+				ctx,
+				application,
+				command.Root().Writer,
+				recordID,
+				command.String(outputFlag),
+			)
 		},
 	}
 }
@@ -352,23 +367,42 @@ func executeListRecords(ctx context.Context, application application, output io.
 	return nil
 }
 
-func executeGetRecord(ctx context.Context, application application, output io.Writer, recordID string) error {
+func executeGetRecord(
+	ctx context.Context,
+	application application,
+	output io.Writer,
+	recordID string,
+	outputPath string,
+) error {
 	record, err := application.GetRecord(ctx, recordID)
 	if err != nil {
 		return err
 	}
 
-	if _, err := fmt.Fprintf(
-		output,
-		"ID: %s\nType: %s\nTitle: %s\nRevision: %d\nCreated at: %s\nUpdated at: %s\n",
-		record.Metadata.ID,
-		record.Metadata.Type,
-		record.Metadata.Title,
-		record.Metadata.Revision,
-		formatRecordTime(record.Metadata.CreatedAt),
-		formatRecordTime(record.Metadata.UpdatedAt),
-	); err != nil {
-		return fmt.Errorf("write record metadata: %w", err)
+	if record.Metadata.Type == model.RecordTypeBinary {
+		payload, ok := record.Payload.(*model.BinaryPayload)
+		if !ok || payload == nil {
+			return errors.New("unexpected binary payload")
+		}
+		if outputPath == "" {
+			return errors.New("output path is required for binary record")
+		}
+		if err := writeBinaryFile(outputPath, payload.Data); err != nil {
+			return err
+		}
+
+		if err := writeRecordHeader(output, record.Metadata); err != nil {
+			return err
+		}
+
+		return writeBinaryRecordPayload(output, payload, outputPath)
+	}
+
+	if outputPath != "" {
+		return errors.New("--output can only be used with binary records")
+	}
+	if err := writeRecordHeader(output, record.Metadata); err != nil {
+		return err
 	}
 
 	switch payload := record.Payload.(type) {
@@ -393,6 +427,43 @@ func executeGetRecord(ctx context.Context, application application, output io.Wr
 	default:
 		return errors.New("unsupported record payload")
 	}
+}
+
+func writeRecordHeader(output io.Writer, metadata model.RecordMetadata) error {
+	if _, err := fmt.Fprintf(
+		output,
+		"ID: %s\nType: %s\nTitle: %s\nRevision: %d\nCreated at: %s\nUpdated at: %s\n",
+		metadata.ID,
+		metadata.Type,
+		metadata.Title,
+		metadata.Revision,
+		formatRecordTime(metadata.CreatedAt),
+		formatRecordTime(metadata.UpdatedAt),
+	); err != nil {
+		return fmt.Errorf("write record metadata: %w", err)
+	}
+
+	return nil
+}
+
+func writeBinaryRecordPayload(output io.Writer, payload *model.BinaryPayload, outputPath string) error {
+	if _, err := fmt.Fprintf(
+		output,
+		"\nFilename: %s\nSize: %d bytes\nSaved to: %s\n",
+		payload.Filename,
+		len(payload.Data),
+		outputPath,
+	); err != nil {
+		return fmt.Errorf("write binary record: %w", err)
+	}
+
+	if payload.ContentType != "" {
+		if _, err := fmt.Fprintf(output, "Content type: %s\n", payload.ContentType); err != nil {
+			return fmt.Errorf("write binary record content type: %w", err)
+		}
+	}
+
+	return writeRecordMetadataPayload(output, payload.Metadata, "binary record")
 }
 
 func writeTextRecordPayload(output io.Writer, payload *model.TextPayload) error {

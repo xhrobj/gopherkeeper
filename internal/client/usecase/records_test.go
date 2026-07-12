@@ -68,6 +68,7 @@ func (s recordClientStub) DeleteRecord(
 func TestApplication_CreateRecord(t *testing.T) {
 	expiryMonth := 3
 	expiryYear := 2038
+	binaryData := []byte{0x00, 0x01, 0x02, 0xff}
 	tests := []struct {
 		name    string
 		title   string
@@ -101,6 +102,24 @@ func TestApplication_CreateRecord(t *testing.T) {
 				ExpiryYear:  &expiryYear,
 				CVV:         "014",
 				Metadata:    "test card",
+			},
+		},
+		{
+			name:  "binary",
+			title: "Encrypted backup",
+			payload: &model.BinaryPayload{
+				Filename:    "backup.bin",
+				Data:        binaryData,
+				ContentType: "application/octet-stream",
+				Metadata:    "private backup",
+			},
+		},
+		{
+			name:  "empty binary",
+			title: "Empty backup",
+			payload: &model.BinaryPayload{
+				Filename: "empty.bin",
+				Data:     []byte{},
 			},
 		},
 	}
@@ -188,6 +207,25 @@ func TestApplication_CreateRecordValidationError(t *testing.T) {
 				Payload: &model.CredentialsPayload{Login: "alice"},
 			},
 			want: model.ErrInvalidCredentialsPayload,
+		},
+		{
+			name: "typed nil binary payload",
+			request: CreateRecordRequest{
+				Title:   "Encrypted backup",
+				Payload: (*model.BinaryPayload)(nil),
+			},
+			want: model.ErrInvalidBinaryPayload,
+		},
+		{
+			name: "binary payload too large",
+			request: CreateRecordRequest{
+				Title: "Encrypted backup",
+				Payload: &model.BinaryPayload{
+					Filename: "backup.bin",
+					Data:     make([]byte, model.BinaryPayloadMaxSize+1),
+				},
+			},
+			want: model.ErrPayloadTooLarge,
 		},
 	}
 
@@ -279,6 +317,67 @@ func TestApplication_GetRecord(t *testing.T) {
 	}
 }
 
+func TestApplication_GetBinaryRecord(t *testing.T) {
+	tests := []struct {
+		name string
+		data []byte
+	}{
+		{name: "binary", data: []byte{0x00, 0x01, 0x02, 0xff}},
+		{name: "empty binary", data: []byte{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			application := newTestApplicationWithRecords(
+				userClientStub{},
+				recordClientStub{
+					get: func(_ context.Context, accessToken, recordID string) (httpclient.Record, error) {
+						if accessToken != "test.jwt.token" {
+							t.Errorf("access token = %q, want test.jwt.token", accessToken)
+						}
+						if recordID != testRecordID {
+							t.Errorf("record ID = %q, want %q", recordID, testRecordID)
+						}
+
+						return httpclient.Record{
+							Metadata: model.RecordMetadata{
+								ID:       testRecordID,
+								Type:     model.RecordTypeBinary,
+								Title:    "Encrypted backup",
+								Revision: 1,
+							},
+							Payload: &model.BinaryPayload{
+								Filename:    "backup.bin",
+								Data:        tt.data,
+								ContentType: "application/octet-stream",
+								Metadata:    "private backup",
+							},
+						}, nil
+					},
+				},
+				onlineSessionStorage(),
+				"localhost:8080",
+			)
+
+			record, err := application.GetRecord(context.Background(), testRecordID)
+			if err != nil {
+				t.Fatalf("GetRecord() error = %v", err)
+			}
+			payload, ok := record.Payload.(*model.BinaryPayload)
+			if !ok {
+				t.Fatalf("payload = %#v, want binary payload", record.Payload)
+			}
+			if payload.Filename != "backup.bin" || payload.ContentType != "application/octet-stream" ||
+				payload.Metadata != "private backup" {
+				t.Errorf("payload metadata = %#v, want binary metadata", payload)
+			}
+			if !reflect.DeepEqual(payload.Data, tt.data) {
+				t.Errorf("payload data = %v, want %v", payload.Data, tt.data)
+			}
+		})
+	}
+}
+
 func TestApplication_GetRecordRejectsTypedNilPayload(t *testing.T) {
 	var payload *model.TextPayload
 	application := newTestApplicationWithRecords(
@@ -325,6 +424,7 @@ func TestApplication_GetRecordRejectsMismatchedPayload(t *testing.T) {
 func TestApplication_UpdateRecord(t *testing.T) {
 	expiryMonth := 3
 	expiryYear := 2038
+	binaryData := []byte{0xff, 0x02, 0x01, 0x00}
 	tests := []struct {
 		name    string
 		title   string
@@ -353,6 +453,16 @@ func TestApplication_UpdateRecord(t *testing.T) {
 				ExpiryYear:  &expiryYear,
 				CVV:         "014",
 				Metadata:    "test card updated",
+			},
+		},
+		{
+			name:  "binary",
+			title: "Updated backup",
+			payload: &model.BinaryPayload{
+				Filename:    "backup-v2.bin",
+				Data:        binaryData,
+				ContentType: "application/octet-stream",
+				Metadata:    "updated private backup",
 			},
 		},
 	}

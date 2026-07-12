@@ -276,7 +276,7 @@ func TestExecuteGetRecord_Card(t *testing.T) {
 	})
 
 	var output bytes.Buffer
-	if err := executeGetRecord(context.Background(), getter, &output, testRecordID); err != nil {
+	if err := executeGetRecord(context.Background(), getter, &output, testRecordID, ""); err != nil {
 		t.Fatalf("executeGetRecord() error = %v", err)
 	}
 

@@ -390,6 +390,7 @@ func TestExecuteGetRecord_Credentials(t *testing.T) {
 		}),
 		&output,
 		testRecordID,
+		"",
 	)
 	if err != nil {
 		t.Fatalf("executeGetRecord() error = %v", err)
@@ -426,6 +427,7 @@ func TestExecuteGetRecord_Text(t *testing.T) {
 		}),
 		&output,
 		testRecordID,
+		"",
 	)
 	if err != nil {
 		t.Fatalf("executeGetRecord() error = %v", err)
