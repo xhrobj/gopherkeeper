@@ -3,7 +3,7 @@ openapi: 3.0.3
 info:
   title: GophKeeper API
   description: API взаимодействия CLI-клиента и Сервера GophKeeper.
-  version: 0.6.0
+  version: 0.7.0
 
 servers:
   - url: https://localhost:8080
@@ -113,8 +113,8 @@ paths:
       summary: Войти в online-сессию
       description: >-
         Проверяет login и password зарегистрированного пользователя и возвращает bearer token. Login
-        канонизируется по тем же правилам, что и при регистрации. Неверный login, неизвестный пользователь
-        и неверный password возвращают единый ответ invalid_credentials. Password не возвращается в ответе.
+        канонизируется по тем же правилам, что и при регистрации. Неверный login, неизвестный пользователь и
+        неверный password возвращают единый ответ invalid_credentials. Password не возвращается в ответе.
         Максимальный размер тела запроса — 4 MiB.
       operationId: loginUser
       tags:
@@ -234,9 +234,10 @@ paths:
     post:
       summary: Создать приватную запись
       description: >-
-        Создаёт новую приватную запись текущего пользователя. Поддерживаются type text, credentials и card.
-        Payload передаётся по HTTPS, валидируется Сервером, шифруется AES-GCM и сохраняется в PostgreSQL
-        только в виде ciphertext. Metadata внутри payload является приватной и хранится зашифрованной.
+        Создаёт новую приватную запись текущего пользователя. Поддерживаются type text, credentials, card и
+        binary. Payload передаётся по HTTPS, валидируется Сервером, шифруется AES-GCM и сохраняется в
+        PostgreSQL только в виде ciphertext. Metadata внутри payload является приватной и хранится
+        зашифрованной.
       operationId: createRecord
       tags:
         - Records
@@ -279,6 +280,16 @@ paths:
                     expiry_year: 2038
                     cvv: '014'
                     metadata: test card
+              binaryRecord:
+                summary: Binary-запись
+                value:
+                  type: binary
+                  title: Alice encrypted backup
+                  payload:
+                    filename: backup.bin
+                    data: AAEC/w==
+                    content_type: application/octet-stream
+                    metadata: private backup
       responses:
         '201':
           description: Запись создана
@@ -299,6 +310,8 @@ paths:
                   $ref: '#/components/examples/CredentialsRecordResponse'
                 cardRecord:
                   $ref: '#/components/examples/CardRecordResponse'
+                binaryRecord:
+                  $ref: '#/components/examples/BinaryRecordResponse'
         '400':
           description: Некорректный JSON, тип записи, title или payload
           content:
@@ -345,8 +358,8 @@ paths:
       summary: Получить приватную запись
       description: >-
         Возвращает открытую metadata и расшифрованный payload одной записи текущего пользователя. Формат
-        payload определяется полем type. Отсутствующая и принадлежащая другому пользователю запись
-        возвращают одинаковый 404.
+        payload определяется полем type. Отсутствующая и принадлежащая другому пользователю запись возвращают
+        одинаковый 404.
       operationId: getRecord
       tags:
         - Records
@@ -380,6 +393,8 @@ paths:
                   $ref: '#/components/examples/CredentialsRecordResponse'
                 cardRecord:
                   $ref: '#/components/examples/CardRecordResponse'
+                binaryRecord:
+                  $ref: '#/components/examples/BinaryRecordResponse'
         '400':
           description: Некорректный UUID записи
           content:
@@ -402,11 +417,11 @@ paths:
     put:
       summary: Изменить приватную запись
       description: >-
-        Заменяет открытый title и приватный payload существующей записи без изменения её type. Клиент
-        обязан передать актуальную revision записи в заголовке If-Match как strong ETag, например "1".
-        Сервер выполняет update только при совпадении ожидаемой и текущей revision, затем атомарно
-        увеличивает revision и возвращает новое значение в ETag. Отсутствующая и принадлежащая другому
-        пользователю запись возвращают одинаковый 404.
+        Заменяет открытый title и приватный payload существующей записи без изменения её type. Клиент обязан
+        передать актуальную revision записи в заголовке If-Match как strong ETag, например "1". Сервер
+        выполняет update только при совпадении ожидаемой и текущей revision, затем атомарно увеличивает
+        revision и возвращает новое значение в ETag. Отсутствующая и принадлежащая другому пользователю запись
+        возвращают одинаковый 404.
       operationId: updateRecord
       tags:
         - Records
@@ -465,6 +480,16 @@ paths:
                     expiry_year: 2038
                     cvv: '014'
                     metadata: test card updated
+              binaryRecord:
+                summary: Изменение binary-записи
+                value:
+                  type: binary
+                  title: Alice updated backup
+                  payload:
+                    filename: backup-v2.bin
+                    data: /wIBAA==
+                    content_type: application/octet-stream
+                    metadata: updated private backup
       responses:
         '200':
           description: Запись изменена
@@ -485,6 +510,8 @@ paths:
                   $ref: '#/components/examples/CredentialsRecordResponse'
                 cardRecord:
                   $ref: '#/components/examples/CardRecordResponse'
+                binaryRecord:
+                  $ref: '#/components/examples/BinaryRecordResponse'
         '400':
           description: Некорректный UUID записи, If-Match, JSON, тип записи, title или payload
           content:
@@ -515,8 +542,8 @@ paths:
     delete:
       summary: Удалить приватную запись
       description: >-
-        Физически удаляет запись текущего пользователя. Клиент обязан передать актуальную revision записи
-        в заголовке If-Match как strong ETag, например "1". Сервер удаляет запись только при совпадении
+        Физически удаляет запись текущего пользователя. Клиент обязан передать актуальную revision записи в
+        заголовке If-Match как strong ETag, например "1". Сервер удаляет запись только при совпадении
         ожидаемой и текущей revision. Отсутствующая и принадлежащая другому пользователю запись возвращают
         одинаковый 404.
       operationId: deleteRecord
@@ -634,17 +661,18 @@ components:
                 message: record revision is required
 
     PayloadTooLarge:
-      description: Тело запроса превышает допустимый размер
+      description: >-
+        Превышен лимит: request body — 4 MiB, text — 1 MiB, metadata — 64 KiB или decoded binary data — 2 MiB.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           examples:
             payloadTooLarge:
-              summary: Превышен общий лимит тела запроса
+              summary: Превышен допустимый размер запроса или payload
               value:
                 code: payload_too_large
-                message: request body is too large
+                message: payload is too large
     UnsupportedMediaType:
       description: Запрос передан не в формате JSON
       content:
@@ -715,6 +743,21 @@ components:
           expiry_year: 2038
           cvv: '014'
           metadata: test card
+
+    BinaryRecordResponse:
+      summary: Binary-запись
+      value:
+        id: 550e8400-e29b-41d4-a716-446655440003
+        type: binary
+        title: Alice encrypted backup
+        revision: 1
+        created_at: '2026-07-12T12:00:00Z'
+        updated_at: '2026-07-12T12:00:00Z'
+        payload:
+          filename: backup.bin
+          data: AAEC/w==
+          content_type: application/octet-stream
+          metadata: private backup
 
   schemas:
     HealthResponse:
@@ -801,9 +844,9 @@ components:
     LoginField:
       type: string
       description: >-
-        Login пользователя. Сервер удаляет пробельные символы по краям и переводит ASCII-буквы A-Z
-        в нижний регистр. После канонизации значение должно содержать от 3 до 32 ASCII-символов: букв,
-        цифр, точки, подчёркивания и дефиса. Первый символ должен быть буквой или цифрой.
+        Login пользователя. Сервер удаляет пробельные символы по краям и переводит ASCII-буквы A-Z в нижний
+        регистр. После канонизации значение должно содержать от 3 до 32 ASCII-символов: букв, цифр, точки,
+        подчёркивания и дефиса. Первый символ должен быть буквой или цифрой.
       minLength: 3
       maxLength: 32
       pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{2,31}$'
@@ -817,8 +860,8 @@ components:
       maxLength: 64
       pattern: '^[!-~]{3,64}$'
       description: >-
-        Password длиной от 3 до 64 символов. Разрешены печатные ASCII-символы от ! до ~; пробелы
-        и другие Unicode-символы запрещены.
+        Password длиной от 3 до 64 символов. Разрешены печатные ASCII-символы от ! до ~; пробелы и другие
+        Unicode-символы запрещены.
       example: correct-horse-battery-staple
 
 
@@ -890,8 +933,8 @@ components:
           type: string
           minLength: 1
           description: >-
-            Обязательный приватный номер карты. Хранится строкой и сохраняется без нормализации,
-            проверки платёжной системы или алгоритма Luhn.
+            Обязательный приватный номер карты. Хранится строкой и сохраняется без нормализации, проверки
+            платёжной системы или алгоритма Luhn.
           example: '2013 0614 2020 0619'
         cardholder:
           type: string
@@ -921,17 +964,51 @@ components:
           maxLength: 65536
           example: test card
 
+    BinaryPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - filename
+        - data
+      properties:
+        filename:
+          type: string
+          minLength: 1
+          description: >-
+            Обязательное приватное имя файла. Значение сохраняется без нормализации и не используется Сервером
+            как путь в файловой системе.
+          example: backup.bin
+        data:
+          type: string
+          format: byte
+          description: >-
+            Содержимое файла в Base64. После декодирования допускается не более 2097152 bytes; пустой файл
+            разрешён. Отсутствующее поле и null отклоняются.
+          example: AAEC/w==
+        content_type:
+          type: string
+          description: >-
+            Необязательный приватный media type. Значение хранится как UTF-8 строка и не проверяется как MIME.
+          example: application/octet-stream
+        metadata:
+          type: string
+          description: Необязательная приватная метаинформация. Хранится внутри encrypted payload.
+          maxLength: 65536
+          example: private backup
+
     CreateRecordRequest:
       oneOf:
         - $ref: '#/components/schemas/CreateTextRecordRequest'
         - $ref: '#/components/schemas/CreateCredentialsRecordRequest'
         - $ref: '#/components/schemas/CreateCardRecordRequest'
+        - $ref: '#/components/schemas/CreateBinaryRecordRequest'
       discriminator:
         propertyName: type
         mapping:
           text: '#/components/schemas/CreateTextRecordRequest'
           credentials: '#/components/schemas/CreateCredentialsRecordRequest'
           card: '#/components/schemas/CreateCardRecordRequest'
+          binary: '#/components/schemas/CreateBinaryRecordRequest'
 
     CreateTextRecordRequest:
       type: object
@@ -996,17 +1073,40 @@ components:
         payload:
           $ref: '#/components/schemas/CardPayload'
 
+    CreateBinaryRecordRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - payload
+      properties:
+        type:
+          type: string
+          enum:
+            - binary
+          example: binary
+        title:
+          type: string
+          description: Открытое название записи, видимое в списке metadata.
+          minLength: 1
+          example: Alice encrypted backup
+        payload:
+          $ref: '#/components/schemas/BinaryPayload'
+
     UpdateRecordRequest:
       oneOf:
         - $ref: '#/components/schemas/UpdateTextRecordRequest'
         - $ref: '#/components/schemas/UpdateCredentialsRecordRequest'
         - $ref: '#/components/schemas/UpdateCardRecordRequest'
+        - $ref: '#/components/schemas/UpdateBinaryRecordRequest'
       discriminator:
         propertyName: type
         mapping:
           text: '#/components/schemas/UpdateTextRecordRequest'
           credentials: '#/components/schemas/UpdateCredentialsRecordRequest'
           card: '#/components/schemas/UpdateCardRecordRequest'
+          binary: '#/components/schemas/UpdateBinaryRecordRequest'
 
     UpdateTextRecordRequest:
       type: object
@@ -1074,6 +1174,28 @@ components:
         payload:
           $ref: '#/components/schemas/CardPayload'
 
+    UpdateBinaryRecordRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - title
+        - payload
+      properties:
+        type:
+          type: string
+          description: Тип записи должен совпадать с неизменяемым type существующей записи.
+          enum:
+            - binary
+          example: binary
+        title:
+          type: string
+          description: Новое открытое название записи, видимое в списке metadata.
+          minLength: 1
+          example: Alice updated backup
+        payload:
+          $ref: '#/components/schemas/BinaryPayload'
+
     RecordMetadataResponse:
       type: object
       additionalProperties: false
@@ -1113,12 +1235,14 @@ components:
         - $ref: '#/components/schemas/TextRecordResponse'
         - $ref: '#/components/schemas/CredentialsRecordResponse'
         - $ref: '#/components/schemas/CardRecordResponse'
+        - $ref: '#/components/schemas/BinaryRecordResponse'
       discriminator:
         propertyName: type
         mapping:
           text: '#/components/schemas/TextRecordResponse'
           credentials: '#/components/schemas/CredentialsRecordResponse'
           card: '#/components/schemas/CardRecordResponse'
+          binary: '#/components/schemas/BinaryRecordResponse'
 
     TextRecordResponse:
       type: object
@@ -1239,6 +1363,46 @@ components:
           example: '2026-07-11T12:00:00Z'
         payload:
           $ref: '#/components/schemas/CardPayload'
+
+    BinaryRecordResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - type
+        - title
+        - revision
+        - created_at
+        - updated_at
+        - payload
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 550e8400-e29b-41d4-a716-446655440003
+        type:
+          type: string
+          enum:
+            - binary
+          example: binary
+        title:
+          type: string
+          example: Alice encrypted backup
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+          example: 1
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-07-12T12:00:00Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2026-07-12T12:00:00Z'
+        payload:
+          $ref: '#/components/schemas/BinaryPayload'
 
     ListRecordsResponse:
       type: object
