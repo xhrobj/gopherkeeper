@@ -162,7 +162,7 @@ func newRecordRepositoryIntegrationFixture(t *testing.T) recordRepositoryIntegra
 	}
 }
 
-func (f recordRepositoryIntegrationFixture) createRecord(id string, userID int64, title string) model.Record {
+func (f recordRepositoryIntegrationFixture) createRecord(id string, userID int64, title string) model.EncryptedRecord {
 	f.t.Helper()
 
 	created, err := f.records.Create(f.ctx, newTestRecord(id, userID, title))
@@ -202,7 +202,7 @@ func setRecordTimestamps(
 	userID int64,
 	recordID string,
 	value time.Time,
-) model.Record {
+) model.EncryptedRecord {
 	t.Helper()
 
 	if _, err := pool.Exec(
@@ -223,7 +223,7 @@ func setRecordTimestamps(
 	return record
 }
 
-func assertUpdatedRecord(t *testing.T, updated model.Record, created model.Record, patch model.Record) {
+func assertUpdatedRecord(t *testing.T, updated model.EncryptedRecord, created model.EncryptedRecord, patch model.EncryptedRecord) {
 	t.Helper()
 
 	if updated.ID != created.ID || updated.UserID != created.UserID || updated.Type != model.RecordTypeText {
@@ -272,8 +272,8 @@ func assertStoredCiphertextEncrypted(
 func assertStaleUpdateDoesNotChangeRecord(
 	t *testing.T,
 	fixture recordRepositoryIntegrationFixture,
-	created model.Record,
-	updated model.Record,
+	created model.EncryptedRecord,
+	updated model.EncryptedRecord,
 ) {
 	t.Helper()
 
@@ -296,8 +296,8 @@ func assertStaleUpdateDoesNotChangeRecord(
 func assertForeignAndMissingUpdateReturnNotFound(
 	t *testing.T,
 	fixture recordRepositoryIntegrationFixture,
-	created model.Record,
-	updated model.Record,
+	created model.EncryptedRecord,
+	updated model.EncryptedRecord,
 ) {
 	t.Helper()
 
@@ -323,7 +323,7 @@ func assertForeignAndMissingUpdateReturnNotFound(
 func assertInvalidUpdateRevision(
 	t *testing.T,
 	fixture recordRepositoryIntegrationFixture,
-	patch model.Record,
+	patch model.EncryptedRecord,
 ) {
 	t.Helper()
 
@@ -409,8 +409,8 @@ func TestIntegration_RecordRepositoryDelete(t *testing.T) {
 	}
 }
 
-func newTestRecord(id string, userID int64, title string) model.Record {
-	return model.Record{
+func newTestRecord(id string, userID int64, title string) model.EncryptedRecord {
+	return model.EncryptedRecord{
 		ID:            id,
 		UserID:        userID,
 		Type:          model.RecordTypeText,

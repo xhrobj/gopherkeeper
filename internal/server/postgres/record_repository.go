@@ -21,8 +21,8 @@ func NewRecordRepository(pool *pgxpool.Pool) *RecordRepository {
 }
 
 // Create сохраняет encrypted record и возвращает состояние, зафиксированное PostgreSQL.
-func (r *RecordRepository) Create(ctx context.Context, record model.Record) (model.Record, error) {
-	var created model.Record
+func (r *RecordRepository) Create(ctx context.Context, record model.EncryptedRecord) (model.EncryptedRecord, error) {
+	var created model.EncryptedRecord
 	var recordType string
 
 	err := r.pool.QueryRow(
@@ -61,7 +61,7 @@ func (r *RecordRepository) Create(ctx context.Context, record model.Record) (mod
 		&created.Ciphertext,
 	)
 	if err != nil {
-		return model.Record{}, fmt.Errorf("create record: %w", err)
+		return model.EncryptedRecord{}, fmt.Errorf("create record: %w", err)
 	}
 	created.Type = model.RecordType(recordType)
 
@@ -71,14 +71,14 @@ func (r *RecordRepository) Create(ctx context.Context, record model.Record) (mod
 // Update изменяет encrypted record при совпадении владельца, идентификатора и ожидаемой ревизии.
 func (r *RecordRepository) Update(
 	ctx context.Context,
-	record model.Record,
+	record model.EncryptedRecord,
 	expectedRevision int64,
-) (model.Record, error) {
+) (model.EncryptedRecord, error) {
 	if err := model.ValidateRecordRevision(expectedRevision); err != nil {
-		return model.Record{}, fmt.Errorf("update record: %w", err)
+		return model.EncryptedRecord{}, fmt.Errorf("update record: %w", err)
 	}
 
-	var updated model.Record
+	var updated model.EncryptedRecord
 	var recordType string
 
 	err := r.pool.QueryRow(
@@ -121,10 +121,10 @@ func (r *RecordRepository) Update(
 	}
 
 	if errors.Is(err, pgx.ErrNoRows) {
-		return model.Record{}, r.updateDeleteMissError(ctx, record.UserID, record.ID, "update")
+		return model.EncryptedRecord{}, r.updateDeleteMissError(ctx, record.UserID, record.ID, "update")
 	}
 
-	return model.Record{}, fmt.Errorf("update record: %w", err)
+	return model.EncryptedRecord{}, fmt.Errorf("update record: %w", err)
 }
 
 // Delete физически удаляет encrypted record при совпадении владельца, идентификатора и ожидаемой ревизии.
@@ -228,8 +228,8 @@ func (r *RecordRepository) ListMetadata(ctx context.Context, userID int64) ([]mo
 }
 
 // Get возвращает encrypted record пользователя по идентификатору.
-func (r *RecordRepository) Get(ctx context.Context, userID int64, recordID string) (model.Record, error) {
-	var record model.Record
+func (r *RecordRepository) Get(ctx context.Context, userID int64, recordID string) (model.EncryptedRecord, error) {
+	var record model.EncryptedRecord
 	var recordType string
 
 	err := r.pool.QueryRow(
@@ -259,8 +259,8 @@ func (r *RecordRepository) Get(ctx context.Context, userID int64, recordID strin
 	}
 
 	if errors.Is(err, pgx.ErrNoRows) {
-		return model.Record{}, fmt.Errorf("get record: %w", model.ErrRecordNotFound)
+		return model.EncryptedRecord{}, fmt.Errorf("get record: %w", model.ErrRecordNotFound)
 	}
 
-	return model.Record{}, fmt.Errorf("get record: %w", err)
+	return model.EncryptedRecord{}, fmt.Errorf("get record: %w", err)
 }

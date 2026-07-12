@@ -88,8 +88,17 @@ func (recordType RecordType) Validate() error {
 	}
 }
 
-// Record описывает приватную запись в серверном хранилище.
+// Record содержит открытые поля и типизированный приватный payload записи.
 type Record struct {
+	// Metadata содержит открытые поля приватной записи.
+	Metadata RecordMetadata
+
+	// Payload содержит типизированный приватный payload.
+	Payload RecordPayload
+}
+
+// EncryptedRecord описывает зашифрованную приватную запись в серверном хранилище.
+type EncryptedRecord struct {
 	// ID содержит UUID приватной записи.
 	ID string
 
@@ -146,7 +155,7 @@ type RecordMetadata struct {
 }
 
 // Metadata возвращает открытые поля записи без encrypted payload.
-func (record Record) Metadata() RecordMetadata {
+func (record EncryptedRecord) Metadata() RecordMetadata {
 	return RecordMetadata{
 		ID:        record.ID,
 		Type:      record.Type,

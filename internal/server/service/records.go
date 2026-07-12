@@ -18,16 +18,16 @@ var (
 // RecordRepository содержит операции хранения, необходимые RecordService.
 type RecordRepository interface {
 	// Create сохраняет encrypted record и возвращает зафиксированное состояние.
-	Create(ctx context.Context, record model.Record) (model.Record, error)
+	Create(ctx context.Context, record model.EncryptedRecord) (model.EncryptedRecord, error)
 
 	// ListMetadata возвращает открытые поля записей пользователя без payload.
 	ListMetadata(ctx context.Context, userID int64) ([]model.RecordMetadata, error)
 
 	// Get возвращает encrypted record пользователя по идентификатору.
-	Get(ctx context.Context, userID int64, recordID string) (model.Record, error)
+	Get(ctx context.Context, userID int64, recordID string) (model.EncryptedRecord, error)
 
 	// Update изменяет encrypted record при совпадении ожидаемой ревизии.
-	Update(ctx context.Context, record model.Record, expectedRevision int64) (model.Record, error)
+	Update(ctx context.Context, record model.EncryptedRecord, expectedRevision int64) (model.EncryptedRecord, error)
 
 	// Delete физически удаляет encrypted record при совпадении ожидаемой ревизии.
 	Delete(ctx context.Context, userID int64, recordID string, expectedRevision int64) error
@@ -136,7 +136,7 @@ func (s *RecordService) Create(ctx context.Context, request CreateRecordRequest)
 		return DecryptedRecord{}, err
 	}
 
-	record, err := s.records.Create(ctx, model.Record{
+	record, err := s.records.Create(ctx, model.EncryptedRecord{
 		ID:            recordID,
 		UserID:        request.UserID,
 		Type:          recordType,
@@ -240,7 +240,7 @@ func (s *RecordService) Update(ctx context.Context, request UpdateRecordRequest)
 		return DecryptedRecord{}, err
 	}
 
-	updated, err := s.records.Update(ctx, model.Record{
+	updated, err := s.records.Update(ctx, model.EncryptedRecord{
 		ID:            request.RecordID,
 		UserID:        request.UserID,
 		Type:          recordType,
@@ -306,7 +306,7 @@ func (s *RecordService) encryptRecordPayload(
 	return encrypted, nil
 }
 
-func (s *RecordService) decryptRecordPayload(record model.Record, payload model.RecordPayload) error {
+func (s *RecordService) decryptRecordPayload(record model.EncryptedRecord, payload model.RecordPayload) error {
 	aad, err := recordcrypto.BuildAAD(record.UserID, record.ID, record.Type)
 	if err != nil {
 		return fmt.Errorf("build record AAD: %w", err)
