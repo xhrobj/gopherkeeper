@@ -3,9 +3,6 @@ package usecase
 import (
 	"context"
 	"fmt"
-
-	"github.com/xhrobj/gopherkeeper/internal/client/config"
-	"github.com/xhrobj/gopherkeeper/internal/client/session"
 )
 
 type sessionDeleter interface {
@@ -18,13 +15,8 @@ type LogoutApplication struct {
 }
 
 // NewLogout создаёт application use case локального выхода.
-func NewLogout(cfg config.Config) (*LogoutApplication, error) {
-	sessions, err := session.NewFileStorage(cfg.SessionFile)
-	if err != nil {
-		return nil, fmt.Errorf("create online session storage: %w", err)
-	}
-
-	return &LogoutApplication{sessions: sessions}, nil
+func NewLogout(sessions sessionDeleter) *LogoutApplication {
+	return &LogoutApplication{sessions: sessions}
 }
 
 // Logout удаляет локальную online-сессию Клиента.

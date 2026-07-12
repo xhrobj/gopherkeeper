@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/xhrobj/gopherkeeper/internal/client/config"
 	"github.com/xhrobj/gopherkeeper/internal/client/session"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
@@ -43,20 +42,20 @@ func (s sessionStorageStub) Load(expectedServerAddress string) (session.Session,
 	return s.load(expectedServerAddress)
 }
 
-func newTestApplication(users userGateway, sessions sessionStorage, serverAddress string) *Application {
+func newTestApplication(users UserGateway, sessions SessionStorage, serverAddress string) *Application {
 	return newTestApplicationWithRecords(users, recordGatewayStub{}, sessions, serverAddress)
 }
 
 func newTestApplicationWithRecords(
-	users userGateway,
-	records recordGateway,
-	sessions sessionStorage,
+	users UserGateway,
+	records RecordGateway,
+	sessions SessionStorage,
 	serverAddress string,
 ) *Application {
 	return &Application{
 		users:   users,
 		records: records,
-		sessions: func() (sessionStorage, error) {
+		sessions: func() (SessionStorage, error) {
 			return sessions, nil
 		},
 		serverAddress: serverAddress,
@@ -80,21 +79,20 @@ func testUser() model.User {
 }
 
 func TestNew(t *testing.T) {
-	application, err := New(config.Config{
-		Address:     "localhost:8080",
-		SessionFile: t.TempDir() + "/session.json",
-	})
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
+	application := New(
+		userClientStub{},
+		recordGatewayStub{},
+		func() (SessionStorage, error) { return sessionStorageStub{}, nil },
+		"localhost:8080",
+	)
 	if application.users == nil {
-		t.Error("New() user client = nil")
+		t.Error("New() user gateway = nil")
 	}
 	if application.records == nil {
-		t.Error("New() record client = nil")
+		t.Error("New() record gateway = nil")
 	}
 	if application.sessions == nil {
-		t.Error("New() session storage = nil")
+		t.Error("New() session storage provider = nil")
 	}
 	if application.serverAddress != "localhost:8080" {
 		t.Errorf("New() server address = %q, want localhost:8080", application.serverAddress)

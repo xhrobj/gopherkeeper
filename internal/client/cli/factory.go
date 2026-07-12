@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 
+	"github.com/xhrobj/gopherkeeper/internal/client/app"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
 	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
@@ -37,11 +38,11 @@ type clientFactory interface {
 type defaultClientFactory struct{}
 
 func (defaultClientFactory) NewApplication(cfg config.Config) (application, error) {
-	return usecase.New(cfg)
+	return app.New(cfg)
 }
 
 func (defaultClientFactory) NewLogoutApplication(cfg config.Config) (logoutApplication, error) {
-	return usecase.NewLogout(cfg)
+	return app.NewLogout(cfg)
 }
 
 func (defaultClientFactory) NewHealthClient(cfg config.Config) (healthClient, error) {

@@ -98,7 +98,7 @@ func TestApplication_RegisterDoesNotResolveSessionStorage(t *testing.T) {
 				return model.User{Login: "alice"}, nil
 			},
 		},
-		sessions: func() (sessionStorage, error) {
+		sessions: func() (SessionStorage, error) {
 			t.Fatal("registration must not resolve session storage")
 			return nil, nil
 		},
@@ -124,7 +124,7 @@ func TestApplication_LoginResolvesSessionStorageBeforeRequest(t *testing.T) {
 				return model.Authentication{}, nil
 			},
 		},
-		sessions: func() (sessionStorage, error) {
+		sessions: func() (SessionStorage, error) {
 			return nil, storageError
 		},
 		serverAddress: "localhost:8080",

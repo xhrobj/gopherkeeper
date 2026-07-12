@@ -173,10 +173,6 @@ func newRecordRequest(title string, payload model.RecordPayload) (recordRequest,
 	if payload == nil {
 		return recordRequest{}, errRecordPayloadRequired
 	}
-	if err := payload.Validate(); err != nil {
-		return recordRequest{}, err
-	}
-
 	return recordRequest{
 		Type:    payload.RecordType(),
 		Title:   title,

@@ -10,7 +10,8 @@ import (
 
 var errUnexpectedRecordPayload = errors.New("unexpected record payload")
 
-type recordGateway interface {
+// RecordGateway описывает удалённые CRUD-операции, необходимые application-слою.
+type RecordGateway interface {
 	CreateRecord(
 		ctx context.Context,
 		accessToken string,
@@ -90,7 +91,7 @@ func (a *Application) CreateRecord(ctx context.Context, request CreateRecordRequ
 		return model.Record{}, mapRecordClientError(fmt.Sprintf("create %s record", request.Payload.RecordType()), err)
 	}
 
-	return recordFromClient(record)
+	return record, nil
 }
 
 // ListRecords возвращает metadata приватных записей текущего пользователя в online-режиме.
@@ -125,7 +126,7 @@ func (a *Application) GetRecord(ctx context.Context, recordID string) (model.Rec
 		return model.Record{}, mapRecordClientError("get record", err)
 	}
 
-	return recordFromClient(record)
+	return record, nil
 }
 
 // UpdateRecord изменяет запись выбранного типа в online-режиме.
@@ -163,7 +164,7 @@ func (a *Application) UpdateRecord(ctx context.Context, request UpdateRecordRequ
 		return model.Record{}, mapRecordClientError(fmt.Sprintf("update %s record", request.Payload.RecordType()), err)
 	}
 
-	return recordFromClient(record)
+	return record, nil
 }
 
 // DeleteRecord удаляет запись в online-режиме.
@@ -204,18 +205,4 @@ func mapRecordClientError(operation string, err error) error {
 	default:
 		return fmt.Errorf("%s: %w", operation, err)
 	}
-}
-
-func recordFromClient(record model.Record) (model.Record, error) {
-	if record.Payload == nil {
-		return model.Record{}, fmt.Errorf("record payload: %w", errUnexpectedRecordPayload)
-	}
-	if err := record.Payload.Validate(); err != nil || record.Metadata.Type != record.Payload.RecordType() {
-		return model.Record{}, fmt.Errorf("record payload: %w", errUnexpectedRecordPayload)
-	}
-
-	return model.Record{
-		Metadata: record.Metadata,
-		Payload:  record.Payload,
-	}, nil
 }

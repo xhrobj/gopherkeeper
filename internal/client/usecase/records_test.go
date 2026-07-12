@@ -371,49 +371,6 @@ func TestApplication_GetBinaryRecord(t *testing.T) {
 	}
 }
 
-func TestApplication_GetRecordRejectsTypedNilPayload(t *testing.T) {
-	var payload *model.TextPayload
-	application := newTestApplicationWithRecords(
-		userClientStub{},
-		recordGatewayStub{
-			get: func(context.Context, string, string) (model.Record, error) {
-				return model.Record{
-					Metadata: model.RecordMetadata{Type: model.RecordTypeText},
-					Payload:  payload,
-				}, nil
-			},
-		},
-		onlineSessionStorage(),
-		"localhost:8080",
-	)
-
-	_, err := application.GetRecord(context.Background(), testRecordID)
-	if !errors.Is(err, errUnexpectedRecordPayload) {
-		t.Fatalf("GetRecord() error = %v, want unexpected payload", err)
-	}
-}
-
-func TestApplication_GetRecordRejectsMismatchedPayload(t *testing.T) {
-	application := newTestApplicationWithRecords(
-		userClientStub{},
-		recordGatewayStub{
-			get: func(context.Context, string, string) (model.Record, error) {
-				return model.Record{
-					Metadata: model.RecordMetadata{Type: model.RecordTypeText},
-					Payload:  &model.CredentialsPayload{Login: "alice", Password: "secret"},
-				}, nil
-			},
-		},
-		onlineSessionStorage(),
-		"localhost:8080",
-	)
-
-	_, err := application.GetRecord(context.Background(), testRecordID)
-	if !errors.Is(err, errUnexpectedRecordPayload) {
-		t.Fatalf("GetRecord() error = %v, want unexpected payload", err)
-	}
-}
-
 func TestApplication_UpdateRecord(t *testing.T) {
 	expiryMonth := 3
 	expiryYear := 2038

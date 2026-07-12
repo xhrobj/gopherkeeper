@@ -5,8 +5,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-
-	"github.com/xhrobj/gopherkeeper/internal/client/config"
 )
 
 type sessionDeleterStub struct {
@@ -18,12 +16,7 @@ func (s sessionDeleterStub) Delete() error {
 }
 
 func TestNewLogout(t *testing.T) {
-	application, err := NewLogout(config.Config{
-		SessionFile: t.TempDir() + "/session.json",
-	})
-	if err != nil {
-		t.Fatalf("NewLogout() error = %v", err)
-	}
+	application := NewLogout(sessionDeleterStub{delete: func() error { return nil }})
 	if application.sessions == nil {
 		t.Error("NewLogout() session deleter = nil")
 	}

@@ -2,10 +2,7 @@ package usecase
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/xhrobj/gopherkeeper/internal/client/config"
-	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
 	"github.com/xhrobj/gopherkeeper/internal/client/session"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
@@ -13,47 +10,39 @@ import (
 // Application выполняет клиентские online-сценарии поверх удалённых gateway
 // и provider'а локального хранилища session.
 type Application struct {
-	users         userGateway
-	records       recordGateway
-	sessions      sessionStorageProvider
+	users         UserGateway
+	records       RecordGateway
+	sessions      SessionStorageProvider
 	serverAddress string
 }
 
-type userGateway interface {
+// UserGateway описывает удалённые операции с пользователями, необходимые application-слою.
+type UserGateway interface {
 	Register(ctx context.Context, login, password string) (model.User, error)
 	Login(ctx context.Context, login, password string) (model.Authentication, error)
 	CurrentUser(ctx context.Context, accessToken string) (model.User, error)
 }
 
-type sessionStorage interface {
+// SessionStorage описывает локальное хранилище online-сессии.
+type SessionStorage interface {
 	Save(stored session.Session) error
 	Load(expectedServerAddress string) (session.Session, error)
 }
 
-type sessionStorageProvider func() (sessionStorage, error)
+// SessionStorageProvider лениво создаёт локальное хранилище online-сессии.
+type SessionStorageProvider func() (SessionStorage, error)
 
-// New создаёт полностью сконфигурированное клиентское application-приложение.
-func New(cfg config.Config) (*Application, error) {
-	client, err := httpclient.New(cfg.Address, cfg.CACertFile)
-	if err != nil {
-		return nil, err
-	}
-
+// New создаёт application-приложение из готовых зависимостей.
+func New(
+	users UserGateway,
+	records RecordGateway,
+	sessions SessionStorageProvider,
+	serverAddress string,
+) *Application {
 	return &Application{
-		users:         client,
-		records:       client,
-		sessions:      fileSessionStorageProvider(cfg.SessionFile),
-		serverAddress: cfg.Address,
-	}, nil
-}
-
-func fileSessionStorageProvider(path string) sessionStorageProvider {
-	return func() (sessionStorage, error) {
-		storage, err := session.NewFileStorage(path)
-		if err != nil {
-			return nil, fmt.Errorf("create online session storage: %w", err)
-		}
-
-		return storage, nil
+		users:         users,
+		records:       records,
+		sessions:      sessions,
+		serverAddress: serverAddress,
 	}
 }
