@@ -207,28 +207,11 @@ func runTestCommand(
 		errorOutput: errorOutput,
 		info:        testBuildInfo,
 		factory:     factory,
+		passwords:   streamPasswordReader{},
 	})
 }
 
-func recordCreatorFunc(
-	fn func(context.Context, usecase.CreateRecordRequest) (model.Record, error),
-) application {
-	return &applicationStub{createRecord: fn}
-}
-
-func recordUpdaterFunc(
-	fn func(context.Context, usecase.UpdateRecordRequest) (model.Record, error),
-) application {
-	return &applicationStub{updateRecord: fn}
-}
-
 func recordGetterFunc(
-	fn func(context.Context, string) (model.Record, error),
-) application {
-	return &applicationStub{getRecord: fn}
-}
-
-func cardRecordGetterFunc(
 	fn func(context.Context, string) (model.Record, error),
 ) application {
 	return &applicationStub{getRecord: fn}

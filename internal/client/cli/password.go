@@ -14,7 +14,7 @@ var errPasswordInputNotTerminal = errors.New("password input is not a terminal")
 
 type passwordReader interface {
 	ReadHidden(input io.Reader, output io.Writer, prompt string) (string, error)
-	ReadLine(input io.Reader) (string, error)
+	ReadLine(input io.Reader, output io.Writer, prompt string) (string, error)
 }
 
 type terminalPasswordReader struct{}
@@ -26,7 +26,7 @@ func (terminalPasswordReader) ReadHidden(
 ) (string, error) {
 	file, ok := input.(*os.File)
 	if !ok || !term.IsTerminal(int(file.Fd())) {
-		return "", fmt.Errorf("%w; use --password-stdin", errPasswordInputNotTerminal)
+		return "", errPasswordInputNotTerminal
 	}
 
 	if _, err := fmt.Fprint(output, prompt); err != nil {
@@ -45,7 +45,37 @@ func (terminalPasswordReader) ReadHidden(
 	return string(password), nil
 }
 
-func (terminalPasswordReader) ReadLine(input io.Reader) (string, error) {
+func (terminalPasswordReader) ReadLine(
+	input io.Reader,
+	output io.Writer,
+	prompt string,
+) (string, error) {
+	if _, err := fmt.Fprint(output, prompt); err != nil {
+		return "", fmt.Errorf("write input prompt: %w", err)
+	}
+
+	return readInputLine(input)
+}
+
+type streamPasswordReader struct{}
+
+func (streamPasswordReader) ReadHidden(
+	input io.Reader,
+	_ io.Writer,
+	_ string,
+) (string, error) {
+	return readInputLine(input)
+}
+
+func (streamPasswordReader) ReadLine(
+	input io.Reader,
+	_ io.Writer,
+	_ string,
+) (string, error) {
+	return readInputLine(input)
+}
+
+func readInputLine(input io.Reader) (string, error) {
 	var line strings.Builder
 	var buffer [1]byte
 

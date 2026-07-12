@@ -88,7 +88,7 @@ func (a *Application) CreateRecord(ctx context.Context, request CreateRecordRequ
 		request.Payload,
 	)
 	if err != nil {
-		return model.Record{}, mapRecordClientError(fmt.Sprintf("create %s record", request.Payload.RecordType()), err)
+		return model.Record{}, mapRecordGatewayError(fmt.Sprintf("create %s record", request.Payload.RecordType()), err)
 	}
 
 	return record, nil
@@ -104,7 +104,7 @@ func (a *Application) ListRecords(ctx context.Context) ([]model.RecordMetadata, 
 
 	records, err := a.records.ListRecords(ctx, storedSession.AccessToken)
 	if err != nil {
-		return nil, mapRecordClientError("list records", err)
+		return nil, mapRecordGatewayError("list records", err)
 	}
 
 	return records, nil
@@ -123,7 +123,7 @@ func (a *Application) GetRecord(ctx context.Context, recordID string) (model.Rec
 
 	record, err := a.records.GetRecord(ctx, storedSession.AccessToken, recordID)
 	if err != nil {
-		return model.Record{}, mapRecordClientError("get record", err)
+		return model.Record{}, mapRecordGatewayError("get record", err)
 	}
 
 	return record, nil
@@ -161,7 +161,7 @@ func (a *Application) UpdateRecord(ctx context.Context, request UpdateRecordRequ
 		request.Payload,
 	)
 	if err != nil {
-		return model.Record{}, mapRecordClientError(fmt.Sprintf("update %s record", request.Payload.RecordType()), err)
+		return model.Record{}, mapRecordGatewayError(fmt.Sprintf("update %s record", request.Payload.RecordType()), err)
 	}
 
 	return record, nil
@@ -182,13 +182,13 @@ func (a *Application) DeleteRecord(ctx context.Context, request DeleteRecordRequ
 	}
 
 	if err := a.records.DeleteRecord(ctx, storedSession.AccessToken, request.RecordID, request.ExpectedRevision); err != nil {
-		return mapRecordClientError("delete record", err)
+		return mapRecordGatewayError("delete record", err)
 	}
 
 	return nil
 }
 
-func mapRecordClientError(operation string, err error) error {
+func mapRecordGatewayError(operation string, err error) error {
 	switch {
 	case errors.Is(err, model.ErrUnauthorized):
 		return newUserError("not logged in", errors.Join(ErrNotLoggedIn, err))

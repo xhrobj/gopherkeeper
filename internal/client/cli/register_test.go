@@ -15,7 +15,6 @@ const testRegistrationPassword = "correct-horse-battery-staple"
 
 type passwordReaderStub struct {
 	hiddenValues []string
-	lineValue    string
 	hiddenCalls  int
 	lineCalls    int
 }
@@ -35,12 +34,12 @@ func (r *passwordReaderStub) ReadHidden(
 	return value, nil
 }
 
-func (r *passwordReaderStub) ReadLine(io.Reader) (string, error) {
+func (r *passwordReaderStub) ReadLine(io.Reader, io.Writer, string) (string, error) {
 	r.lineCalls++
-	return r.lineValue, nil
+	return "", errors.New("unexpected line read")
 }
 
-func TestExecuteRegistration_Interactive(t *testing.T) {
+func TestExecuteRegistration(t *testing.T) {
 	passwords := &passwordReaderStub{
 		hiddenValues: []string{testRegistrationPassword, testRegistrationPassword},
 	}
@@ -65,7 +64,6 @@ func TestExecuteRegistration_Interactive(t *testing.T) {
 			promptOutput: io.Discard,
 		},
 		" Alice ",
-		false,
 	)
 	if err != nil {
 		t.Fatalf("executeRegistration() error = %v", err)
@@ -75,49 +73,13 @@ func TestExecuteRegistration_Interactive(t *testing.T) {
 		t.Errorf("hidden password reads = %d, want 2", passwords.hiddenCalls)
 	}
 	if passwords.lineCalls != 0 {
-		t.Errorf("stdin password reads = %d, want 0", passwords.lineCalls)
+		t.Errorf("line reads = %d, want 0", passwords.lineCalls)
 	}
 	if got := output.String(); got != "User alice registered successfully.\n" {
 		t.Errorf("output = %q, want success message", got)
 	}
 	if strings.Contains(output.String(), testRegistrationPassword) {
 		t.Error("registration output contains password")
-	}
-}
-
-func TestExecuteRegistration_PasswordStdin(t *testing.T) {
-	passwords := &passwordReaderStub{lineValue: testRegistrationPassword}
-
-	err := executeRegistration(
-		context.Background(),
-		userRegistererFunc(func(_ context.Context, login, password string) (model.User, error) {
-			if login != "bob" {
-				t.Errorf("login = %q, want bob", login)
-			}
-			if password != testRegistrationPassword {
-				t.Error("registrar received unexpected password")
-			}
-
-			return model.User{Login: "bob"}, nil
-		}),
-		passwords,
-		passwordStreams{
-			input:        strings.NewReader(testRegistrationPassword + "\n"),
-			output:       io.Discard,
-			promptOutput: io.Discard,
-		},
-		"bob",
-		true,
-	)
-	if err != nil {
-		t.Fatalf("executeRegistration() error = %v", err)
-	}
-
-	if passwords.lineCalls != 1 {
-		t.Errorf("stdin password reads = %d, want 1", passwords.lineCalls)
-	}
-	if passwords.hiddenCalls != 0 {
-		t.Errorf("hidden password reads = %d, want 0", passwords.hiddenCalls)
 	}
 }
 
@@ -140,7 +102,6 @@ func TestExecuteRegistration_RejectsMismatchedPasswords(t *testing.T) {
 			promptOutput: io.Discard,
 		},
 		"eve",
-		false,
 	)
 	if err == nil {
 		t.Fatal("executeRegistration() error = nil, want password mismatch")
@@ -164,14 +125,15 @@ func TestExecuteRegistration_ReturnsApplicationError(t *testing.T) {
 		userRegistererFunc(func(context.Context, string, string) (model.User, error) {
 			return model.User{}, applicationError
 		}),
-		&passwordReaderStub{lineValue: testRegistrationPassword},
+		&passwordReaderStub{
+			hiddenValues: []string{testRegistrationPassword, testRegistrationPassword},
+		},
 		passwordStreams{
-			input:        strings.NewReader(testRegistrationPassword + "\n"),
+			input:        strings.NewReader(""),
 			output:       io.Discard,
 			promptOutput: io.Discard,
 		},
 		"ALICE",
-		true,
 	)
 	if err == nil {
 		t.Fatal("executeRegistration() error = nil, want application error")
@@ -184,7 +146,7 @@ func TestExecuteRegistration_ReturnsApplicationError(t *testing.T) {
 	}
 }
 
-func TestTerminalPasswordReader_ReadLine(t *testing.T) {
+func TestReadInputLine(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
@@ -201,7 +163,7 @@ func TestTerminalPasswordReader_ReadLine(t *testing.T) {
 			want:  testRegistrationPassword,
 		},
 		{
-			name:  "EOF after password",
+			name:  "EOF after value",
 			input: testRegistrationPassword,
 			want:  testRegistrationPassword,
 		},
@@ -209,21 +171,57 @@ func TestTerminalPasswordReader_ReadLine(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := (terminalPasswordReader{}).ReadLine(strings.NewReader(tt.input))
+			got, err := readInputLine(strings.NewReader(tt.input))
 			if err != nil {
-				t.Fatalf("ReadLine() error = %v", err)
+				t.Fatalf("readInputLine() error = %v", err)
 			}
 			if got != tt.want {
-				t.Errorf("ReadLine() = %q, want %q", got, tt.want)
+				t.Errorf("readInputLine() = %q, want %q", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestTerminalPasswordReader_ReadLineRejectsEmptyStdin(t *testing.T) {
-	_, err := (terminalPasswordReader{}).ReadLine(strings.NewReader(""))
+func TestReadInputLine_RejectsEmptyInput(t *testing.T) {
+	_, err := readInputLine(strings.NewReader(""))
 	if err == nil {
-		t.Fatal("ReadLine() error = nil, want no data error")
+		t.Fatal("readInputLine() error = nil, want no data error")
+	}
+}
+
+func TestTerminalPasswordReader_ReadLine(t *testing.T) {
+	var output bytes.Buffer
+	got, err := (terminalPasswordReader{}).ReadLine(
+		strings.NewReader("alice\n"),
+		&output,
+		"Login: ",
+	)
+	if err != nil {
+		t.Fatalf("ReadLine() error = %v", err)
+	}
+	if got != "alice" {
+		t.Errorf("ReadLine() = %q, want alice", got)
+	}
+	if output.String() != "Login: " {
+		t.Errorf("output = %q, want login prompt", output.String())
+	}
+}
+
+func TestStreamPasswordReader_ReadHidden(t *testing.T) {
+	var output bytes.Buffer
+	got, err := (streamPasswordReader{}).ReadHidden(
+		strings.NewReader(testRegistrationPassword+"\n"),
+		&output,
+		"Password: ",
+	)
+	if err != nil {
+		t.Fatalf("ReadHidden() error = %v", err)
+	}
+	if got != testRegistrationPassword {
+		t.Errorf("ReadHidden() = %q, want password", got)
+	}
+	if output.Len() != 0 {
+		t.Errorf("output = %q, want no interactive prompt", output.String())
 	}
 }
 
@@ -233,11 +231,8 @@ func TestTerminalPasswordReader_ReadHiddenRejectsNonTerminal(t *testing.T) {
 		io.Discard,
 		"Password: ",
 	)
-	if err == nil {
-		t.Fatal("ReadHidden() error = nil, want non-terminal error")
-	}
-	if !strings.Contains(err.Error(), "--password-stdin") {
-		t.Errorf("ReadHidden() error = %q, want password-stdin hint", err)
+	if !errors.Is(err, errPasswordInputNotTerminal) {
+		t.Fatalf("ReadHidden() error = %v, want %v", err, errPasswordInputNotTerminal)
 	}
 }
 
@@ -245,7 +240,6 @@ func TestExecuteRegistration_RejectsInvalidLoginBeforePasswordInput(t *testing.T
 	registrarCalled := false
 	passwords := &passwordReaderStub{
 		hiddenValues: []string{testRegistrationPassword, testRegistrationPassword},
-		lineValue:    testRegistrationPassword,
 	}
 
 	err := executeRegistration(
@@ -256,12 +250,11 @@ func TestExecuteRegistration_RejectsInvalidLoginBeforePasswordInput(t *testing.T
 		}),
 		passwords,
 		passwordStreams{
-			input:        strings.NewReader(testRegistrationPassword + "\n"),
+			input:        strings.NewReader(""),
 			output:       io.Discard,
 			promptOutput: io.Discard,
 		},
 		"-a",
-		false,
 	)
 	if !errors.Is(err, errInvalidLoginArgument) {
 		t.Fatalf("executeRegistration() error = %v, want %v", err, errInvalidLoginArgument)
@@ -273,6 +266,6 @@ func TestExecuteRegistration_RejectsInvalidLoginBeforePasswordInput(t *testing.T
 		t.Errorf("hidden password reads = %d, want 0", passwords.hiddenCalls)
 	}
 	if passwords.lineCalls != 0 {
-		t.Errorf("stdin password reads = %d, want 0", passwords.lineCalls)
+		t.Errorf("line reads = %d, want 0", passwords.lineCalls)
 	}
 }

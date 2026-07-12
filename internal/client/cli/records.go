@@ -20,18 +20,22 @@ const (
 	recordIDArgsUsage = "<record-id>"
 )
 
-func newRecordsCommand(input io.Reader, factory clientFactory) *urfavecli.Command {
+func newRecordsCommand(
+	input io.Reader,
+	factory clientFactory,
+	passwords passwordReader,
+) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "records",
 		Usage: "manage private records",
 		Commands: []*urfavecli.Command{
 			newCreateTextRecordCommand(factory),
-			newCreateCredentialsRecordCommand(input, factory),
-			newCreateCardRecordCommand(input, factory),
+			newCreateCredentialsRecordCommand(input, factory, passwords),
+			newCreateCardRecordCommand(input, factory, passwords),
 			newCreateBinaryRecordCommand(factory),
 			newUpdateTextRecordCommand(factory),
-			newUpdateCredentialsRecordCommand(input, factory),
-			newUpdateCardRecordCommand(input, factory),
+			newUpdateCredentialsRecordCommand(input, factory, passwords),
+			newUpdateCardRecordCommand(input, factory, passwords),
 			newUpdateBinaryRecordCommand(factory),
 			newListRecordsCommand(factory),
 			newGetRecordCommand(factory),

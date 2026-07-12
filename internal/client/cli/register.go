@@ -9,11 +9,15 @@ import (
 	urfavecli "github.com/urfave/cli/v3"
 )
 
-func newRegisterCommand(input io.Reader, factory clientFactory) *urfavecli.Command {
+func newRegisterCommand(
+	input io.Reader,
+	factory clientFactory,
+	passwords passwordReader,
+) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "register",
 		Usage: "register a new user",
-		Flags: loginPasswordFlags(),
+		Flags: loginFlags(),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			application, err := factory.NewApplication(configFromCommand(command))
 			if err != nil {
@@ -23,14 +27,13 @@ func newRegisterCommand(input io.Reader, factory clientFactory) *urfavecli.Comma
 			return executeRegistration(
 				ctx,
 				application,
-				terminalPasswordReader{},
+				passwords,
 				passwordStreams{
 					input:        input,
 					output:       command.Root().Writer,
 					promptOutput: command.Root().ErrWriter,
 				},
 				command.String("login"),
-				command.Bool("password-stdin"),
 			)
 		},
 	}
@@ -42,7 +45,6 @@ func executeRegistration(
 	passwords passwordReader,
 	streams passwordStreams,
 	login string,
-	passwordStdin bool,
 ) error {
 	if err := validateLoginArgument(login); err != nil {
 		return err
@@ -52,7 +54,6 @@ func executeRegistration(
 		passwords,
 		streams.input,
 		streams.promptOutput,
-		passwordStdin,
 	)
 	if err != nil {
 		return err
@@ -74,12 +75,7 @@ func readRegistrationPassword(
 	passwords passwordReader,
 	input io.Reader,
 	promptOutput io.Writer,
-	passwordStdin bool,
 ) (string, error) {
-	if passwordStdin {
-		return passwords.ReadLine(input)
-	}
-
 	password, err := passwords.ReadHidden(input, promptOutput, "Password: ")
 	if err != nil {
 		return "", err

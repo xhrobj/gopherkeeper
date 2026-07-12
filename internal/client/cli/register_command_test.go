@@ -14,7 +14,7 @@ import (
 func TestRegisterCommand_ConfigurationAndInput(t *testing.T) {
 	isolateClientConfig(t)
 
-	input := strings.NewReader(testRegistrationPassword + "\n")
+	input := strings.NewReader(testRegistrationPassword + "\n" + testRegistrationPassword + "\n")
 	var gotConfig config.Config
 	var gotLogin string
 	var gotPassword string
@@ -39,7 +39,6 @@ func TestRegisterCommand_ConfigurationAndInput(t *testing.T) {
 			"gkeep",
 			"register",
 			"-l", "alice",
-			"--password-stdin",
 			"--address", "localhost:8082",
 			"--ca-cert", "flag-ca.pem",
 		},
@@ -60,7 +59,7 @@ func TestRegisterCommand_ConfigurationAndInput(t *testing.T) {
 		t.Errorf("login = %q, want alice", gotLogin)
 	}
 	if gotPassword != testRegistrationPassword {
-		t.Errorf("password = %q, want stdin password", gotPassword)
+		t.Errorf("password = %q, want interactive password", gotPassword)
 	}
 	if got := output.String(); got != "User alice registered successfully.\n" {
 		t.Errorf("output = %q, want registration result", got)
@@ -72,8 +71,8 @@ func TestRegisterCommand_RequiresLogin(t *testing.T) {
 
 	err := runTestCommand(
 		t,
-		[]string{"gkeep", "register", "--password-stdin"},
-		strings.NewReader(testRegistrationPassword+"\n"),
+		[]string{"gkeep", "register"},
+		strings.NewReader(testRegistrationPassword+"\n"+testRegistrationPassword+"\n"),
 		io.Discard,
 		io.Discard,
 		nil,
@@ -83,7 +82,7 @@ func TestRegisterCommand_RequiresLogin(t *testing.T) {
 	}
 }
 
-func TestRegisterCommand_HelpDoesNotOfferPasswordFlag(t *testing.T) {
+func TestRegisterCommand_HelpDoesNotOfferPasswordFlags(t *testing.T) {
 	isolateClientConfig(t)
 
 	var output bytes.Buffer
@@ -100,10 +99,10 @@ func TestRegisterCommand_HelpDoesNotOfferPasswordFlag(t *testing.T) {
 	}
 
 	help := output.String()
-	if !strings.Contains(help, "--password-stdin") {
-		t.Errorf("register help = %q, want password-stdin flag", help)
-	}
-	if strings.Contains(help, "--password string") {
+	if strings.Contains(help, "--password") {
 		t.Errorf("register help exposes password flag: %q", help)
+	}
+	if strings.Contains(help, "stdin") {
+		t.Errorf("register help exposes technical stdin input: %q", help)
 	}
 }

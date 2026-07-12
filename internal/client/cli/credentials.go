@@ -10,14 +10,9 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-const credentialsStdinFlag = "credentials-stdin"
-
-var errMultipleCredentialsValues = errors.New("credentials stdin must contain one JSON value")
-
 type credentialsRecordCreateCommandRequest struct {
-	title            string
-	metadataFile     string
-	credentialsStdin bool
+	title        string
+	metadataFile string
 }
 
 type credentialsRecordUpdateCommandRequest struct {
@@ -25,12 +20,12 @@ type credentialsRecordUpdateCommandRequest struct {
 	expectedRevision int64
 	title            string
 	metadataFile     string
-	credentialsStdin bool
 }
 
 func newCreateCredentialsRecordCommand(
 	input io.Reader,
 	factory clientFactory,
+	passwords passwordReader,
 ) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "create-credentials",
@@ -45,16 +40,15 @@ func newCreateCredentialsRecordCommand(
 			return executeCreateCredentialsRecord(
 				ctx,
 				application,
-				terminalPasswordReader{},
+				passwords,
 				passwordStreams{
 					input:        input,
 					output:       command.Root().Writer,
 					promptOutput: command.Root().ErrWriter,
 				},
 				credentialsRecordCreateCommandRequest{
-					title:            command.String(titleFlag),
-					metadataFile:     command.String(metadataFileFlag),
-					credentialsStdin: command.Bool(credentialsStdinFlag),
+					title:        command.String(titleFlag),
+					metadataFile: command.String(metadataFileFlag),
 				},
 			)
 		},
@@ -64,6 +58,7 @@ func newCreateCredentialsRecordCommand(
 func newUpdateCredentialsRecordCommand(
 	input io.Reader,
 	factory clientFactory,
+	passwords passwordReader,
 ) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:      "update-credentials",
@@ -84,7 +79,7 @@ func newUpdateCredentialsRecordCommand(
 			return executeUpdateCredentialsRecord(
 				ctx,
 				application,
-				terminalPasswordReader{},
+				passwords,
 				passwordStreams{
 					input:        input,
 					output:       command.Root().Writer,
@@ -95,7 +90,6 @@ func newUpdateCredentialsRecordCommand(
 					expectedRevision: command.Int64(revisionFlag),
 					title:            command.String(titleFlag),
 					metadataFile:     command.String(metadataFileFlag),
-					credentialsStdin: command.Bool(credentialsStdinFlag),
 				},
 			)
 		},
@@ -103,7 +97,7 @@ func newUpdateCredentialsRecordCommand(
 }
 
 func credentialsRecordFlags(withRevision bool) []urfavecli.Flag {
-	flags := make([]urfavecli.Flag, 0, 4)
+	flags := make([]urfavecli.Flag, 0, 3)
 	if withRevision {
 		flags = append(flags, &urfavecli.Int64Flag{
 			Name:     revisionFlag,
@@ -121,11 +115,7 @@ func credentialsRecordFlags(withRevision bool) []urfavecli.Flag {
 		},
 		&urfavecli.StringFlag{
 			Name:  metadataFileFlag,
-			Usage: "path to optional file with private metadata in interactive mode",
-		},
-		&urfavecli.BoolFlag{
-			Name:  credentialsStdinFlag,
-			Usage: "read credentials payload as JSON from standard input",
+			Usage: "path to optional file with private metadata",
 		},
 	)
 }
@@ -142,7 +132,6 @@ func executeCreateCredentialsRecord(
 		streams.input,
 		streams.promptOutput,
 		request.metadataFile,
-		request.credentialsStdin,
 	)
 	if err != nil {
 		return err
@@ -163,7 +152,6 @@ func executeUpdateCredentialsRecord(
 		streams.input,
 		streams.promptOutput,
 		request.metadataFile,
-		request.credentialsStdin,
 	)
 	if err != nil {
 		return err
@@ -182,18 +170,7 @@ func readCredentialsPayload(
 	input io.Reader,
 	promptOutput io.Writer,
 	metadataFile string,
-	credentialsStdin bool,
 ) (model.CredentialsPayload, error) {
-	if credentialsStdin {
-		if metadataFile != "" {
-			return model.CredentialsPayload{}, errors.New(
-				"--metadata-file cannot be used with --credentials-stdin",
-			)
-		}
-
-		return readCredentialsPayloadJSON(input)
-	}
-
 	login, err := readPromptedLine(reader, input, promptOutput, "Login: ")
 	if err != nil {
 		return model.CredentialsPayload{}, fmt.Errorf("read credentials login: %w", err)
@@ -201,12 +178,6 @@ func readCredentialsPayload(
 
 	password, err := reader.ReadHidden(input, promptOutput, "Password: ")
 	if err != nil {
-		if errors.Is(err, errPasswordInputNotTerminal) {
-			return model.CredentialsPayload{}, errors.New(
-				"password input is not a terminal; use --credentials-stdin",
-			)
-		}
-
 		return model.CredentialsPayload{}, err
 	}
 
@@ -239,27 +210,5 @@ func readPromptedLine(
 	promptOutput io.Writer,
 	prompt string,
 ) (string, error) {
-	if _, err := fmt.Fprint(promptOutput, prompt); err != nil {
-		return "", fmt.Errorf("write prompt: %w", err)
-	}
-
-	return reader.ReadLine(input)
-}
-
-func readCredentialsPayloadJSON(input io.Reader) (model.CredentialsPayload, error) {
-	var payload model.CredentialsPayload
-	if err := readRecordPayloadJSON(
-		input,
-		"credentials",
-		errMultipleCredentialsValues,
-		&payload,
-	); err != nil {
-		return model.CredentialsPayload{}, err
-	}
-
-	if err := payload.Validate(); err != nil {
-		return model.CredentialsPayload{}, err
-	}
-
-	return payload, nil
+	return reader.ReadLine(input, promptOutput, prompt)
 }

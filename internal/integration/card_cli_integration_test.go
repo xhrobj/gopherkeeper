@@ -3,10 +3,7 @@
 package integration_test
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -18,33 +15,8 @@ var createdCardRecordPattern = regexp.MustCompile(
 	`^Created card record ([0-9a-f-]+) with revision ([0-9]+)\.$`,
 )
 
-type cardCLIConfig struct {
-	ctx         context.Context
-	address     string
-	caCertFile  string
-	sessionFile string
-}
-
-func TestIntegration_CLICardRecordFlow(t *testing.T) {
-	ctx, pool, httpLogs, serverAddress, caCertFile := startCLIRecordTestServer(t)
-	if _, _, err := runRegisterCommand(
-		ctx,
-		serverAddress,
-		caCertFile,
-		" Alice ",
-		testRegistrationPassword,
-	); err != nil {
-		t.Fatalf("register Alice: %v", err)
-	}
-
-	sessionFile := filepath.Join(t.TempDir(), "alice-session.json")
-	loginTestUser(t, ctx, serverAddress, caCertFile, sessionFile, " Alice ")
-	config := cardCLIConfig{
-		ctx:         ctx,
-		address:     serverAddress,
-		caCertFile:  caCertFile,
-		sessionFile: sessionFile,
-	}
+func TestIntegration_CLICardRecordRoundTrip(t *testing.T) {
+	config, pool, httpLogs := newRecordCLIEnvironment(t)
 
 	expiryMonth := 3
 	expiryYear := 2038
@@ -59,7 +31,7 @@ func TestIntegration_CLICardRecordFlow(t *testing.T) {
 	recordID := createCardRecord(t, config, "Joel's card", initial)
 	assertPlaintextAbsentFromPostgres(
 		t,
-		ctx,
+		config.ctx,
 		pool,
 		recordID,
 		initial.Number,
@@ -83,7 +55,7 @@ func TestIntegration_CLICardRecordFlow(t *testing.T) {
 	updateCardRecord(t, config, recordID, 1, "Joel's card updated", updated)
 	assertPlaintextAbsentFromPostgres(
 		t,
-		ctx,
+		config.ctx,
 		pool,
 		recordID,
 		updated.Number,
@@ -92,34 +64,12 @@ func TestIntegration_CLICardRecordFlow(t *testing.T) {
 		updated.Metadata,
 	)
 	assertCardRecord(t, config, recordID, 2, updated)
-
-	stdout, stderr, err := runDeleteRecordCommand(
-		ctx,
-		serverAddress,
-		caCertFile,
-		sessionFile,
-		recordID,
-		2,
-	)
-	if err != nil {
-		t.Fatalf("delete card record: %v", err)
-	}
-	wantDelete := fmt.Sprintf("Deleted record %s.\n", recordID)
-	if stdout != wantDelete {
-		t.Errorf("delete stdout = %q, want %q", stdout, wantDelete)
-	}
-	if stderr != "" {
-		t.Errorf("delete stderr = %q, want empty output", stderr)
-	}
-
-	_, _, err = runGetRecordCommand(ctx, serverAddress, caCertFile, sessionFile, recordID)
-	assertCLIErrorContains(t, "get deleted card record", err, "record not found")
 	assertCardHTTPLogsDoNotContainSecrets(t, httpLogs.String(), initial, updated)
 }
 
 func createCardRecord(
 	t *testing.T,
-	config cardCLIConfig,
+	config recordCLIConfig,
 	title string,
 	payload model.CardPayload,
 ) string {
@@ -147,7 +97,7 @@ func createCardRecord(
 
 func updateCardRecord(
 	t *testing.T,
-	config cardCLIConfig,
+	config recordCLIConfig,
 	recordID string,
 	revision int64,
 	title string,
@@ -179,7 +129,7 @@ func updateCardRecord(
 
 func assertCardList(
 	t *testing.T,
-	config cardCLIConfig,
+	config recordCLIConfig,
 	recordID string,
 	title string,
 	payload model.CardPayload,
@@ -208,7 +158,7 @@ func assertCardList(
 
 func assertCardRecord(
 	t *testing.T,
-	config cardCLIConfig,
+	config recordCLIConfig,
 	recordID string,
 	revision int64,
 	payload model.CardPayload,
@@ -247,26 +197,31 @@ func assertCardRecord(
 
 func runCreateCardRecordCommand(
 	t *testing.T,
-	config cardCLIConfig,
+	config recordCLIConfig,
 	title string,
 	payload model.CardPayload,
 ) (string, string, error) {
 	t.Helper()
 
-	return runClientCommandWithInput(config.ctx, []string{
+	args := []string{
 		"gkeep",
 		"--address", config.address,
 		"--ca-cert", config.caCertFile,
 		"--session-file", config.sessionFile,
 		"records", "create-card",
 		"--title", title,
-		"--card-stdin",
-	}, encodeCardInput(t, payload))
+	}
+	if payload.Metadata != "" {
+		metadataFile := writeIntegrationFile(t, "card-metadata.txt", payload.Metadata)
+		args = append(args, "--metadata-file", metadataFile)
+	}
+
+	return runClientCommandWithInput(config.ctx, args, cardInput(payload))
 }
 
 func runUpdateCardRecordCommand(
 	t *testing.T,
-	config cardCLIConfig,
+	config recordCLIConfig,
 	recordID string,
 	revision int64,
 	title string,
@@ -274,7 +229,7 @@ func runUpdateCardRecordCommand(
 ) (string, string, error) {
 	t.Helper()
 
-	return runClientCommandWithInput(config.ctx, []string{
+	args := []string{
 		"gkeep",
 		"--address", config.address,
 		"--ca-cert", config.caCertFile,
@@ -282,19 +237,32 @@ func runUpdateCardRecordCommand(
 		"records", "update-card", recordID,
 		"--revision", fmt.Sprintf("%d", revision),
 		"--title", title,
-		"--card-stdin",
-	}, encodeCardInput(t, payload))
-}
-
-func encodeCardInput(t *testing.T, payload model.CardPayload) string {
-	t.Helper()
-
-	data, err := json.Marshal(payload)
-	if err != nil {
-		t.Fatalf("encode card payload: %v", err)
+	}
+	if payload.Metadata != "" {
+		metadataFile := writeIntegrationFile(t, "card-metadata.txt", payload.Metadata)
+		args = append(args, "--metadata-file", metadataFile)
 	}
 
-	return string(data)
+	return runClientCommandWithInput(config.ctx, args, cardInput(payload))
+}
+
+func cardInput(payload model.CardPayload) string {
+	expiryMonth := ""
+	if payload.ExpiryMonth != nil {
+		expiryMonth = fmt.Sprintf("%d", *payload.ExpiryMonth)
+	}
+	expiryYear := ""
+	if payload.ExpiryYear != nil {
+		expiryYear = fmt.Sprintf("%d", *payload.ExpiryYear)
+	}
+
+	return strings.Join([]string{
+		payload.Number,
+		payload.Cardholder,
+		expiryMonth,
+		expiryYear,
+		payload.CVV,
+	}, "\n") + "\n"
 }
 
 func assertOutputDoesNotContainCard(t *testing.T, output string, payload model.CardPayload) {

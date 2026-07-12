@@ -26,9 +26,18 @@ func (c *Client) Register(ctx context.Context, login, password string) (model.Us
 		requestBody:    registerRequest{Login: login, Password: password},
 		expectedStatus: http.StatusCreated,
 		responseBody:   &registered,
+		errorCause:     registrationErrorCause,
 	}); err != nil {
 		return model.User{}, err
 	}
 
 	return userFromResponse(registered), nil
+}
+
+func registrationErrorCause(code string) error {
+	if code == "login_already_exists" {
+		return model.ErrLoginAlreadyExists
+	}
+
+	return nil
 }

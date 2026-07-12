@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 const testLoginPassword = "correct-horse-battery-staple"
@@ -105,7 +107,7 @@ func assertLoginRequest(t *testing.T, r *http.Request) bool {
 	return valid
 }
 
-func TestClient_LoginReturnsAPIError(t *testing.T) {
+func TestClient_Login_ReturnsAPIError(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
@@ -139,6 +141,9 @@ func TestClient_LoginReturnsAPIError(t *testing.T) {
 	}
 	if apiError.Message != "invalid login or password" {
 		t.Errorf("message = %q, want invalid login or password", apiError.Message)
+	}
+	if !errors.Is(err, model.ErrInvalidCredentials) {
+		t.Errorf("Login() error = %v, want ErrInvalidCredentials", err)
 	}
 	if strings.Contains(err.Error(), testLoginPassword) {
 		t.Error("login error contains password")

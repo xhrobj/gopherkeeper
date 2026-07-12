@@ -12,14 +12,9 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-const cardStdinFlag = "card-stdin"
-
-var errMultipleCardValues = errors.New("card stdin must contain one JSON value")
-
 type cardRecordCreateCommandRequest struct {
 	title        string
 	metadataFile string
-	cardStdin    bool
 }
 
 type cardRecordUpdateCommandRequest struct {
@@ -27,10 +22,13 @@ type cardRecordUpdateCommandRequest struct {
 	expectedRevision int64
 	title            string
 	metadataFile     string
-	cardStdin        bool
 }
 
-func newCreateCardRecordCommand(input io.Reader, factory clientFactory) *urfavecli.Command {
+func newCreateCardRecordCommand(
+	input io.Reader,
+	factory clientFactory,
+	passwords passwordReader,
+) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "create-card",
 		Usage: "create a private card record",
@@ -44,7 +42,7 @@ func newCreateCardRecordCommand(input io.Reader, factory clientFactory) *urfavec
 			return executeCreateCardRecord(
 				ctx,
 				application,
-				terminalPasswordReader{},
+				passwords,
 				passwordStreams{
 					input:        input,
 					output:       command.Root().Writer,
@@ -53,14 +51,17 @@ func newCreateCardRecordCommand(input io.Reader, factory clientFactory) *urfavec
 				cardRecordCreateCommandRequest{
 					title:        command.String(titleFlag),
 					metadataFile: command.String(metadataFileFlag),
-					cardStdin:    command.Bool(cardStdinFlag),
 				},
 			)
 		},
 	}
 }
 
-func newUpdateCardRecordCommand(input io.Reader, factory clientFactory) *urfavecli.Command {
+func newUpdateCardRecordCommand(
+	input io.Reader,
+	factory clientFactory,
+	passwords passwordReader,
+) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:      "update-card",
 		Usage:     "update a private card record",
@@ -80,7 +81,7 @@ func newUpdateCardRecordCommand(input io.Reader, factory clientFactory) *urfavec
 			return executeUpdateCardRecord(
 				ctx,
 				application,
-				terminalPasswordReader{},
+				passwords,
 				passwordStreams{
 					input:        input,
 					output:       command.Root().Writer,
@@ -91,7 +92,6 @@ func newUpdateCardRecordCommand(input io.Reader, factory clientFactory) *urfavec
 					expectedRevision: command.Int64(revisionFlag),
 					title:            command.String(titleFlag),
 					metadataFile:     command.String(metadataFileFlag),
-					cardStdin:        command.Bool(cardStdinFlag),
 				},
 			)
 		},
@@ -99,7 +99,7 @@ func newUpdateCardRecordCommand(input io.Reader, factory clientFactory) *urfavec
 }
 
 func cardRecordFlags(withRevision bool) []urfavecli.Flag {
-	flags := make([]urfavecli.Flag, 0, 4)
+	flags := make([]urfavecli.Flag, 0, 3)
 	if withRevision {
 		flags = append(flags, &urfavecli.Int64Flag{
 			Name:     revisionFlag,
@@ -117,11 +117,7 @@ func cardRecordFlags(withRevision bool) []urfavecli.Flag {
 		},
 		&urfavecli.StringFlag{
 			Name:  metadataFileFlag,
-			Usage: "path to optional file with private metadata in interactive mode",
-		},
-		&urfavecli.BoolFlag{
-			Name:  cardStdinFlag,
-			Usage: "read card payload as JSON from standard input",
+			Usage: "path to optional file with private metadata",
 		},
 	)
 }
@@ -138,7 +134,6 @@ func executeCreateCardRecord(
 		streams.input,
 		streams.promptOutput,
 		request.metadataFile,
-		request.cardStdin,
 	)
 	if err != nil {
 		return err
@@ -159,7 +154,6 @@ func executeUpdateCardRecord(
 		streams.input,
 		streams.promptOutput,
 		request.metadataFile,
-		request.cardStdin,
 	)
 	if err != nil {
 		return err
@@ -178,17 +172,8 @@ func readCardPayload(
 	input io.Reader,
 	promptOutput io.Writer,
 	metadataFile string,
-	cardStdin bool,
 ) (model.CardPayload, error) {
-	if cardStdin {
-		if metadataFile != "" {
-			return model.CardPayload{}, errors.New("--metadata-file cannot be used with --card-stdin")
-		}
-
-		return readCardPayloadJSON(input)
-	}
-
-	number, err := readHiddenCardField(reader, input, promptOutput, "Card number: ")
+	number, err := reader.ReadHidden(input, promptOutput, "Card number: ")
 	if err != nil {
 		return model.CardPayload{}, fmt.Errorf("read card number: %w", err)
 	}
@@ -208,7 +193,7 @@ func readCardPayload(
 		return model.CardPayload{}, fmt.Errorf("read expiry year: %w", err)
 	}
 
-	cvv, err := readHiddenCardField(reader, input, promptOutput, "CVV (optional): ")
+	cvv, err := reader.ReadHidden(input, promptOutput, "CVV (optional): ")
 	if err != nil {
 		return model.CardPayload{}, fmt.Errorf("read card CVV: %w", err)
 	}
@@ -233,23 +218,6 @@ func readCardPayload(
 	return payload, nil
 }
 
-func readHiddenCardField(
-	reader passwordReader,
-	input io.Reader,
-	promptOutput io.Writer,
-	prompt string,
-) (string, error) {
-	value, err := reader.ReadHidden(input, promptOutput, prompt)
-	if errors.Is(err, errPasswordInputNotTerminal) {
-		return "", errors.New("card input is not a terminal; use --card-stdin")
-	}
-	if err != nil {
-		return "", err
-	}
-
-	return value, nil
-}
-
 func readOptionalCardInteger(
 	reader passwordReader,
 	input io.Reader,
@@ -271,17 +239,4 @@ func readOptionalCardInteger(
 	}
 
 	return &parsed, nil
-}
-
-func readCardPayloadJSON(input io.Reader) (model.CardPayload, error) {
-	var payload model.CardPayload
-	if err := readRecordPayloadJSON(input, "card", errMultipleCardValues, &payload); err != nil {
-		return model.CardPayload{}, err
-	}
-
-	if err := payload.Validate(); err != nil {
-		return model.CardPayload{}, err
-	}
-
-	return payload, nil
 }

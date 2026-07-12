@@ -4,9 +4,7 @@ package integration_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -18,33 +16,8 @@ var createdCredentialsRecordPattern = regexp.MustCompile(
 	`^Created credentials record ([0-9a-f-]+) with revision ([0-9]+)\.$`,
 )
 
-type credentialsCLIConfig struct {
-	ctx         context.Context
-	address     string
-	caCertFile  string
-	sessionFile string
-}
-
-func TestIntegration_CLICredentialsRecordFlow(t *testing.T) {
-	ctx, pool, httpLogs, serverAddress, caCertFile := startCLIRecordTestServer(t)
-	if _, _, err := runRegisterCommand(
-		ctx,
-		serverAddress,
-		caCertFile,
-		" Alice ",
-		testRegistrationPassword,
-	); err != nil {
-		t.Fatalf("register Alice: %v", err)
-	}
-
-	aliceSessionFile := filepath.Join(t.TempDir(), "alice-session.json")
-	loginTestUser(t, ctx, serverAddress, caCertFile, aliceSessionFile, " Alice ")
-	aliceCLI := credentialsCLIConfig{
-		ctx:         ctx,
-		address:     serverAddress,
-		caCertFile:  caCertFile,
-		sessionFile: aliceSessionFile,
-	}
+func TestIntegration_CLICredentialsRecordRoundTrip(t *testing.T) {
+	config, pool, httpLogs := newRecordCLIEnvironment(t)
 
 	initial := model.CredentialsPayload{
 		Login:    "alice@example.com",
@@ -54,16 +27,16 @@ func TestIntegration_CLICredentialsRecordFlow(t *testing.T) {
 	}
 	recordID := createCredentialsRecord(
 		t,
-		ctx,
-		serverAddress,
-		caCertFile,
-		aliceSessionFile,
+		config.ctx,
+		config.address,
+		config.caCertFile,
+		config.sessionFile,
 		"Alice GitHub",
 		initial,
 	)
 	assertPlaintextAbsentFromPostgres(
 		t,
-		ctx,
+		config.ctx,
 		pool,
 		recordID,
 		initial.Login,
@@ -71,17 +44,16 @@ func TestIntegration_CLICredentialsRecordFlow(t *testing.T) {
 		initial.URL,
 		initial.Metadata,
 	)
-	assertCredentialsList(t, ctx, serverAddress, caCertFile, aliceSessionFile, recordID, initial)
-	assertCredentialsRecord(t, aliceCLI, recordID, 1, initial)
-
-	aliceSecondSessionFile := filepath.Join(t.TempDir(), "alice-second-session.json")
-	loginTestUser(t, ctx, serverAddress, caCertFile, aliceSecondSessionFile, " Alice ")
-	aliceSecondCLI := credentialsCLIConfig{
-		ctx:         ctx,
-		address:     serverAddress,
-		caCertFile:  caCertFile,
-		sessionFile: aliceSecondSessionFile,
-	}
+	assertCredentialsList(
+		t,
+		config.ctx,
+		config.address,
+		config.caCertFile,
+		config.sessionFile,
+		recordID,
+		initial,
+	)
+	assertCredentialsRecord(t, config, recordID, 1, initial)
 
 	updated := model.CredentialsPayload{
 		Login:    "alice.updated@example.com",
@@ -89,10 +61,10 @@ func TestIntegration_CLICredentialsRecordFlow(t *testing.T) {
 		URL:      "https://github.com/settings/security",
 		Metadata: "updated recovery codes",
 	}
-	updateCredentialsRecord(t, aliceCLI, recordID, 1, "Updated Alice GitHub", updated)
+	updateCredentialsRecord(t, config, recordID, 1, "Updated Alice GitHub", updated)
 	assertPlaintextAbsentFromPostgres(
 		t,
-		ctx,
+		config.ctx,
 		pool,
 		recordID,
 		updated.Login,
@@ -100,52 +72,8 @@ func TestIntegration_CLICredentialsRecordFlow(t *testing.T) {
 		updated.URL,
 		updated.Metadata,
 	)
-	assertCredentialsRecord(t, aliceCLI, recordID, 2, updated)
-	assertStaleCredentialsUpdate(
-		t,
-		aliceSecondCLI,
-		recordID,
-		updated,
-	)
-
-	eveSessionFile := registerAndLoginEve(t, ctx, serverAddress, caCertFile)
-	assertForeignCredentialsAccessHidden(
-		t,
-		ctx,
-		serverAddress,
-		caCertFile,
-		eveSessionFile,
-		recordID,
-		updated,
-	)
-
-	stdout, stderr, err := runDeleteRecordCommand(
-		ctx,
-		serverAddress,
-		caCertFile,
-		aliceSessionFile,
-		recordID,
-		2,
-	)
-	if err != nil {
-		t.Fatalf("delete credentials record: %v", err)
-	}
-	wantDelete := fmt.Sprintf("Deleted record %s.\n", recordID)
-	if stdout != wantDelete {
-		t.Errorf("delete stdout = %q, want %q", stdout, wantDelete)
-	}
-	if stderr != "" {
-		t.Errorf("delete stderr = %q, want empty output", stderr)
-	}
-
-	_, _, err = runGetRecordCommand(ctx, serverAddress, caCertFile, aliceSessionFile, recordID)
-	assertCLIErrorContains(t, "get deleted credentials record", err, "record not found")
-	assertCredentialsHTTPLogsDoNotContainSecrets(
-		t,
-		httpLogs.String(),
-		initial,
-		updated,
-	)
+	assertCredentialsRecord(t, config, recordID, 2, updated)
+	assertCredentialsHTTPLogsDoNotContainSecrets(t, httpLogs.String(), initial, updated)
 }
 
 func createCredentialsRecord(
@@ -189,7 +117,7 @@ func createCredentialsRecord(
 
 func updateCredentialsRecord(
 	t *testing.T,
-	config credentialsCLIConfig,
+	config recordCLIConfig,
 	recordID string,
 	revision int64,
 	title string,
@@ -247,7 +175,7 @@ func assertCredentialsList(
 
 func assertCredentialsRecord(
 	t *testing.T,
-	config credentialsCLIConfig,
+	config recordCLIConfig,
 	recordID string,
 	revision int64,
 	payload model.CredentialsPayload,
@@ -286,85 +214,6 @@ func assertCredentialsRecord(
 	}
 }
 
-func assertStaleCredentialsUpdate(
-	t *testing.T,
-	config credentialsCLIConfig,
-	recordID string,
-	payload model.CredentialsPayload,
-) {
-	t.Helper()
-
-	stdout, stderr, err := runUpdateCredentialsRecordCommand(
-		t,
-		config,
-		recordID,
-		1,
-		"Stale credentials",
-		payload,
-	)
-	assertCLIErrorContains(t, "stale credentials update", err, "record revision conflict")
-	assertOutputDoesNotContainCredentials(t, stdout+stderr+err.Error(), payload)
-}
-
-func registerAndLoginEve(
-	t *testing.T,
-	ctx context.Context,
-	address string,
-	caCertFile string,
-) string {
-	t.Helper()
-
-	if _, _, err := runRegisterCommand(
-		ctx,
-		address,
-		caCertFile,
-		" Eve ",
-		testRegistrationPassword,
-	); err != nil {
-		t.Fatalf("register Eve: %v", err)
-	}
-
-	sessionFile := filepath.Join(t.TempDir(), "eve-session.json")
-	loginTestUser(t, ctx, address, caCertFile, sessionFile, " Eve ")
-
-	return sessionFile
-}
-
-func assertForeignCredentialsAccessHidden(
-	t *testing.T,
-	ctx context.Context,
-	address string,
-	caCertFile string,
-	sessionFile string,
-	recordID string,
-	payload model.CredentialsPayload,
-) {
-	t.Helper()
-
-	_, _, err := runGetRecordCommand(ctx, address, caCertFile, sessionFile, recordID)
-	assertCLIErrorContains(t, "foreign credentials get", err, "record not found")
-
-	config := credentialsCLIConfig{
-		ctx:         ctx,
-		address:     address,
-		caCertFile:  caCertFile,
-		sessionFile: sessionFile,
-	}
-	stdout, stderr, err := runUpdateCredentialsRecordCommand(
-		t,
-		config,
-		recordID,
-		2,
-		"Eve credentials",
-		payload,
-	)
-	assertCLIErrorContains(t, "foreign credentials update", err, "record not found")
-	assertOutputDoesNotContainCredentials(t, stdout+stderr+err.Error(), payload)
-
-	_, _, err = runDeleteRecordCommand(ctx, address, caCertFile, sessionFile, recordID, 2)
-	assertCLIErrorContains(t, "foreign credentials delete", err, "record not found")
-}
-
 func runCreateCredentialsRecordCommand(
 	t *testing.T,
 	ctx context.Context,
@@ -376,20 +225,25 @@ func runCreateCredentialsRecordCommand(
 ) (string, string, error) {
 	t.Helper()
 
-	return runClientCommandWithInput(ctx, []string{
+	args := []string{
 		"gkeep",
 		"--address", address,
 		"--ca-cert", caCertFile,
 		"--session-file", sessionFile,
 		"records", "create-credentials",
 		"--title", title,
-		"--credentials-stdin",
-	}, encodeCredentialsInput(t, payload))
+	}
+	if payload.Metadata != "" {
+		metadataFile := writeIntegrationFile(t, "credentials-metadata.txt", payload.Metadata)
+		args = append(args, "--metadata-file", metadataFile)
+	}
+
+	return runClientCommandWithInput(ctx, args, credentialsInput(payload))
 }
 
 func runUpdateCredentialsRecordCommand(
 	t *testing.T,
-	config credentialsCLIConfig,
+	config recordCLIConfig,
 	recordID string,
 	revision int64,
 	title string,
@@ -397,7 +251,7 @@ func runUpdateCredentialsRecordCommand(
 ) (string, string, error) {
 	t.Helper()
 
-	return runClientCommandWithInput(config.ctx, []string{
+	args := []string{
 		"gkeep",
 		"--address", config.address,
 		"--ca-cert", config.caCertFile,
@@ -405,8 +259,13 @@ func runUpdateCredentialsRecordCommand(
 		"records", "update-credentials", recordID,
 		"--revision", fmt.Sprintf("%d", revision),
 		"--title", title,
-		"--credentials-stdin",
-	}, encodeCredentialsInput(t, payload))
+	}
+	if payload.Metadata != "" {
+		metadataFile := writeIntegrationFile(t, "credentials-metadata.txt", payload.Metadata)
+		args = append(args, "--metadata-file", metadataFile)
+	}
+
+	return runClientCommandWithInput(config.ctx, args, credentialsInput(payload))
 }
 
 func runListRecordsCommand(
@@ -424,15 +283,12 @@ func runListRecordsCommand(
 	})
 }
 
-func encodeCredentialsInput(t *testing.T, payload model.CredentialsPayload) string {
-	t.Helper()
-
-	data, err := json.Marshal(payload)
-	if err != nil {
-		t.Fatalf("encode credentials payload: %v", err)
-	}
-
-	return string(data)
+func credentialsInput(payload model.CredentialsPayload) string {
+	return strings.Join([]string{
+		payload.Login,
+		payload.Password,
+		payload.URL,
+	}, "\n") + "\n"
 }
 
 func assertOutputDoesNotContainCredentials(

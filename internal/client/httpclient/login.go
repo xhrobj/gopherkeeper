@@ -32,6 +32,7 @@ func (c *Client) Login(ctx context.Context, login, password string) (model.Authe
 		requestBody:    loginRequest{Login: login, Password: password},
 		expectedStatus: http.StatusOK,
 		responseBody:   &loggedIn,
+		errorCause:     loginErrorCause,
 	}); err != nil {
 		return model.Authentication{}, err
 	}
@@ -41,4 +42,12 @@ func (c *Client) Login(ctx context.Context, login, password string) (model.Authe
 		ExpiresAt:   loggedIn.ExpiresAt,
 		User:        userFromResponse(loggedIn.User),
 	}, nil
+}
+
+func loginErrorCause(code string) error {
+	if code == "invalid_credentials" {
+		return model.ErrInvalidCredentials
+	}
+
+	return nil
 }

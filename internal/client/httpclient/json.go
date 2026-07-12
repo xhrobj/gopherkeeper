@@ -3,6 +3,7 @@ package httpclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -53,6 +54,7 @@ type jsonRequest struct {
 	requestBody    any
 	expectedStatus int
 	responseBody   any
+	errorCause     func(string) error
 }
 
 func (c *Client) doJSON(ctx context.Context, request jsonRequest) error {
@@ -73,7 +75,8 @@ func (c *Client) doJSON(ctx context.Context, request jsonRequest) error {
 	}
 
 	if response.StatusCode() != request.expectedStatus {
-		return decodeAPIError(response.StatusCode(), response.Status(), response.Body())
+		err := decodeAPIError(response.StatusCode(), response.Status(), response.Body())
+		return withAPIErrorCause(err, request.errorCause)
 	}
 
 	if request.responseBody == nil {
@@ -100,31 +103,27 @@ func decodeAPIError(statusCode int, status string, body []byte) error {
 		StatusCode: statusCode,
 		Code:       responseError.Code,
 		Message:    responseError.Message,
-		cause:      apiErrorCause(responseError.Code),
 	}
 }
 
-func apiErrorCause(code string) error {
-	switch code {
-	case "login_already_exists":
-		return model.ErrLoginAlreadyExists
-	case "invalid_credentials":
-		return model.ErrInvalidCredentials
-	case "unauthorized":
-		return model.ErrUnauthorized
-	case "record_not_found":
-		return model.ErrRecordNotFound
-	case "record_revision_conflict":
-		return model.ErrRecordRevisionConflict
-	case "precondition_required":
-		return model.ErrRecordPreconditionRequired
-	case "payload_too_large":
-		return model.ErrPayloadTooLarge
-	case "invalid_request":
-		return model.ErrInvalidRecordData
-	default:
-		return nil
+func withAPIErrorCause(err error, causeForCode func(string) error) error {
+	if causeForCode == nil {
+		return err
 	}
+
+	var apiError *APIError
+	if !errors.As(err, &apiError) {
+		return err
+	}
+
+	cause := causeForCode(apiError.Code)
+	if cause == nil {
+		return err
+	}
+
+	mapped := *apiError
+	mapped.cause = cause
+	return &mapped
 }
 
 func userFromResponse(response userResponse) model.User {

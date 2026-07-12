@@ -28,6 +28,7 @@ type runOptions struct {
 	errorOutput io.Writer
 	info        buildinfo.Info
 	factory     clientFactory
+	passwords   passwordReader
 }
 
 // Run запускает командный интерфейс Клиента.
@@ -38,7 +39,14 @@ func Run(
 	errorOutput io.Writer,
 	info buildinfo.Info,
 ) error {
-	return RunWithInput(ctx, args, os.Stdin, output, errorOutput, info)
+	return run(ctx, args, runOptions{
+		input:       os.Stdin,
+		output:      output,
+		errorOutput: errorOutput,
+		info:        info,
+		factory:     defaultClientFactory{},
+		passwords:   terminalPasswordReader{},
+	})
 }
 
 // RunWithInput запускает командный интерфейс с заданным стандартным вводом.
@@ -56,6 +64,7 @@ func RunWithInput(
 		errorOutput: errorOutput,
 		info:        info,
 		factory:     defaultClientFactory{},
+		passwords:   streamPasswordReader{},
 	})
 }
 
@@ -74,6 +83,7 @@ func run(ctx context.Context, args []string, options runOptions) error {
 		options.errorOutput,
 		options.info,
 		options.factory,
+		options.passwords,
 	)
 
 	return command.Run(ctx, args)
@@ -85,6 +95,7 @@ func newRootCommand(
 	errorOutput io.Writer,
 	info buildinfo.Info,
 	factory clientFactory,
+	passwords passwordReader,
 ) *urfavecli.Command {
 	defaults := config.Default()
 	version := info.Version
@@ -135,11 +146,11 @@ func newRootCommand(
 		},
 		Commands: []*urfavecli.Command{
 			newHealthCommand(factory),
-			newRegisterCommand(input, factory),
-			newLoginCommand(input, factory),
+			newRegisterCommand(input, factory, passwords),
+			newLoginCommand(input, factory, passwords),
 			newLogoutCommand(factory),
 			newWhoamiCommand(factory),
-			newRecordsCommand(input, factory),
+			newRecordsCommand(input, factory, passwords),
 		},
 		Action: func(_ context.Context, command *urfavecli.Command) error {
 			return urfavecli.ShowRootCommandHelp(command)

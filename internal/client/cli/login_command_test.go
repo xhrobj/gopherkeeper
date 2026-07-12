@@ -39,7 +39,6 @@ func TestLoginCommand_ConfigurationAndInput(t *testing.T) {
 			"gkeep",
 			"login",
 			"-l", "alice",
-			"--password-stdin",
 			"--address", "localhost:8082",
 			"--ca-cert", "flag-ca.pem",
 			"--session-file", "flag-session.json",
@@ -65,7 +64,7 @@ func TestLoginCommand_ConfigurationAndInput(t *testing.T) {
 		t.Errorf("login = %q, want alice", gotLogin)
 	}
 	if gotPassword != testRegistrationPassword {
-		t.Errorf("password = %q, want stdin password", gotPassword)
+		t.Errorf("password = %q, want interactive password", gotPassword)
 	}
 	if got := output.String(); got != "User alice logged in successfully.\n" {
 		t.Errorf("output = %q, want login result", got)
@@ -77,7 +76,7 @@ func TestLoginCommand_RequiresLogin(t *testing.T) {
 
 	err := runTestCommand(
 		t,
-		[]string{"gkeep", "login", "--password-stdin"},
+		[]string{"gkeep", "login"},
 		strings.NewReader(testRegistrationPassword+"\n"),
 		io.Discard,
 		io.Discard,
@@ -88,7 +87,7 @@ func TestLoginCommand_RequiresLogin(t *testing.T) {
 	}
 }
 
-func TestLoginCommand_HelpDoesNotOfferPasswordFlag(t *testing.T) {
+func TestLoginCommand_HelpDoesNotOfferPasswordFlags(t *testing.T) {
 	isolateClientConfig(t)
 
 	var output bytes.Buffer
@@ -105,10 +104,10 @@ func TestLoginCommand_HelpDoesNotOfferPasswordFlag(t *testing.T) {
 	}
 
 	help := output.String()
-	if !strings.Contains(help, "--password-stdin") {
-		t.Errorf("login help = %q, want password-stdin flag", help)
-	}
-	if strings.Contains(help, "--password string") {
+	if strings.Contains(help, "--password") {
 		t.Errorf("login help exposes password flag: %q", help)
+	}
+	if strings.Contains(help, "stdin") {
+		t.Errorf("login help exposes technical stdin input: %q", help)
 	}
 }
