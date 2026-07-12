@@ -3,11 +3,9 @@ package cli
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 
 	urfavecli "github.com/urfave/cli/v3"
-	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
@@ -129,28 +127,12 @@ func executeCreateTextRecord(
 		return err
 	}
 
-	record, err := application.CreateRecord(ctx, usecase.CreateRecordRequest{
-		Title: title,
-		Payload: &model.TextPayload{
-			Text:     text,
-			Metadata: metadata,
-		},
+	return executeCreateRecord(ctx, application, output, title, &model.TextPayload{
+		Text:     text,
+		Metadata: metadata,
 	})
-	if err != nil {
-		return err
-	}
-
-	if _, err := fmt.Fprintf(
-		output,
-		"Created text record %s with revision %d.\n",
-		record.Metadata.ID,
-		record.Metadata.Revision,
-	); err != nil {
-		return fmt.Errorf("write created text record: %w", err)
-	}
-
-	return nil
 }
+
 func executeUpdateTextRecord(
 	ctx context.Context,
 	application application,
@@ -167,27 +149,13 @@ func executeUpdateTextRecord(
 		return err
 	}
 
-	record, err := application.UpdateRecord(ctx, usecase.UpdateRecordRequest{
-		RecordID:         request.recordID,
-		ExpectedRevision: request.expectedRevision,
-		Title:            request.title,
-		Payload: &model.TextPayload{
+	return executeUpdateRecord(ctx, application, output, recordUpdateCommandRequest{
+		recordID:         request.recordID,
+		expectedRevision: request.expectedRevision,
+		title:            request.title,
+		payload: &model.TextPayload{
 			Text:     text,
 			Metadata: metadata,
 		},
 	})
-	if err != nil {
-		return err
-	}
-
-	if _, err := fmt.Fprintf(
-		output,
-		"Updated text record %s to revision %d.\n",
-		record.Metadata.ID,
-		record.Metadata.Revision,
-	); err != nil {
-		return fmt.Errorf("write updated text record: %w", err)
-	}
-
-	return nil
 }

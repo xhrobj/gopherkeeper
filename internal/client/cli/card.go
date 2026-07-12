@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	urfavecli "github.com/urfave/cli/v3"
-	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
@@ -145,24 +144,7 @@ func executeCreateCardRecord(
 		return err
 	}
 
-	record, err := application.CreateRecord(ctx, usecase.CreateRecordRequest{
-		Title:   request.title,
-		Payload: &payload,
-	})
-	if err != nil {
-		return err
-	}
-
-	if _, err := fmt.Fprintf(
-		streams.output,
-		"Created card record %s with revision %d.\n",
-		record.Metadata.ID,
-		record.Metadata.Revision,
-	); err != nil {
-		return fmt.Errorf("write created card record: %w", err)
-	}
-
-	return nil
+	return executeCreateRecord(ctx, application, streams.output, request.title, &payload)
 }
 
 func executeUpdateCardRecord(
@@ -183,26 +165,12 @@ func executeUpdateCardRecord(
 		return err
 	}
 
-	record, err := application.UpdateRecord(ctx, usecase.UpdateRecordRequest{
-		RecordID:         request.recordID,
-		ExpectedRevision: request.expectedRevision,
-		Title:            request.title,
-		Payload:          &payload,
+	return executeUpdateRecord(ctx, application, streams.output, recordUpdateCommandRequest{
+		recordID:         request.recordID,
+		expectedRevision: request.expectedRevision,
+		title:            request.title,
+		payload:          &payload,
 	})
-	if err != nil {
-		return err
-	}
-
-	if _, err := fmt.Fprintf(
-		streams.output,
-		"Updated card record %s to revision %d.\n",
-		record.Metadata.ID,
-		record.Metadata.Revision,
-	); err != nil {
-		return fmt.Errorf("write updated card record: %w", err)
-	}
-
-	return nil
 }
 
 func readCardPayload(

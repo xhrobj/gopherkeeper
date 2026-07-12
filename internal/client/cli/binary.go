@@ -3,11 +3,9 @@ package cli
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 
 	urfavecli "github.com/urfave/cli/v3"
-	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
@@ -136,24 +134,7 @@ func executeCreateBinaryRecord(
 		return err
 	}
 
-	record, err := application.CreateRecord(ctx, usecase.CreateRecordRequest{
-		Title:   request.title,
-		Payload: &payload,
-	})
-	if err != nil {
-		return err
-	}
-
-	if _, err := fmt.Fprintf(
-		output,
-		"Created binary record %s with revision %d.\n",
-		record.Metadata.ID,
-		record.Metadata.Revision,
-	); err != nil {
-		return fmt.Errorf("write created binary record: %w", err)
-	}
-
-	return nil
+	return executeCreateRecord(ctx, application, output, request.title, &payload)
 }
 
 func executeUpdateBinaryRecord(
@@ -167,26 +148,12 @@ func executeUpdateBinaryRecord(
 		return err
 	}
 
-	record, err := application.UpdateRecord(ctx, usecase.UpdateRecordRequest{
-		RecordID:         request.recordID,
-		ExpectedRevision: request.expectedRevision,
-		Title:            request.title,
-		Payload:          &payload,
+	return executeUpdateRecord(ctx, application, output, recordUpdateCommandRequest{
+		recordID:         request.recordID,
+		expectedRevision: request.expectedRevision,
+		title:            request.title,
+		payload:          &payload,
 	})
-	if err != nil {
-		return err
-	}
-
-	if _, err := fmt.Fprintf(
-		output,
-		"Updated binary record %s to revision %d.\n",
-		record.Metadata.ID,
-		record.Metadata.Revision,
-	); err != nil {
-		return fmt.Errorf("write updated binary record: %w", err)
-	}
-
-	return nil
 }
 
 func readBinaryPayload(binaryFile string, contentType string, metadataFile string) (model.BinaryPayload, error) {

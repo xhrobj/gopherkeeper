@@ -7,7 +7,6 @@ import (
 	"io"
 
 	urfavecli "github.com/urfave/cli/v3"
-	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
@@ -149,24 +148,7 @@ func executeCreateCredentialsRecord(
 		return err
 	}
 
-	record, err := application.CreateRecord(ctx, usecase.CreateRecordRequest{
-		Title:   request.title,
-		Payload: &payload,
-	})
-	if err != nil {
-		return err
-	}
-
-	if _, err := fmt.Fprintf(
-		streams.output,
-		"Created credentials record %s with revision %d.\n",
-		record.Metadata.ID,
-		record.Metadata.Revision,
-	); err != nil {
-		return fmt.Errorf("write created credentials record: %w", err)
-	}
-
-	return nil
+	return executeCreateRecord(ctx, application, streams.output, request.title, &payload)
 }
 
 func executeUpdateCredentialsRecord(
@@ -187,26 +169,12 @@ func executeUpdateCredentialsRecord(
 		return err
 	}
 
-	record, err := application.UpdateRecord(ctx, usecase.UpdateRecordRequest{
-		RecordID:         request.recordID,
-		ExpectedRevision: request.expectedRevision,
-		Title:            request.title,
-		Payload:          &payload,
+	return executeUpdateRecord(ctx, application, streams.output, recordUpdateCommandRequest{
+		recordID:         request.recordID,
+		expectedRevision: request.expectedRevision,
+		title:            request.title,
+		payload:          &payload,
 	})
-	if err != nil {
-		return err
-	}
-
-	if _, err := fmt.Fprintf(
-		streams.output,
-		"Updated credentials record %s to revision %d.\n",
-		record.Metadata.ID,
-		record.Metadata.Revision,
-	); err != nil {
-		return fmt.Errorf("write updated credentials record: %w", err)
-	}
-
-	return nil
 }
 
 func readCredentialsPayload(
