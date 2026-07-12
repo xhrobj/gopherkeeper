@@ -68,17 +68,13 @@ func run(ctx context.Context, args []string, options runOptions) error {
 		urfavecli.VersionPrinter = previousVersionPrinter
 	}()
 
-	command, err := newRootCommand(
+	command := newRootCommand(
 		options.input,
 		options.output,
 		options.errorOutput,
 		options.info,
 		options.factory,
-		commandArgs(args),
 	)
-	if err != nil {
-		return err
-	}
 
 	return command.Run(ctx, args)
 }
@@ -89,18 +85,17 @@ func newRootCommand(
 	errorOutput io.Writer,
 	info buildinfo.Info,
 	factory clientFactory,
-	args []string,
-) (*urfavecli.Command, error) {
-	defaults, err := config.Parse(args)
-	if err != nil {
-		return nil, err
-	}
+) *urfavecli.Command {
+	defaults := config.Default()
 	version := info.Version
 	if version == "" {
 		version = "¯\\_(ツ)_/¯"
 	}
 
 	return &urfavecli.Command{
+		Metadata: map[string]any{
+			clientConfigMetadataKey: defaults,
+		},
 		Usage:                         "securely store and access private data",
 		Version:                       version,
 		Writer:                        output,
@@ -129,6 +124,15 @@ func newRootCommand(
 				Value: defaults.SessionFile,
 			},
 		},
+		Before: func(ctx context.Context, command *urfavecli.Command) (context.Context, error) {
+			cfg, err := resolveClientConfig(command)
+			if err != nil {
+				return ctx, err
+			}
+
+			command.Root().Metadata[clientConfigMetadataKey] = cfg
+			return ctx, nil
+		},
 		Commands: []*urfavecli.Command{
 			newHealthCommand(factory),
 			newRegisterCommand(input, factory),
@@ -140,15 +144,7 @@ func newRootCommand(
 		Action: func(_ context.Context, command *urfavecli.Command) error {
 			return urfavecli.ShowRootCommandHelp(command)
 		},
-	}, nil
-}
-
-func commandArgs(args []string) []string {
-	if len(args) == 0 {
-		return nil
 	}
-
-	return args[1:]
 }
 
 func printVersion(output io.Writer, info buildinfo.Info) error {

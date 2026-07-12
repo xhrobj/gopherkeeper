@@ -179,6 +179,9 @@ func isolateClientConfig(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
 	t.Setenv("CONFIG", "")
+	t.Setenv("ADDRESS", "")
+	t.Setenv("CA_CERT_FILE", "")
+	t.Setenv("SESSION_FILE", "")
 }
 
 func runTestCommand(
