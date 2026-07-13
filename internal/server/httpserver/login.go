@@ -64,7 +64,6 @@ func loginHandler(authenticator UserAuthenticator) http.HandlerFunc {
 			return
 		}
 
-		writeNoStoreHeaders(w)
 		writeJSONResponse(w, http.StatusOK, loginResponse{
 			AccessToken: result.AccessToken,
 			ExpiresAt:   result.ExpiresAt.UTC(),
@@ -103,9 +102,4 @@ func writeLoginError(w http.ResponseWriter, err error) {
 		errorCodeInternal,
 		errorMessageInternal,
 	)
-}
-
-func writeNoStoreHeaders(w http.ResponseWriter) {
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Pragma", "no-cache")
 }

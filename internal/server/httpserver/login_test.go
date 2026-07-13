@@ -76,13 +76,6 @@ func TestLoginHandler_AuthenticatesUser(t *testing.T) {
 	if contentType := response.Header().Get("Content-Type"); contentType != "application/json" {
 		t.Errorf("Content-Type = %q, want application/json", contentType)
 	}
-	if cacheControl := response.Header().Get("Cache-Control"); cacheControl != "no-store" {
-		t.Errorf("Cache-Control = %q, want no-store", cacheControl)
-	}
-	if pragma := response.Header().Get("Pragma"); pragma != "no-cache" {
-		t.Errorf("Pragma = %q, want no-cache", pragma)
-	}
-
 	var body loginResponse
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode response body: %v", err)
