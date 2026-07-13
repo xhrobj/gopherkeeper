@@ -95,7 +95,11 @@ func (c *Client) ListRecords(ctx context.Context, accessToken string) ([]model.R
 
 	records := make([]model.RecordMetadata, 0, len(listed.Records))
 	for _, item := range listed.Records {
-		records = append(records, recordMetadataFromResponse(item))
+		metadata, err := recordMetadataFromResponse(item)
+		if err != nil {
+			return nil, err
+		}
+		records = append(records, metadata)
 	}
 
 	return records, nil
@@ -193,21 +197,24 @@ func recordFromResponse(response recordResponse) (model.Record, error) {
 	if err := decodeRecordPayload(response.Payload, payload); err != nil {
 		return model.Record{}, fmt.Errorf("decode record payload: %w", err)
 	}
-	if err := payload.Validate(); err != nil {
-		return model.Record{}, fmt.Errorf("validate record payload: %w", err)
+	metadata, err := recordMetadataFromResponse(recordMetadataResponse{
+		ID:        response.ID,
+		Type:      response.Type,
+		Title:     response.Title,
+		Revision:  response.Revision,
+		CreatedAt: response.CreatedAt,
+		UpdatedAt: response.UpdatedAt,
+	})
+	if err != nil {
+		return model.Record{}, err
 	}
 
-	return model.Record{
-		Metadata: recordMetadataFromResponse(recordMetadataResponse{
-			ID:        response.ID,
-			Type:      response.Type,
-			Title:     response.Title,
-			Revision:  response.Revision,
-			CreatedAt: response.CreatedAt,
-			UpdatedAt: response.UpdatedAt,
-		}),
-		Payload: payload,
-	}, nil
+	record := model.Record{Metadata: metadata, Payload: payload}
+	if err := record.Validate(); err != nil {
+		return model.Record{}, fmt.Errorf("validate record: %w", err)
+	}
+
+	return record, nil
 }
 
 func decodeRecordPayload(data json.RawMessage, payload model.RecordPayload) error {
@@ -233,8 +240,8 @@ func recordRevisionETag(revision int64) string {
 	return strconv.Quote(strconv.FormatInt(revision, 10))
 }
 
-func recordMetadataFromResponse(response recordMetadataResponse) model.RecordMetadata {
-	return model.RecordMetadata{
+func recordMetadataFromResponse(response recordMetadataResponse) (model.RecordMetadata, error) {
+	metadata := model.RecordMetadata{
 		ID:        response.ID,
 		Type:      response.Type,
 		Title:     response.Title,
@@ -242,6 +249,11 @@ func recordMetadataFromResponse(response recordMetadataResponse) model.RecordMet
 		CreatedAt: response.CreatedAt,
 		UpdatedAt: response.UpdatedAt,
 	}
+	if err := metadata.Validate(); err != nil {
+		return model.RecordMetadata{}, fmt.Errorf("validate record metadata: %w", err)
+	}
+
+	return metadata, nil
 }
 
 func recordErrorCause(code string) error {

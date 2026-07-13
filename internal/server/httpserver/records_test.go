@@ -349,6 +349,26 @@ func TestListRecordsHandler_ReturnsMetadataOnly(t *testing.T) {
 	}
 }
 
+func TestListRecordsHandler_RejectsInvalidServiceResult(t *testing.T) {
+	records := recordManagerStub{
+		list: func(context.Context, int64) ([]model.RecordMetadata, error) {
+			return []model.RecordMetadata{
+				testRecordMetadata("line\nbreak", model.RecordTypeText, 1),
+			}, nil
+		},
+	}
+	response := httptest.NewRecorder()
+
+	serveAuthenticatedRecordHandler(
+		t,
+		listRecordsHandler(records),
+		response,
+		httptest.NewRequest(http.MethodGet, "/api/v1/records", nil),
+	)
+
+	assertErrorResponse(t, response, http.StatusInternalServerError, errorCodeInternal, errorMessageInternal)
+}
+
 func TestGetRecordHandler_ReturnsRecords(t *testing.T) {
 	for _, tt := range recordPayloadCases() {
 		t.Run(tt.name, func(t *testing.T) {
@@ -402,15 +422,45 @@ func TestGetRecordHandler_RejectsInvalidServiceResult(t *testing.T) {
 	}
 }
 
-func TestNewRecordResponse_RejectsNilPayload(t *testing.T) {
-	var payload *model.TextPayload
+func TestNewRecordResponse_RejectsInvalidRecord(t *testing.T) {
+	validMetadata := testRecordMetadata("Private note", model.RecordTypeText, 1)
+	tests := []struct {
+		name   string
+		record model.Record
+	}{
+		{
+			name: "typed nil payload",
+			record: model.Record{
+				Metadata: validMetadata,
+				Payload:  (*model.TextPayload)(nil),
+			},
+		},
+		{
+			name: "invalid metadata",
+			record: model.Record{
+				Metadata: testRecordMetadata("line\nbreak", model.RecordTypeText, 1),
+				Payload:  &model.TextPayload{Text: "secret"},
+			},
+		},
+		{
+			name: "payload type mismatch",
+			record: model.Record{
+				Metadata: validMetadata,
+				Payload: &model.CredentialsPayload{
+					Login:    "alice",
+					Password: "correct-horse-battery-staple",
+				},
+			},
+		},
+	}
 
-	_, err := newRecordResponse(model.Record{
-		Metadata: model.RecordMetadata{Type: model.RecordTypeText},
-		Payload:  payload,
-	})
-	if !errors.Is(err, errInvalidRecordResponse) {
-		t.Fatalf("newRecordResponse() error = %v, want %v", err, errInvalidRecordResponse)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := newRecordResponse(tt.record)
+			if !errors.Is(err, errInvalidRecordResponse) {
+				t.Fatalf("newRecordResponse() error = %v, want %v", err, errInvalidRecordResponse)
+			}
+		})
 	}
 }
 

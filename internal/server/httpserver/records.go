@@ -150,6 +150,10 @@ func listRecordsHandler(records RecordManager) http.Handler {
 			Records: make([]recordMetadataResponse, 0, len(items)),
 		}
 		for _, item := range items {
+			if err := item.Validate(); err != nil {
+				writeRecordError(w, errInvalidRecordResponse)
+				return
+			}
 			response.Records = append(response.Records, newRecordMetadataResponse(item))
 		}
 
@@ -389,10 +393,7 @@ func newRecordMetadataResponse(metadata model.RecordMetadata) recordMetadataResp
 }
 
 func newRecordResponse(record model.Record) (recordResponse, error) {
-	if record.Payload == nil {
-		return recordResponse{}, errInvalidRecordResponse
-	}
-	if err := record.Payload.Validate(); err != nil || record.Metadata.Type != record.Payload.RecordType() {
+	if err := record.Validate(); err != nil {
 		return recordResponse{}, errInvalidRecordResponse
 	}
 

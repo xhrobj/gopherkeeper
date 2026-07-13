@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -24,6 +25,9 @@ const (
 
 	// HTTPRequestBodyMaxSize содержит максимальный размер HTTP request body в байтах.
 	HTTPRequestBodyMaxSize int64 = 4 * mebibyte
+
+	// RecordTitleMaxSize содержит максимальный размер открытого названия записи в байтах UTF-8.
+	RecordTitleMaxSize = 256
 
 	// RecordInitialRevision содержит начальную ревизию новой записи.
 	RecordInitialRevision int64 = 1
@@ -157,6 +161,39 @@ type RecordMetadata struct {
 	UpdatedAt time.Time
 }
 
+// Validate проверяет открытые поля и типизированный payload приватной записи.
+func (record Record) Validate() error {
+	if err := record.Metadata.Validate(); err != nil {
+		return err
+	}
+	if record.Payload == nil {
+		return ErrInvalidRecordData
+	}
+	if record.Payload.RecordType() != record.Metadata.Type {
+		return ErrInvalidRecordData
+	}
+	if err := record.Payload.Validate(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Validate проверяет открытые поля приватной записи.
+func (metadata RecordMetadata) Validate() error {
+	if err := ValidateRecordID(metadata.ID); err != nil {
+		return err
+	}
+	if err := metadata.Type.Validate(); err != nil {
+		return err
+	}
+	if err := ValidateRecordTitle(metadata.Title); err != nil {
+		return err
+	}
+
+	return ValidateRecordRevision(metadata.Revision)
+}
+
 // Metadata возвращает открытые поля записи без encrypted payload.
 func (record EncryptedRecord) Metadata() RecordMetadata {
 	return RecordMetadata{
@@ -171,8 +208,13 @@ func (record EncryptedRecord) Metadata() RecordMetadata {
 
 // ValidateRecordTitle проверяет открытое название приватной записи.
 func ValidateRecordTitle(title string) error {
-	if strings.TrimSpace(title) == "" || !utf8.ValidString(title) {
+	if strings.TrimSpace(title) == "" || !utf8.ValidString(title) || len(title) > RecordTitleMaxSize {
 		return ErrInvalidRecordTitle
+	}
+	for _, symbol := range title {
+		if unicode.IsControl(symbol) {
+			return ErrInvalidRecordTitle
+		}
 	}
 
 	return nil

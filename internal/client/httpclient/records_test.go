@@ -413,12 +413,52 @@ func TestClient_UpdateRecordReturnsAPIError(t *testing.T) {
 	}
 }
 
-func TestClient_GetRecordRejectsInvalidPayload(t *testing.T) {
+func TestClient_GetRecordRejectsInvalidResponse(t *testing.T) {
 	tests := []struct {
 		name     string
 		response string
+		wantErr  error
 		secrets  []string
 	}{
+		{
+			name: "invalid record ID",
+			response: `{
+				"id":"invalid",
+				"type":"text",
+				"title":"Private note",
+				"revision":1,
+				"created_at":"2026-07-13T12:00:00Z",
+				"updated_at":"2026-07-13T12:00:00Z",
+				"payload":{"text":"secret note"}
+			}`,
+			wantErr: model.ErrInvalidRecordID,
+		},
+		{
+			name: "control character in title",
+			response: `{
+				"id":"550e8400-e29b-41d4-a716-446655440000",
+				"type":"text",
+				"title":"Private\nnote",
+				"revision":1,
+				"created_at":"2026-07-13T12:00:00Z",
+				"updated_at":"2026-07-13T12:00:00Z",
+				"payload":{"text":"secret note"}
+			}`,
+			wantErr: model.ErrInvalidRecordTitle,
+		},
+		{
+			name: "invalid revision",
+			response: `{
+				"id":"550e8400-e29b-41d4-a716-446655440000",
+				"type":"text",
+				"title":"Private note",
+				"revision":0,
+				"created_at":"2026-07-13T12:00:00Z",
+				"updated_at":"2026-07-13T12:00:00Z",
+				"payload":{"text":"secret note"}
+			}`,
+			wantErr: model.ErrInvalidRecordRevision,
+		},
 		{
 			name: "credentials unknown field",
 			response: `{
@@ -462,7 +502,10 @@ func TestClient_GetRecordRejectsInvalidPayload(t *testing.T) {
 
 			_, err = client.GetRecord(context.Background(), "test.jwt.token", testRecordID)
 			if err == nil {
-				t.Fatal("GetRecord() error = nil, want invalid payload error")
+				t.Fatal("GetRecord() error = nil, want invalid response error")
+			}
+			if tt.wantErr != nil && !errors.Is(err, tt.wantErr) {
+				t.Errorf("GetRecord() error = %v, want %v", err, tt.wantErr)
 			}
 			for _, secret := range tt.secrets {
 				if strings.Contains(err.Error(), secret) {
@@ -470,6 +513,33 @@ func TestClient_GetRecordRejectsInvalidPayload(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestClient_ListRecordsRejectsInvalidMetadata(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"records":[{
+				"id":"invalid",
+				"type":"text",
+				"title":"Private note",
+				"revision":1,
+				"created_at":"2026-07-13T12:00:00Z",
+				"updated_at":"2026-07-13T12:00:00Z"
+			}]
+		}`))
+	}))
+	defer server.Close()
+
+	client, err := New(serverAddress(server), writeServerCertificate(t, server))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, err = client.ListRecords(context.Background(), "test.jwt.token")
+	if !errors.Is(err, model.ErrInvalidRecordID) {
+		t.Fatalf("ListRecords() error = %v, want %v", err, model.ErrInvalidRecordID)
 	}
 }
 
