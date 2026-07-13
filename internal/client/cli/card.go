@@ -34,7 +34,12 @@ func newCreateCardRecordCommand(
 		Usage: "create a private card record",
 		Flags: cardRecordFlags(false),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			application, err := factory.NewApplication(configFromCommand(command))
+			cfg, err := configFromCommand(command)
+			if err != nil {
+				return err
+			}
+
+			application, err := factory.NewApplication(cfg)
 			if err != nil {
 				return err
 			}
@@ -73,7 +78,12 @@ func newUpdateCardRecordCommand(
 				return errors.New("record id is required")
 			}
 
-			application, err := factory.NewApplication(configFromCommand(command))
+			cfg, err := configFromCommand(command)
+			if err != nil {
+				return err
+			}
+
+			application, err := factory.NewApplication(cfg)
 			if err != nil {
 				return err
 			}

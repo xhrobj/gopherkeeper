@@ -18,7 +18,12 @@ func newLoginCommand(
 		Usage: "authenticate user and save online session",
 		Flags: loginFlags(),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			application, err := factory.NewApplication(configFromCommand(command))
+			cfg, err := configFromCommand(command)
+			if err != nil {
+				return err
+			}
+
+			application, err := factory.NewApplication(cfg)
 			if err != nil {
 				return err
 			}

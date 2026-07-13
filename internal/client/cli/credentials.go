@@ -32,7 +32,12 @@ func newCreateCredentialsRecordCommand(
 		Usage: "create a private credentials record",
 		Flags: credentialsRecordFlags(false),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			application, err := factory.NewApplication(configFromCommand(command))
+			cfg, err := configFromCommand(command)
+			if err != nil {
+				return err
+			}
+
+			application, err := factory.NewApplication(cfg)
 			if err != nil {
 				return err
 			}
@@ -71,7 +76,12 @@ func newUpdateCredentialsRecordCommand(
 				return errors.New("record id is required")
 			}
 
-			application, err := factory.NewApplication(configFromCommand(command))
+			cfg, err := configFromCommand(command)
+			if err != nil {
+				return err
+			}
+
+			application, err := factory.NewApplication(cfg)
 			if err != nil {
 				return err
 			}

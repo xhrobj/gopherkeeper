@@ -15,7 +15,12 @@ func newWhoamiCommand(factory clientFactory) *urfavecli.Command {
 		Name:  "whoami",
 		Usage: "show the authenticated user",
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			application, err := factory.NewApplication(configFromCommand(command))
+			cfg, err := configFromCommand(command)
+			if err != nil {
+				return err
+			}
+
+			application, err := factory.NewApplication(cfg)
 			if err != nil {
 				return err
 			}

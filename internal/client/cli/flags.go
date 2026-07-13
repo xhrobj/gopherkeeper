@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"os"
 
 	urfavecli "github.com/urfave/cli/v3"
@@ -63,6 +64,16 @@ func nonEmptyEnvironmentValue(name string) *string {
 	return &value
 }
 
-func configFromCommand(command *urfavecli.Command) config.Config {
-	return command.Root().Metadata[clientConfigMetadataKey].(config.Config)
+func configFromCommand(command *urfavecli.Command) (config.Config, error) {
+	value, ok := command.Root().Metadata[clientConfigMetadataKey]
+	if !ok {
+		return config.Config{}, errors.New("client config is missing")
+	}
+
+	cfg, ok := value.(config.Config)
+	if !ok {
+		return config.Config{}, errors.New("client config has unexpected type")
+	}
+
+	return cfg, nil
 }

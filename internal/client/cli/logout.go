@@ -13,7 +13,12 @@ func newLogoutCommand(factory clientFactory) *urfavecli.Command {
 		Name:  "logout",
 		Usage: "clear local online session",
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			application, err := factory.NewLogoutApplication(configFromCommand(command))
+			cfg, err := configFromCommand(command)
+			if err != nil {
+				return err
+			}
+
+			application, err := factory.NewLogoutApplication(cfg)
 			if err != nil {
 				return err
 			}
