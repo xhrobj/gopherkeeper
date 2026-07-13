@@ -1,5 +1,6 @@
 {
   "address": "localhost:8080",
   "ca_cert_file": "",
-  "session_file": ""
+  "session_file": "",
+  "cache_dir": ""
 }

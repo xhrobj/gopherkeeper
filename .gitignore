@@ -23,13 +23,13 @@ __MACOSX/
 !.env.example
 
 # сертификаты и ключи Local TLS
-/.certs/
+.local/certs/
 
 # каталог для локальной сессии Клиента
-/.session/
+.local/session/
 
-# TODO: перейти на .local/
-/.tmp/
+# временные файлы
+.local/tmp/
 
 # JSON-конфиг Клиента (разрешен только example-конфиг)
 /configs/*.json

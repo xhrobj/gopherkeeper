@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-CERT_DIR=".certs"
+CERT_DIR=".local/certs"
 CERT_DAYS=3650
 
 CA_CERT="${CERT_DIR}/ca.pem"

@@ -22,6 +22,9 @@ type Config struct {
 
 	// SessionFile задаёт путь к файлу локального хранения online-сессии Клиента.
 	SessionFile string
+
+	// CacheDir задаёт базовый каталог локального зашифрованного кеша.
+	CacheDir string
 }
 
 // Overrides содержит значения конфигурации, заданные через источники с более
@@ -35,12 +38,16 @@ type Overrides struct {
 
 	// SessionFile переопределяет путь к файлу online-сессии.
 	SessionFile *string
+
+	// CacheDir переопределяет базовый каталог локального зашифрованного кеша.
+	CacheDir *string
 }
 
 type fileConfig struct {
 	Address     *string `json:"address"`
 	CACertFile  *string `json:"ca_cert_file"`
 	SessionFile *string `json:"session_file"`
+	CacheDir    *string `json:"cache_dir"`
 }
 
 // Default возвращает конфигурацию Клиента со значениями по умолчанию.
@@ -98,6 +105,9 @@ func applyFile(cfg *Config, path string) error {
 	if file.SessionFile != nil {
 		cfg.SessionFile = *file.SessionFile
 	}
+	if file.CacheDir != nil {
+		cfg.CacheDir = *file.CacheDir
+	}
 
 	return nil
 }
@@ -122,5 +132,8 @@ func applyOverrides(cfg *Config, overrides Overrides) {
 	}
 	if overrides.SessionFile != nil {
 		cfg.SessionFile = *overrides.SessionFile
+	}
+	if overrides.CacheDir != nil {
+		cfg.CacheDir = *overrides.CacheDir
 	}
 }

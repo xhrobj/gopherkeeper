@@ -136,6 +136,11 @@ func newRootCommand(
 				Usage: "path to online session file",
 				Value: defaults.SessionFile,
 			},
+			&urfavecli.StringFlag{
+				Name:  cacheDirFlag,
+				Usage: "base directory for encrypted local cache",
+				Value: defaults.CacheDir,
+			},
 		},
 		Before: func(ctx context.Context, command *urfavecli.Command) (context.Context, error) {
 			cfg, err := resolveClientConfig(command)

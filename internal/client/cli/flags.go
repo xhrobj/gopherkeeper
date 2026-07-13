@@ -13,6 +13,7 @@ const (
 	addressFlag     = "address"
 	caCertFlag      = "ca-cert"
 	sessionFileFlag = "session-file"
+	cacheDirFlag    = "cache-dir"
 
 	clientConfigMetadataKey = "client-config"
 )
@@ -23,6 +24,7 @@ func resolveClientConfig(command *urfavecli.Command) (config.Config, error) {
 		Address:     nonEmptyEnvironmentValue("ADDRESS"),
 		CACertFile:  nonEmptyEnvironmentValue("CA_CERT_FILE"),
 		SessionFile: nonEmptyEnvironmentValue("SESSION_FILE"),
+		CacheDir:    nonEmptyEnvironmentValue("CACHE_DIR"),
 	}
 
 	if value := explicitStringFlag(command, configFlag); value != nil {
@@ -36,6 +38,9 @@ func resolveClientConfig(command *urfavecli.Command) (config.Config, error) {
 	}
 	if value := explicitStringFlag(command, sessionFileFlag); value != nil {
 		overrides.SessionFile = value
+	}
+	if value := explicitStringFlag(command, cacheDirFlag); value != nil {
+		overrides.CacheDir = value
 	}
 
 	var configFilePath string

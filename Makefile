@@ -25,7 +25,7 @@ ENV_FILE ?= .env
 export LOG_LEVEL
 
 # данные о сборке подставляются в бинарники Клиента и Сервера через ldflags
-BUILD_VERSION ?= v0.7.0
+BUILD_VERSION ?= v0.8.0
 BUILD_DATE ?= $(shell date +%Y-%m-%d)
 BUILD_COMMIT ?= $(shell git rev-parse --short HEAD)
 
@@ -45,7 +45,7 @@ SERVER := $(BIN_DIR)/$(SERVER_NAME)
 CLIENT := $(BIN_DIR)/$(CLIENT_NAME)
 
 # TLS-сертификаты для локальной разработки
-TLS_CERT_DIR := .certs
+TLS_CERT_DIR := .local/certs
 
 TLS_CA_CERT ?= $(TLS_CERT_DIR)/ca.pem
 TLS_SERVER_CERT ?= $(TLS_CERT_DIR)/server.pem
