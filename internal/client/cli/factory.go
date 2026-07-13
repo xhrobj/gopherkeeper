@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 
+	urfavecli "github.com/urfave/cli/v3"
 	"github.com/xhrobj/gopherkeeper/internal/client/app"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
 	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
@@ -47,4 +48,13 @@ func (defaultClientFactory) NewLogoutApplication(cfg config.Config) (userLogoutt
 
 func (defaultClientFactory) NewHealthClient(cfg config.Config) (healthChecker, error) {
 	return httpclient.New(cfg.Address, cfg.CACertFile)
+}
+
+func applicationFromCommand(command *urfavecli.Command, factory clientFactory) (application, error) {
+	cfg, err := configFromCommand(command)
+	if err != nil {
+		return nil, err
+	}
+
+	return factory.NewApplication(cfg)
 }

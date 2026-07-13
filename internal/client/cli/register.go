@@ -19,12 +19,7 @@ func newRegisterCommand(
 		Usage: "register a new user",
 		Flags: loginFlags(),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			cfg, err := configFromCommand(command)
-			if err != nil {
-				return err
-			}
-
-			application, err := factory.NewApplication(cfg)
+			application, err := applicationFromCommand(command, factory)
 			if err != nil {
 				return err
 			}

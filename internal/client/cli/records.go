@@ -48,12 +48,7 @@ func newListRecordsCommand(factory clientFactory) *urfavecli.Command {
 		Name:  "list",
 		Usage: "list private record metadata",
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			cfg, err := configFromCommand(command)
-			if err != nil {
-				return err
-			}
-
-			application, err := factory.NewApplication(cfg)
+			application, err := applicationFromCommand(command, factory)
 			if err != nil {
 				return err
 			}
@@ -79,12 +74,7 @@ func newGetRecordCommand(factory clientFactory) *urfavecli.Command {
 				return errors.New("record id is required")
 			}
 
-			cfg, err := configFromCommand(command)
-			if err != nil {
-				return err
-			}
-
-			application, err := factory.NewApplication(cfg)
+			application, err := applicationFromCommand(command, factory)
 			if err != nil {
 				return err
 			}
@@ -118,12 +108,7 @@ func newDeleteRecordCommand(factory clientFactory) *urfavecli.Command {
 				return errors.New("record id is required")
 			}
 
-			cfg, err := configFromCommand(command)
-			if err != nil {
-				return err
-			}
-
-			application, err := factory.NewApplication(cfg)
+			application, err := applicationFromCommand(command, factory)
 			if err != nil {
 				return err
 			}

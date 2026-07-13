@@ -22,6 +22,8 @@ const banner = `
 
 `
 
+const notAvailable = "¯\\_(ツ)_/¯"
+
 type runOptions struct {
 	input       io.Reader
 	output      io.Writer
@@ -100,7 +102,7 @@ func newRootCommand(
 	defaults := config.Default()
 	version := info.Version
 	if version == "" {
-		version = "¯\\_(ツ)_/¯"
+		version = notAvailable
 	}
 
 	return &urfavecli.Command{
