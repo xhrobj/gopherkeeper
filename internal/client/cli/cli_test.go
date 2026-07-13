@@ -9,7 +9,161 @@ import (
 
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
+	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
+	"github.com/xhrobj/gopherkeeper/internal/model"
 )
+
+type applicationStub struct {
+	register     func(context.Context, string, string) (model.User, error)
+	login        func(context.Context, string, string) (model.User, error)
+	whoami       func(context.Context) (model.User, error)
+	createRecord func(context.Context, usecase.CreateRecordRequest) (model.Record, error)
+	updateRecord func(context.Context, usecase.UpdateRecordRequest) (model.Record, error)
+	listRecords  func(context.Context) ([]model.RecordMetadata, error)
+	getRecord    func(context.Context, string) (model.Record, error)
+	deleteRecord func(context.Context, usecase.DeleteRecordRequest) error
+}
+
+func newApplicationStub(t *testing.T) *applicationStub {
+	t.Helper()
+
+	return &applicationStub{
+		register: func(context.Context, string, string) (model.User, error) {
+			t.Helper()
+			t.Fatal("Register must not be called")
+			return model.User{}, nil
+		},
+		login: func(context.Context, string, string) (model.User, error) {
+			t.Helper()
+			t.Fatal("Login must not be called")
+			return model.User{}, nil
+		},
+		whoami: func(context.Context) (model.User, error) {
+			t.Helper()
+			t.Fatal("Whoami must not be called")
+			return model.User{}, nil
+		},
+		createRecord: func(context.Context, usecase.CreateRecordRequest) (model.Record, error) {
+			t.Helper()
+			t.Fatal("CreateRecord must not be called")
+			return model.Record{}, nil
+		},
+		updateRecord: func(context.Context, usecase.UpdateRecordRequest) (model.Record, error) {
+			t.Helper()
+			t.Fatal("UpdateRecord must not be called")
+			return model.Record{}, nil
+		},
+		listRecords: func(context.Context) ([]model.RecordMetadata, error) {
+			t.Helper()
+			t.Fatal("ListRecords must not be called")
+			return nil, nil
+		},
+		getRecord: func(context.Context, string) (model.Record, error) {
+			t.Helper()
+			t.Fatal("GetRecord must not be called")
+			return model.Record{}, nil
+		},
+		deleteRecord: func(context.Context, usecase.DeleteRecordRequest) error {
+			t.Helper()
+			t.Fatal("DeleteRecord must not be called")
+			return nil
+		},
+	}
+}
+
+func (s *applicationStub) Register(ctx context.Context, login, password string) (model.User, error) {
+	return s.register(ctx, login, password)
+}
+
+func (s *applicationStub) Login(ctx context.Context, login, password string) (model.User, error) {
+	return s.login(ctx, login, password)
+}
+
+func (s *applicationStub) Whoami(ctx context.Context) (model.User, error) {
+	return s.whoami(ctx)
+}
+
+func (s *applicationStub) CreateRecord(
+	ctx context.Context,
+	request usecase.CreateRecordRequest,
+) (model.Record, error) {
+	return s.createRecord(ctx, request)
+}
+
+func (s *applicationStub) UpdateRecord(
+	ctx context.Context,
+	request usecase.UpdateRecordRequest,
+) (model.Record, error) {
+	return s.updateRecord(ctx, request)
+}
+
+func (s *applicationStub) ListRecords(ctx context.Context) ([]model.RecordMetadata, error) {
+	return s.listRecords(ctx)
+}
+
+func (s *applicationStub) GetRecord(ctx context.Context, recordID string) (model.Record, error) {
+	return s.getRecord(ctx, recordID)
+}
+
+func (s *applicationStub) DeleteRecord(ctx context.Context, request usecase.DeleteRecordRequest) error {
+	return s.deleteRecord(ctx, request)
+}
+
+type userLogoutterStub struct {
+	logout func(context.Context) error
+}
+
+func (s userLogoutterStub) Logout(ctx context.Context) error {
+	return s.logout(ctx)
+}
+
+type healthCheckerStub struct {
+	health func(context.Context) (string, error)
+}
+
+func (s healthCheckerStub) Health(ctx context.Context) (string, error) {
+	return s.health(ctx)
+}
+
+type clientFactoryStub struct {
+	newApplication       func(config.Config) (application, error)
+	newLogoutApplication func(config.Config) (userLogoutter, error)
+	newHealthClient      func(config.Config) (healthChecker, error)
+}
+
+func newClientFactoryStub(t *testing.T) *clientFactoryStub {
+	t.Helper()
+
+	return &clientFactoryStub{
+		newApplication: func(config.Config) (application, error) {
+			t.Helper()
+			t.Fatal("application factory must not be called")
+			return nil, nil
+		},
+		newLogoutApplication: func(config.Config) (userLogoutter, error) {
+			t.Helper()
+			t.Fatal("logout application factory must not be called")
+			return nil, nil
+		},
+		newHealthClient: func(config.Config) (healthChecker, error) {
+			t.Helper()
+			t.Fatal("health client factory must not be called")
+			return nil, nil
+		},
+	}
+}
+
+func (s *clientFactoryStub) NewApplication(cfg config.Config) (application, error) {
+	return s.newApplication(cfg)
+}
+
+func (s *clientFactoryStub) NewLogoutApplication(cfg config.Config) (userLogoutter, error) {
+	return s.newLogoutApplication(cfg)
+}
+
+func (s *clientFactoryStub) NewHealthClient(cfg config.Config) (healthChecker, error) {
+	return s.newHealthClient(cfg)
+}
 
 var testBuildInfo = buildinfo.Info{
 	Version: "v0.4.2",
@@ -25,6 +179,9 @@ func isolateClientConfig(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
 	t.Setenv("CONFIG", "")
+	t.Setenv("ADDRESS", "")
+	t.Setenv("CA_CERT_FILE", "")
+	t.Setenv("SESSION_FILE", "")
 }
 
 func runTestCommand(
@@ -33,54 +190,15 @@ func runTestCommand(
 	input io.Reader,
 	output io.Writer,
 	errorOutput io.Writer,
-	runners commandRunners,
+	factory clientFactory,
 ) error {
 	t.Helper()
 
 	if input == nil {
 		input = strings.NewReader("")
 	}
-	if runners.health == nil {
-		runners.health = unexpectedHealthRunner(t)
-	}
-	if runners.register == nil {
-		runners.register = unexpectedRegisterRunner(t)
-	}
-	if runners.login == nil {
-		runners.login = unexpectedLoginRunner(t)
-	}
-	if runners.logout == nil {
-		runners.logout = unexpectedLogoutRunner(t)
-	}
-	if runners.whoami == nil {
-		runners.whoami = unexpectedWhoamiRunner(t)
-	}
-	if runners.createTextRecord == nil {
-		runners.createTextRecord = unexpectedCreateTextRecordRunner(t)
-	}
-	if runners.createCredentialsRecord == nil {
-		runners.createCredentialsRecord = unexpectedCreateCredentialsRecordRunner(t)
-	}
-	if runners.createCardRecord == nil {
-		runners.createCardRecord = unexpectedCreateCardRecordRunner(t)
-	}
-	if runners.updateTextRecord == nil {
-		runners.updateTextRecord = unexpectedUpdateTextRecordRunner(t)
-	}
-	if runners.updateCredentialsRecord == nil {
-		runners.updateCredentialsRecord = unexpectedUpdateCredentialsRecordRunner(t)
-	}
-	if runners.updateCardRecord == nil {
-		runners.updateCardRecord = unexpectedUpdateCardRecordRunner(t)
-	}
-	if runners.listRecords == nil {
-		runners.listRecords = unexpectedListRecordsRunner(t)
-	}
-	if runners.getRecord == nil {
-		runners.getRecord = unexpectedGetRecordRunner(t)
-	}
-	if runners.deleteRecord == nil {
-		runners.deleteRecord = unexpectedDeleteRecordRunner(t)
+	if factory == nil {
+		factory = newClientFactoryStub(t)
 	}
 
 	return run(context.Background(), args, runOptions{
@@ -88,174 +206,35 @@ func runTestCommand(
 		output:      output,
 		errorOutput: errorOutput,
 		info:        testBuildInfo,
-		runners:     runners,
+		factory:     factory,
+		passwords:   streamPasswordReader{},
 	})
 }
 
-func unexpectedHealthRunner(t *testing.T) outputRunner {
-	t.Helper()
-
-	return func(context.Context, config.Config, io.Writer) error {
-		t.Helper()
-		t.Fatal("health command must not run")
-		return nil
-	}
+func recordGetterFunc(
+	fn func(context.Context, string) (model.Record, error),
+) application {
+	return &applicationStub{getRecord: fn}
 }
 
-func unexpectedRegisterRunner(t *testing.T) passwordRunner {
-	t.Helper()
-
-	return func(context.Context, config.Config, io.Reader, io.Writer, io.Writer, string, bool) error {
-		t.Helper()
-		t.Fatal("register command must not run")
-		return nil
-	}
+func userRegistererFunc(
+	fn func(context.Context, string, string) (model.User, error),
+) application {
+	return &applicationStub{register: fn}
 }
 
-func unexpectedLoginRunner(t *testing.T) passwordRunner {
-	t.Helper()
-
-	return func(context.Context, config.Config, io.Reader, io.Writer, io.Writer, string, bool) error {
-		t.Helper()
-		t.Fatal("login command must not run")
-		return nil
-	}
+func userLoggerFunc(
+	fn func(context.Context, string, string) (model.User, error),
+) application {
+	return &applicationStub{login: fn}
 }
 
-func unexpectedLogoutRunner(t *testing.T) outputRunner {
-	t.Helper()
-
-	return func(context.Context, config.Config, io.Writer) error {
-		t.Helper()
-		t.Fatal("logout command must not run")
-		return nil
-	}
+func currentUserGetterFunc(
+	fn func(context.Context) (model.User, error),
+) application {
+	return &applicationStub{whoami: fn}
 }
 
-func unexpectedWhoamiRunner(t *testing.T) outputRunner {
-	t.Helper()
-
-	return func(context.Context, config.Config, io.Writer) error {
-		t.Helper()
-		t.Fatal("whoami command must not run")
-		return nil
-	}
-}
-
-func unexpectedCreateTextRecordRunner(t *testing.T) textRecordCreateRunner {
-	t.Helper()
-
-	return func(context.Context, config.Config, io.Writer, string, string, string) error {
-		t.Helper()
-		t.Fatal("records create-text command must not run")
-		return nil
-	}
-}
-
-func unexpectedUpdateTextRecordRunner(t *testing.T) textRecordUpdateRunner {
-	t.Helper()
-
-	return func(context.Context, config.Config, io.Writer, textRecordUpdateCommandRequest) error {
-		t.Helper()
-		t.Fatal("records update-text command must not run")
-		return nil
-	}
-}
-
-func unexpectedCreateCredentialsRecordRunner(t *testing.T) credentialsRecordCreateRunner {
-	t.Helper()
-
-	return func(
-		context.Context,
-		config.Config,
-		io.Reader,
-		io.Writer,
-		io.Writer,
-		credentialsRecordCreateCommandRequest,
-	) error {
-		t.Helper()
-		t.Fatal("records create-credentials command must not run")
-		return nil
-	}
-}
-
-func unexpectedUpdateCredentialsRecordRunner(t *testing.T) credentialsRecordUpdateRunner {
-	t.Helper()
-
-	return func(
-		context.Context,
-		config.Config,
-		io.Reader,
-		io.Writer,
-		io.Writer,
-		credentialsRecordUpdateCommandRequest,
-	) error {
-		t.Helper()
-		t.Fatal("records update-credentials command must not run")
-		return nil
-	}
-}
-
-func unexpectedCreateCardRecordRunner(t *testing.T) cardRecordCreateRunner {
-	t.Helper()
-
-	return func(
-		context.Context,
-		config.Config,
-		io.Reader,
-		io.Writer,
-		io.Writer,
-		cardRecordCreateCommandRequest,
-	) error {
-		t.Helper()
-		t.Fatal("records create-card command must not run")
-		return nil
-	}
-}
-
-func unexpectedUpdateCardRecordRunner(t *testing.T) cardRecordUpdateRunner {
-	t.Helper()
-
-	return func(
-		context.Context,
-		config.Config,
-		io.Reader,
-		io.Writer,
-		io.Writer,
-		cardRecordUpdateCommandRequest,
-	) error {
-		t.Helper()
-		t.Fatal("records update-card command must not run")
-		return nil
-	}
-}
-
-func unexpectedListRecordsRunner(t *testing.T) outputRunner {
-	t.Helper()
-
-	return func(context.Context, config.Config, io.Writer) error {
-		t.Helper()
-		t.Fatal("records list command must not run")
-		return nil
-	}
-}
-
-func unexpectedGetRecordRunner(t *testing.T) recordGetRunner {
-	t.Helper()
-
-	return func(context.Context, config.Config, io.Writer, string) error {
-		t.Helper()
-		t.Fatal("records get command must not run")
-		return nil
-	}
-}
-
-func unexpectedDeleteRecordRunner(t *testing.T) recordDeleteRunner {
-	t.Helper()
-
-	return func(context.Context, config.Config, io.Writer, string, int64) error {
-		t.Helper()
-		t.Fatal("records delete command must not run")
-		return nil
-	}
+func userLogoutterFunc(fn func(context.Context) error) userLogoutter {
+	return userLogoutterStub{logout: fn}
 }

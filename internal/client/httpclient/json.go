@@ -3,6 +3,7 @@ package httpclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -19,11 +20,18 @@ type APIError struct {
 
 	// Message содержит текст ошибки, предназначенный для пользователя.
 	Message string
+
+	cause error
 }
 
 // Error возвращает безопасное описание ошибки API.
 func (e *APIError) Error() string {
 	return fmt.Sprintf("api request failed: %s", e.Message)
+}
+
+// Unwrap возвращает transport-neutral причину ошибки API, если она известна Клиенту.
+func (e *APIError) Unwrap() error {
+	return e.cause
 }
 
 type errorResponse struct {
@@ -46,6 +54,7 @@ type jsonRequest struct {
 	requestBody    any
 	expectedStatus int
 	responseBody   any
+	errorCause     func(string) error
 }
 
 func (c *Client) doJSON(ctx context.Context, request jsonRequest) error {
@@ -66,7 +75,8 @@ func (c *Client) doJSON(ctx context.Context, request jsonRequest) error {
 	}
 
 	if response.StatusCode() != request.expectedStatus {
-		return decodeAPIError(response.StatusCode(), response.Status(), response.Body())
+		err := decodeAPIError(response.StatusCode(), response.Status(), response.Body())
+		return withAPIErrorCause(err, request.errorCause)
 	}
 
 	if request.responseBody == nil {
@@ -94,6 +104,26 @@ func decodeAPIError(statusCode int, status string, body []byte) error {
 		Code:       responseError.Code,
 		Message:    responseError.Message,
 	}
+}
+
+func withAPIErrorCause(err error, causeForCode func(string) error) error {
+	if causeForCode == nil {
+		return err
+	}
+
+	var apiError *APIError
+	if !errors.As(err, &apiError) {
+		return err
+	}
+
+	cause := causeForCode(apiError.Code)
+	if cause == nil {
+		return err
+	}
+
+	mapped := *apiError
+	mapped.cause = cause
+	return &mapped
 }
 
 func userFromResponse(response userResponse) model.User {

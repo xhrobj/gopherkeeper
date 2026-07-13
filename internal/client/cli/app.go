@@ -22,29 +22,13 @@ const banner = `
 
 `
 
-type commandRunners struct {
-	health                  outputRunner
-	register                passwordRunner
-	login                   passwordRunner
-	logout                  outputRunner
-	whoami                  outputRunner
-	createTextRecord        textRecordCreateRunner
-	createCredentialsRecord credentialsRecordCreateRunner
-	createCardRecord        cardRecordCreateRunner
-	updateTextRecord        textRecordUpdateRunner
-	updateCredentialsRecord credentialsRecordUpdateRunner
-	updateCardRecord        cardRecordUpdateRunner
-	listRecords             outputRunner
-	getRecord               recordGetRunner
-	deleteRecord            recordDeleteRunner
-}
-
 type runOptions struct {
 	input       io.Reader
 	output      io.Writer
 	errorOutput io.Writer
 	info        buildinfo.Info
-	runners     commandRunners
+	factory     clientFactory
+	passwords   passwordReader
 }
 
 // Run запускает командный интерфейс Клиента.
@@ -55,7 +39,14 @@ func Run(
 	errorOutput io.Writer,
 	info buildinfo.Info,
 ) error {
-	return RunWithInput(ctx, args, os.Stdin, output, errorOutput, info)
+	return run(ctx, args, runOptions{
+		input:       os.Stdin,
+		output:      output,
+		errorOutput: errorOutput,
+		info:        info,
+		factory:     defaultClientFactory{},
+		passwords:   terminalPasswordReader{},
+	})
 }
 
 // RunWithInput запускает командный интерфейс с заданным стандартным вводом.
@@ -72,27 +63,9 @@ func RunWithInput(
 		output:      output,
 		errorOutput: errorOutput,
 		info:        info,
-		runners:     defaultCommandRunners(),
+		factory:     defaultClientFactory{},
+		passwords:   streamPasswordReader{},
 	})
-}
-
-func defaultCommandRunners() commandRunners {
-	return commandRunners{
-		health:                  runHealth,
-		register:                runRegister,
-		login:                   runLogin,
-		logout:                  runLogout,
-		whoami:                  runWhoami,
-		createTextRecord:        runCreateTextRecord,
-		createCredentialsRecord: runCreateCredentialsRecord,
-		createCardRecord:        runCreateCardRecord,
-		updateTextRecord:        runUpdateTextRecord,
-		updateCredentialsRecord: runUpdateCredentialsRecord,
-		updateCardRecord:        runUpdateCardRecord,
-		listRecords:             runListRecords,
-		getRecord:               runGetRecord,
-		deleteRecord:            runDeleteRecord,
-	}
 }
 
 func run(ctx context.Context, args []string, options runOptions) error {
@@ -104,17 +77,14 @@ func run(ctx context.Context, args []string, options runOptions) error {
 		urfavecli.VersionPrinter = previousVersionPrinter
 	}()
 
-	command, err := newRootCommand(
+	command := newRootCommand(
 		options.input,
 		options.output,
 		options.errorOutput,
 		options.info,
-		options.runners,
-		commandArgs(args),
+		options.factory,
+		options.passwords,
 	)
-	if err != nil {
-		return err
-	}
 
 	return command.Run(ctx, args)
 }
@@ -124,19 +94,19 @@ func newRootCommand(
 	output io.Writer,
 	errorOutput io.Writer,
 	info buildinfo.Info,
-	runners commandRunners,
-	args []string,
-) (*urfavecli.Command, error) {
-	defaults, err := config.Parse(args)
-	if err != nil {
-		return nil, err
-	}
+	factory clientFactory,
+	passwords passwordReader,
+) *urfavecli.Command {
+	defaults := config.Default()
 	version := info.Version
 	if version == "" {
 		version = "¯\\_(ツ)_/¯"
 	}
 
 	return &urfavecli.Command{
+		Metadata: map[string]any{
+			clientConfigMetadataKey: defaults,
+		},
 		Usage:                         "securely store and access private data",
 		Version:                       version,
 		Writer:                        output,
@@ -165,26 +135,27 @@ func newRootCommand(
 				Value: defaults.SessionFile,
 			},
 		},
+		Before: func(ctx context.Context, command *urfavecli.Command) (context.Context, error) {
+			cfg, err := resolveClientConfig(command)
+			if err != nil {
+				return ctx, err
+			}
+
+			command.Root().Metadata[clientConfigMetadataKey] = cfg
+			return ctx, nil
+		},
 		Commands: []*urfavecli.Command{
-			newHealthCommand(runners.health),
-			newRegisterCommand(input, runners.register),
-			newLoginCommand(input, runners.login),
-			newLogoutCommand(runners.logout),
-			newWhoamiCommand(runners.whoami),
-			newRecordsCommand(input, runners),
+			newHealthCommand(factory),
+			newRegisterCommand(input, factory, passwords),
+			newLoginCommand(input, factory, passwords),
+			newLogoutCommand(factory),
+			newWhoamiCommand(factory),
+			newRecordsCommand(input, factory, passwords),
 		},
 		Action: func(_ context.Context, command *urfavecli.Command) error {
 			return urfavecli.ShowRootCommandHelp(command)
 		},
-	}, nil
-}
-
-func commandArgs(args []string) []string {
-	if len(args) == 0 {
-		return nil
 	}
-
-	return args[1:]
 }
 
 func printVersion(output io.Writer, info buildinfo.Info) error {

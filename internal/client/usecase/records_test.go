@@ -3,60 +3,64 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
 	"github.com/xhrobj/gopherkeeper/internal/client/session"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 const testRecordID = "550e8400-e29b-41d4-a716-446655440000"
 
-type recordClientStub struct {
-	create func(context.Context, string, httpclient.CreateRecordRequest) (httpclient.Record, error)
+type recordGatewayStub struct {
+	create func(context.Context, string, string, model.RecordPayload) (model.Record, error)
 	list   func(context.Context, string) ([]model.RecordMetadata, error)
-	get    func(context.Context, string, string) (httpclient.Record, error)
+	get    func(context.Context, string, string) (model.Record, error)
 	update func(
 		context.Context,
 		string,
 		string,
 		int64,
-		httpclient.UpdateRecordRequest,
-	) (httpclient.Record, error)
+		string,
+		model.RecordPayload,
+	) (model.Record, error)
 	delete func(context.Context, string, string, int64) error
 }
 
-func (s recordClientStub) CreateRecord(
+func (s recordGatewayStub) CreateRecord(
 	ctx context.Context,
 	accessToken string,
-	request httpclient.CreateRecordRequest,
-) (httpclient.Record, error) {
-	return s.create(ctx, accessToken, request)
+	title string,
+	payload model.RecordPayload,
+) (model.Record, error) {
+	return s.create(ctx, accessToken, title, payload)
 }
 
-func (s recordClientStub) ListRecords(ctx context.Context, accessToken string) ([]model.RecordMetadata, error) {
+func (s recordGatewayStub) ListRecords(ctx context.Context, accessToken string) ([]model.RecordMetadata, error) {
 	return s.list(ctx, accessToken)
 }
 
-func (s recordClientStub) GetRecord(
+func (s recordGatewayStub) GetRecord(
 	ctx context.Context,
 	accessToken, recordID string,
-) (httpclient.Record, error) {
+) (model.Record, error) {
 	return s.get(ctx, accessToken, recordID)
 }
 
-func (s recordClientStub) UpdateRecord(
+func (s recordGatewayStub) UpdateRecord(
 	ctx context.Context,
 	accessToken, recordID string,
 	expectedRevision int64,
-	request httpclient.UpdateRecordRequest,
-) (httpclient.Record, error) {
-	return s.update(ctx, accessToken, recordID, expectedRevision, request)
+	title string,
+	payload model.RecordPayload,
+) (model.Record, error) {
+	return s.update(ctx, accessToken, recordID, expectedRevision, title, payload)
 }
 
-func (s recordClientStub) DeleteRecord(
+func (s recordGatewayStub) DeleteRecord(
 	ctx context.Context,
 	accessToken, recordID string,
 	expectedRevision int64,
@@ -64,37 +68,38 @@ func (s recordClientStub) DeleteRecord(
 	return s.delete(ctx, accessToken, recordID, expectedRevision)
 }
 
-func TestApplication_CreateCredentialsRecord(t *testing.T) {
-	createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
-	application := newApplicationWithRecords(
-		nil,
-		recordClientStub{
+func TestApplication_CreateRecord(t *testing.T) {
+	payload := &model.TextPayload{Text: "secret text", Metadata: "personal"}
+	createdAt := time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
+	application := newTestApplicationWithRecords(
+		userGatewayStub{},
+		recordGatewayStub{
 			create: func(
 				_ context.Context,
 				accessToken string,
-				request httpclient.CreateRecordRequest,
-			) (httpclient.Record, error) {
+				title string,
+				gotPayload model.RecordPayload,
+			) (model.Record, error) {
 				if accessToken != "test.jwt.token" {
 					t.Errorf("access token = %q, want test.jwt.token", accessToken)
 				}
-				payload, ok := request.Payload.(*model.CredentialsPayload)
-				if !ok {
-					t.Fatalf("payload type = %T, want *model.CredentialsPayload", request.Payload)
+				if title != "Private note" {
+					t.Errorf("title = %q, want Private note", title)
 				}
-				if payload.Login != "alice" || payload.Password != "correct-horse-battery-staple" {
-					t.Errorf("payload = %#v, want original credentials", payload)
+				if !reflect.DeepEqual(gotPayload, payload) {
+					t.Errorf("payload = %#v, want %#v", gotPayload, payload)
 				}
 
-				return httpclient.Record{
+				return model.Record{
 					Metadata: model.RecordMetadata{
 						ID:        testRecordID,
-						Type:      model.RecordTypeCredentials,
-						Title:     request.Title,
+						Type:      model.RecordTypeText,
+						Title:     title,
 						Revision:  1,
 						CreatedAt: createdAt,
 						UpdatedAt: createdAt,
 					},
-					Payload: payload,
+					Payload: gotPayload,
 				}, nil
 			},
 		},
@@ -102,142 +107,178 @@ func TestApplication_CreateCredentialsRecord(t *testing.T) {
 		"localhost:8080",
 	)
 
-	record, err := application.CreateCredentialsRecord(context.Background(), CreateCredentialsRecordRequest{
-		Title:    "GitHub",
-		Login:    "alice",
-		Password: "correct-horse-battery-staple",
-		URL:      "https://github.com",
-		Metadata: "personal account",
+	record, err := application.CreateRecord(context.Background(), CreateRecordRequest{
+		Title:   "Private note",
+		Payload: payload,
 	})
 	if err != nil {
-		t.Fatalf("CreateCredentialsRecord() error = %v", err)
+		t.Fatalf("CreateRecord() error = %v", err)
 	}
-	if record.Metadata.Type != model.RecordTypeCredentials {
-		t.Errorf("type = %q, want credentials", record.Metadata.Type)
-	}
-	if record.Payload.Password != "correct-horse-battery-staple" {
-		t.Error("credentials password was not returned unchanged")
+	if !reflect.DeepEqual(record.Payload, payload) {
+		t.Errorf("payload = %#v, want %#v", record.Payload, payload)
 	}
 }
 
-func TestApplication_CreateCredentialsRecordValidationError(t *testing.T) {
+func TestApplication_CreateRecordRejectsInvalidRequest(t *testing.T) {
 	tests := []struct {
 		name    string
-		request CreateCredentialsRecordRequest
-		want    error
+		request CreateRecordRequest
+		wantErr error
 	}{
 		{
 			name: "invalid title",
-			request: CreateCredentialsRecordRequest{
-				Title:    " ",
-				Login:    "alice",
-				Password: "correct-horse-battery-staple",
+			request: CreateRecordRequest{
+				Title:   " ",
+				Payload: &model.TextPayload{Text: "secret"},
 			},
-			want: model.ErrInvalidRecordTitle,
+			wantErr: model.ErrInvalidRecordTitle,
 		},
 		{
-			name: "empty login",
-			request: CreateCredentialsRecordRequest{
-				Title:    "GitHub",
-				Login:    " ",
-				Password: "correct-horse-battery-staple",
-			},
-			want: model.ErrInvalidCredentialsPayload,
+			name:    "missing payload",
+			request: CreateRecordRequest{Title: "Private note"},
+			wantErr: errUnexpectedRecordPayload,
 		},
 		{
-			name: "empty password",
-			request: CreateCredentialsRecordRequest{
-				Title:    "GitHub",
-				Login:    "alice",
-				Password: "",
+			name: "invalid payload",
+			request: CreateRecordRequest{
+				Title:   "GitHub",
+				Payload: &model.CredentialsPayload{Login: "alice"},
 			},
-			want: model.ErrInvalidCredentialsPayload,
+			wantErr: model.ErrInvalidCredentialsPayload,
+		},
+		{
+			name: "typed nil payload",
+			request: CreateRecordRequest{
+				Title:   "Encrypted backup",
+				Payload: (*model.BinaryPayload)(nil),
+			},
+			wantErr: model.ErrInvalidBinaryPayload,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			application := newApplicationWithRecords(nil, recordClientStub{
-				create: func(context.Context, string, httpclient.CreateRecordRequest) (httpclient.Record, error) {
-					t.Fatal("record client must not be called")
-					return httpclient.Record{}, nil
+			application := newTestApplicationWithRecords(
+				userGatewayStub{},
+				recordGatewayStub{
+					create: func(context.Context, string, string, model.RecordPayload) (model.Record, error) {
+						t.Fatal("record gateway must not be called")
+						return model.Record{}, nil
+					},
 				},
-			}, sessionStorageStub{}, "localhost:8080")
+				sessionStorageStub{},
+				"localhost:8080",
+			)
 
-			_, err := application.CreateCredentialsRecord(context.Background(), tt.request)
-			if !errors.Is(err, tt.want) {
-				t.Fatalf("CreateCredentialsRecord() error = %v, want %v", err, tt.want)
+			_, err := application.CreateRecord(context.Background(), tt.request)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("CreateRecord() error = %v, want %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
+func TestApplication_ListRecords(t *testing.T) {
+	want := []model.RecordMetadata{{
+		ID:       testRecordID,
+		Type:     model.RecordTypeText,
+		Title:    "Private note",
+		Revision: 1,
+	}}
+	application := newTestApplicationWithRecords(
+		userGatewayStub{},
+		recordGatewayStub{
+			list: func(_ context.Context, accessToken string) ([]model.RecordMetadata, error) {
+				if accessToken != "test.jwt.token" {
+					t.Errorf("access token = %q, want test.jwt.token", accessToken)
+				}
+				return want, nil
+			},
+		},
+		onlineSessionStorage(),
+		"localhost:8080",
+	)
+
+	got, err := application.ListRecords(context.Background())
+	if err != nil {
+		t.Fatalf("ListRecords() error = %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ListRecords() = %#v, want %#v", got, want)
+	}
+}
+
 func TestApplication_GetRecord(t *testing.T) {
-	application := newApplicationWithRecords(
-		nil,
-		recordClientStub{
-			get: func(_ context.Context, accessToken, recordID string) (httpclient.Record, error) {
+	want := model.Record{
+		Metadata: model.RecordMetadata{
+			ID:       testRecordID,
+			Type:     model.RecordTypeCredentials,
+			Title:    "GitHub",
+			Revision: 1,
+		},
+		Payload: &model.CredentialsPayload{
+			Login:    "alice",
+			Password: "correct-horse-battery-staple",
+		},
+	}
+	application := newTestApplicationWithRecords(
+		userGatewayStub{},
+		recordGatewayStub{
+			get: func(_ context.Context, accessToken, recordID string) (model.Record, error) {
 				if accessToken != "test.jwt.token" {
 					t.Errorf("access token = %q, want test.jwt.token", accessToken)
 				}
 				if recordID != testRecordID {
 					t.Errorf("record ID = %q, want %q", recordID, testRecordID)
 				}
-
-				return httpclient.Record{
-					Metadata: model.RecordMetadata{
-						ID:       testRecordID,
-						Type:     model.RecordTypeCredentials,
-						Title:    "GitHub",
-						Revision: 1,
-					},
-					Payload: &model.CredentialsPayload{
-						Login:    "alice",
-						Password: "correct-horse-battery-staple",
-					},
-				}, nil
+				return want, nil
 			},
 		},
 		onlineSessionStorage(),
 		"localhost:8080",
 	)
 
-	record, err := application.GetRecord(context.Background(), testRecordID)
+	got, err := application.GetRecord(context.Background(), testRecordID)
 	if err != nil {
 		t.Fatalf("GetRecord() error = %v", err)
 	}
-	payload, ok := record.Payload.(*model.CredentialsPayload)
-	if !ok || payload.Login != "alice" {
-		t.Fatalf("payload = %#v, want credentials payload", record.Payload)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("GetRecord() = %#v, want %#v", got, want)
 	}
 }
 
-func TestApplication_UpdateCredentialsRecord(t *testing.T) {
-	application := newApplicationWithRecords(
-		nil,
-		recordClientStub{
+func TestApplication_UpdateRecord(t *testing.T) {
+	payload := &model.BinaryPayload{
+		Filename:    "backup-v2.bin",
+		Data:        []byte{0xff, 0x02, 0x01, 0x00},
+		ContentType: "application/octet-stream",
+		Metadata:    "updated private backup",
+	}
+	application := newTestApplicationWithRecords(
+		userGatewayStub{},
+		recordGatewayStub{
 			update: func(
 				_ context.Context,
 				accessToken, recordID string,
 				expectedRevision int64,
-				request httpclient.UpdateRecordRequest,
-			) (httpclient.Record, error) {
+				title string,
+				gotPayload model.RecordPayload,
+			) (model.Record, error) {
 				if accessToken != "test.jwt.token" || recordID != testRecordID || expectedRevision != 1 {
 					t.Error("update request contains unexpected common values")
 				}
-				payload, ok := request.Payload.(*model.CredentialsPayload)
-				if !ok || payload.Password != "updated-correct-horse-battery-staple" {
-					t.Fatalf("payload = %#v, want updated credentials", request.Payload)
+				if title != "Updated backup" || !reflect.DeepEqual(gotPayload, payload) {
+					t.Errorf("update title = %q, payload = %#v", title, gotPayload)
 				}
 
-				return httpclient.Record{
+				return model.Record{
 					Metadata: model.RecordMetadata{
 						ID:       testRecordID,
-						Type:     model.RecordTypeCredentials,
-						Title:    request.Title,
+						Type:     model.RecordTypeBinary,
+						Title:    title,
 						Revision: 2,
 					},
-					Payload: payload,
+					Payload: gotPayload,
 				}, nil
 			},
 		},
@@ -245,47 +286,47 @@ func TestApplication_UpdateCredentialsRecord(t *testing.T) {
 		"localhost:8080",
 	)
 
-	record, err := application.UpdateCredentialsRecord(context.Background(), UpdateCredentialsRecordRequest{
+	record, err := application.UpdateRecord(context.Background(), UpdateRecordRequest{
 		RecordID:         testRecordID,
 		ExpectedRevision: 1,
-		Title:            "Updated GitHub",
-		Login:            "alice",
-		Password:         "updated-correct-horse-battery-staple",
+		Title:            "Updated backup",
+		Payload:          payload,
 	})
 	if err != nil {
-		t.Fatalf("UpdateCredentialsRecord() error = %v", err)
+		t.Fatalf("UpdateRecord() error = %v", err)
 	}
 	if record.Metadata.Revision != 2 {
 		t.Errorf("revision = %d, want 2", record.Metadata.Revision)
 	}
+	if !reflect.DeepEqual(record.Payload, payload) {
+		t.Errorf("payload = %#v, want %#v", record.Payload, payload)
+	}
 }
 
-func TestApplication_UpdateRecordMapsAPIError(t *testing.T) {
+func TestApplication_UpdateRecordMapsGatewayError(t *testing.T) {
 	password := "updated-correct-horse-battery-staple"
-	application := newApplicationWithRecords(
-		nil,
-		recordClientStub{
-			update: func(context.Context, string, string, int64, httpclient.UpdateRecordRequest) (httpclient.Record, error) {
-				return httpclient.Record{}, &httpclient.APIError{
-					StatusCode: 409,
-					Code:       "record_revision_conflict",
-					Message:    "record revision conflict",
-				}
+	application := newTestApplicationWithRecords(
+		userGatewayStub{},
+		recordGatewayStub{
+			update: func(context.Context, string, string, int64, string, model.RecordPayload) (model.Record, error) {
+				return model.Record{}, fmt.Errorf("remote update: %w", model.ErrRecordRevisionConflict)
 			},
 		},
 		onlineSessionStorage(),
 		"localhost:8080",
 	)
 
-	_, err := application.UpdateCredentialsRecord(context.Background(), UpdateCredentialsRecordRequest{
+	_, err := application.UpdateRecord(context.Background(), UpdateRecordRequest{
 		RecordID:         testRecordID,
 		ExpectedRevision: 1,
 		Title:            "GitHub",
-		Login:            "alice",
-		Password:         password,
+		Payload: &model.CredentialsPayload{
+			Login:    "alice",
+			Password: password,
+		},
 	})
 	if err == nil {
-		t.Fatal("UpdateCredentialsRecord() error = nil, want conflict")
+		t.Fatal("UpdateRecord() error = nil, want conflict")
 	}
 	if err.Error() != "record revision conflict" {
 		t.Fatalf("error = %q, want record revision conflict", err)
@@ -296,9 +337,9 @@ func TestApplication_UpdateRecordMapsAPIError(t *testing.T) {
 }
 
 func TestApplication_DeleteRecord(t *testing.T) {
-	application := newApplicationWithRecords(
-		nil,
-		recordClientStub{
+	application := newTestApplicationWithRecords(
+		userGatewayStub{},
+		recordGatewayStub{
 			delete: func(_ context.Context, accessToken, recordID string, expectedRevision int64) error {
 				if accessToken != "test.jwt.token" || recordID != testRecordID || expectedRevision != 2 {
 					t.Error("delete request contains unexpected values")
@@ -324,7 +365,6 @@ func onlineSessionStorage() sessionStorageStub {
 			if expectedServerAddress != "localhost:8080" {
 				return session.Session{}, errors.New("unexpected server address")
 			}
-
 			return testOnlineSession(), nil
 		},
 	}

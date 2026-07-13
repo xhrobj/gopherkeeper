@@ -1,16 +1,5 @@
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-
-# Test binaries
-# *.test
-
-# Output of the go coverage tool, specifically when used with LiteIDE
+# Coverage profiles
 *.out
-*.prof
 
 # Build artifacts
 /bin/
@@ -19,9 +8,6 @@
 # Local documentation
 /docs/local/
 /docs/adr/
-
-# Dependency directories (remove the comment below to include it)
-# vendor/
 
 # IDEs
 .vscode/
@@ -46,5 +32,5 @@ __MACOSX/
 /.tmp/
 
 # JSON-конфиг Клиента (разрешен только example-конфиг)
-/configs/*
+/configs/*.json
 !/configs/client.example.json

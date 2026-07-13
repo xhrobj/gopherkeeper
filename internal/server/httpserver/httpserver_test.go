@@ -228,7 +228,7 @@ func TestNewHandler_RoutesRecords(t *testing.T) {
 	}{
 		{
 			name:       "create",
-			request:    newCreateRecordRequest(t, createTextRecordRequestBody(t, "my note", "secret", "")),
+			request:    newCreateRecordRequest(recordRequestBody(t, model.RecordTypeText, "my note", &model.TextPayload{Text: "secret"})),
 			wantStatus: http.StatusCreated,
 		},
 		{
@@ -243,7 +243,7 @@ func TestNewHandler_RoutesRecords(t *testing.T) {
 		},
 		{
 			name:       "update",
-			request:    newUpdateRecordRequest(t, testRecordID, updateTextRecordRequestBody(t, "new note", "new secret", "")),
+			request:    newUpdateRecordRequest(testRecordID, recordRequestBody(t, model.RecordTypeText, "new note", &model.TextPayload{Text: "new secret"})),
 			wantStatus: http.StatusOK,
 		},
 		{
@@ -265,8 +265,8 @@ func TestNewHandler_RoutesRecords(t *testing.T) {
 			})
 			tt.request.Header.Set("If-Match", `"1"`)
 			deps.Records = recordManagerStub{
-				create: func(_ context.Context, request service.CreateRecordRequest) (service.DecryptedRecord, error) {
-					return service.DecryptedRecord{
+				create: func(_ context.Context, request service.CreateRecordRequest) (model.Record, error) {
+					return model.Record{
 						Metadata: model.RecordMetadata{
 							ID:        testRecordID,
 							Type:      model.RecordTypeText,
@@ -288,9 +288,9 @@ func TestNewHandler_RoutesRecords(t *testing.T) {
 						UpdatedAt: createdAt,
 					}}, nil
 				},
-				get: func(context.Context, int64, string) (service.DecryptedRecord, error) {
+				get: func(context.Context, int64, string) (model.Record, error) {
 					payload := model.TextPayload{Text: "secret"}
-					return service.DecryptedRecord{
+					return model.Record{
 						Metadata: model.RecordMetadata{
 							ID:        testRecordID,
 							Type:      model.RecordTypeText,
@@ -302,8 +302,8 @@ func TestNewHandler_RoutesRecords(t *testing.T) {
 						Payload: &payload,
 					}, nil
 				},
-				update: func(_ context.Context, request service.UpdateRecordRequest) (service.DecryptedRecord, error) {
-					return service.DecryptedRecord{
+				update: func(_ context.Context, request service.UpdateRecordRequest) (model.Record, error) {
+					return model.Record{
 						Metadata: model.RecordMetadata{
 							ID:        request.RecordID,
 							Type:      model.RecordTypeText,
@@ -395,21 +395,21 @@ func unusedRecordManager(t *testing.T) RecordManager {
 	t.Helper()
 
 	return recordManagerStub{
-		create: func(context.Context, service.CreateRecordRequest) (service.DecryptedRecord, error) {
+		create: func(context.Context, service.CreateRecordRequest) (model.Record, error) {
 			t.Fatal("record manager must not be called")
-			return service.DecryptedRecord{}, nil
+			return model.Record{}, nil
 		},
 		list: func(context.Context, int64) ([]model.RecordMetadata, error) {
 			t.Fatal("record manager must not be called")
 			return nil, nil
 		},
-		get: func(context.Context, int64, string) (service.DecryptedRecord, error) {
+		get: func(context.Context, int64, string) (model.Record, error) {
 			t.Fatal("record manager must not be called")
-			return service.DecryptedRecord{}, nil
+			return model.Record{}, nil
 		},
-		update: func(context.Context, service.UpdateRecordRequest) (service.DecryptedRecord, error) {
+		update: func(context.Context, service.UpdateRecordRequest) (model.Record, error) {
 			t.Fatal("record manager must not be called")
-			return service.DecryptedRecord{}, nil
+			return model.Record{}, nil
 		},
 		delete: func(context.Context, service.DeleteRecordRequest) error {
 			t.Fatal("record manager must not be called")

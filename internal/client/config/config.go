@@ -24,73 +24,51 @@ type Config struct {
 	SessionFile string
 }
 
+// Overrides содержит значения конфигурации, заданные через источники с более
+// высоким приоритетом, чем JSON-файл.
+type Overrides struct {
+	// Address переопределяет адрес Сервера.
+	Address *string
+
+	// CACertFile переопределяет путь к дополнительному CA certificate.
+	CACertFile *string
+
+	// SessionFile переопределяет путь к файлу online-сессии.
+	SessionFile *string
+}
+
 type fileConfig struct {
 	Address     *string `json:"address"`
 	CACertFile  *string `json:"ca_cert_file"`
 	SessionFile *string `json:"session_file"`
 }
 
-type explicitFlags struct {
-	ConfigFile  *string
-	Address     *string
-	CACertFile  *string
-	SessionFile *string
+// Default возвращает конфигурацию Клиента со значениями по умолчанию.
+func Default() Config {
+	return Config{Address: defaultAddress}
 }
 
-// Load формирует базовую конфигурацию Клиента из переменных окружения
-// и значений по умолчанию.
-func Load() Config {
-	cfg, err := Parse(nil)
-	if err != nil {
-		return Config{Address: defaultAddress}
-	}
-
-	return cfg
-}
-
-// Parse формирует конфигурацию Клиента из явно указанного JSON-файла,
-// переменных окружения и аргументов командной строки.
+// Resolve формирует конфигурацию Клиента из JSON-файла и значений с более
+// высоким приоритетом.
 //
-// JSON-файл читается только когда путь задан флагом --config / -c
-// или переменной окружения CONFIG.
-//
-// Приоритет источников: flag > env > config file > default.
-func Parse(args []string) (Config, error) {
-	flags, err := scanExplicitFlags(args)
-	if err != nil {
-		return Config{}, err
-	}
+// JSON-файл читается только при непустом пути. Приоритет источников:
+// overrides > config file > default.
+func Resolve(configFile string, overrides Overrides) (Config, error) {
+	cfg := Default()
 
-	cfg := Config{Address: defaultAddress}
-
-	configFile, configFileExplicit := resolveConfigFile(flags.ConfigFile)
-
-	if configFileExplicit && configFile != "" {
+	if configFile != "" {
 		if err := applyFile(&cfg, configFile); err != nil {
 			return Config{}, err
 		}
 	}
 
-	applyEnvironment(&cfg)
-	applyFlags(&cfg, flags)
+	applyOverrides(&cfg, overrides)
 
 	if strings.TrimSpace(cfg.Address) == "" {
 		return Config{}, errors.New("server address is required")
 	}
 
 	return cfg, nil
-}
-
-func resolveConfigFile(flagValue *string) (string, bool) {
-	if flagValue != nil {
-		return *flagValue, true
-	}
-
-	if envValue := os.Getenv("CONFIG"); envValue != "" {
-		return envValue, true
-	}
-
-	return "", false
 }
 
 func applyFile(cfg *Config, path string) error {
@@ -135,94 +113,14 @@ func ensureSingleJSONValue(decoder *json.Decoder) error {
 	return nil
 }
 
-func applyEnvironment(cfg *Config) {
-	if address := os.Getenv("ADDRESS"); address != "" {
-		cfg.Address = address
+func applyOverrides(cfg *Config, overrides Overrides) {
+	if overrides.Address != nil {
+		cfg.Address = *overrides.Address
 	}
-	if caCertFile := os.Getenv("CA_CERT_FILE"); caCertFile != "" {
-		cfg.CACertFile = caCertFile
+	if overrides.CACertFile != nil {
+		cfg.CACertFile = *overrides.CACertFile
 	}
-	if sessionFile := os.Getenv("SESSION_FILE"); sessionFile != "" {
-		cfg.SessionFile = sessionFile
-	}
-}
-
-func applyFlags(cfg *Config, flags explicitFlags) {
-	if flags.Address != nil {
-		cfg.Address = *flags.Address
-	}
-	if flags.CACertFile != nil {
-		cfg.CACertFile = *flags.CACertFile
-	}
-	if flags.SessionFile != nil {
-		cfg.SessionFile = *flags.SessionFile
-	}
-}
-
-func scanExplicitFlags(args []string) (explicitFlags, error) {
-	var flags explicitFlags
-
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if arg == "--" {
-			break
-		}
-
-		name, value, hasInlineValue, ok := splitFlag(arg)
-		if !ok {
-			continue
-		}
-
-		setter := flagSetter(&flags, name)
-		if setter == nil {
-			continue
-		}
-
-		if !hasInlineValue {
-			if i+1 >= len(args) {
-				return explicitFlags{}, fmt.Errorf("flag %s requires a value", arg)
-			}
-			i++
-			value = args[i]
-		}
-
-		setter(value)
-	}
-
-	return flags, nil
-}
-
-func splitFlag(arg string) (name string, value string, hasInlineValue bool, ok bool) {
-	if strings.HasPrefix(arg, "--") {
-		body := strings.TrimPrefix(arg, "--")
-		if body == "" {
-			return "", "", false, false
-		}
-
-		name, value, hasInlineValue = strings.Cut(body, "=")
-		return name, value, hasInlineValue, true
-	}
-
-	if strings.HasPrefix(arg, "-") && len(arg) > 1 {
-		body := strings.TrimPrefix(arg, "-")
-		name, value, hasInlineValue = strings.Cut(body, "=")
-		return name, value, hasInlineValue, true
-	}
-
-	return "", "", false, false
-}
-
-func flagSetter(flags *explicitFlags, name string) func(string) {
-	switch name {
-	case "c", "config":
-		return func(value string) { flags.ConfigFile = &value }
-	case "a", "address":
-		return func(value string) { flags.Address = &value }
-	case "ca-cert":
-		return func(value string) { flags.CACertFile = &value }
-	case "session-file":
-		return func(value string) { flags.SessionFile = &value }
-	default:
-		return nil
+	if overrides.SessionFile != nil {
+		cfg.SessionFile = *overrides.SessionFile
 	}
 }

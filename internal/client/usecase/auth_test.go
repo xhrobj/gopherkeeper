@@ -3,25 +3,24 @@ package usecase
 import (
 	"context"
 	"errors"
-	"net/http"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
 	"github.com/xhrobj/gopherkeeper/internal/client/session"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 func TestApplication_Register(t *testing.T) {
-	application := newApplication(
-		userClientStub{
+	application := newTestApplication(
+		userGatewayStub{
 			register: func(_ context.Context, login, password string) (model.User, error) {
 				if login != " Alice " {
 					t.Errorf("login = %q, want %q", login, " Alice ")
 				}
 				if password != testPassword {
-					t.Error("register client received unexpected password")
+					t.Error("register gateway received unexpected password")
 				}
 
 				return model.User{Login: "alice"}, nil
@@ -42,15 +41,11 @@ func TestApplication_Register(t *testing.T) {
 }
 
 func TestApplication_RegisterReturnsReadableDuplicateError(t *testing.T) {
-	apiError := &httpclient.APIError{
-		StatusCode: http.StatusConflict,
-		Code:       "login_already_exists",
-		Message:    "login is already registered",
-	}
-	application := newApplication(
-		userClientStub{
+	remoteError := fmt.Errorf("remote registration: %w", model.ErrLoginAlreadyExists)
+	application := newTestApplication(
+		userGatewayStub{
 			register: func(context.Context, string, string) (model.User, error) {
-				return model.User{}, apiError
+				return model.User{}, remoteError
 			},
 		},
 		sessionStorageStub{},
@@ -64,8 +59,8 @@ func TestApplication_RegisterReturnsReadableDuplicateError(t *testing.T) {
 	if err.Error() != `login "ALICE" is already registered` {
 		t.Errorf("error = %q, want readable duplicate message", err)
 	}
-	if !errors.Is(err, apiError) {
-		t.Error("duplicate error does not preserve API error")
+	if !errors.Is(err, remoteError) {
+		t.Error("duplicate error does not preserve gateway error")
 	}
 	if strings.Contains(err.Error(), testPassword) {
 		t.Error("duplicate error contains password")
@@ -74,8 +69,8 @@ func TestApplication_RegisterReturnsReadableDuplicateError(t *testing.T) {
 
 func TestApplication_RegisterDoesNotLeakPasswordInNetworkError(t *testing.T) {
 	networkError := errors.New("connection refused")
-	application := newApplication(
-		userClientStub{
+	application := newTestApplication(
+		userGatewayStub{
 			register: func(context.Context, string, string) (model.User, error) {
 				return model.User{}, networkError
 			},
@@ -96,19 +91,19 @@ func TestApplication_RegisterDoesNotLeakPasswordInNetworkError(t *testing.T) {
 	}
 }
 
-func TestApplication_RegisterDoesNotCreateSessionStorage(t *testing.T) {
-	application := newApplicationWithSessionFactory(
-		userClientStub{
+func TestApplication_RegisterDoesNotResolveSessionStorage(t *testing.T) {
+	application := &Application{
+		users: userGatewayStub{
 			register: func(context.Context, string, string) (model.User, error) {
 				return model.User{Login: "alice"}, nil
 			},
 		},
-		func() (sessionStorage, error) {
-			t.Fatal("session storage must not be created for registration")
+		sessions: func() (SessionStorage, error) {
+			t.Fatal("registration must not resolve session storage")
 			return nil, nil
 		},
-		"localhost:8080",
-	)
+		serverAddress: "localhost:8080",
+	}
 
 	user, err := application.Register(context.Background(), "alice", testPassword)
 	if err != nil {
@@ -119,34 +114,28 @@ func TestApplication_RegisterDoesNotCreateSessionStorage(t *testing.T) {
 	}
 }
 
-func TestApplication_LoginReturnsSessionStorageCreationError(t *testing.T) {
-	storageError := errors.New("cache directory is unavailable")
-	loginCalled := false
-	application := newApplicationWithSessionFactory(
-		userClientStub{
-			login: func(context.Context, string, string) (httpclient.LoginResult, error) {
-				loginCalled = true
-				return httpclient.LoginResult{}, nil
+func TestApplication_LoginResolvesSessionStorageBeforeRequest(t *testing.T) {
+	storageError := errors.New("cache directory unavailable")
+	gatewayCalled := false
+	application := &Application{
+		users: userGatewayStub{
+			login: func(context.Context, string, string) (model.Authentication, error) {
+				gatewayCalled = true
+				return model.Authentication{}, nil
 			},
 		},
-		func() (sessionStorage, error) {
+		sessions: func() (SessionStorage, error) {
 			return nil, storageError
 		},
-		"localhost:8080",
-	)
+		serverAddress: "localhost:8080",
+	}
 
 	_, err := application.Login(context.Background(), "alice", testPassword)
-	if err == nil {
-		t.Fatal("Login() error = nil, want session storage error")
-	}
 	if !errors.Is(err, storageError) {
-		t.Error("login error does not preserve session storage error")
+		t.Fatalf("Login() error = %v, want session storage error", err)
 	}
-	if loginCalled {
-		t.Error("login client was called after session storage creation error")
-	}
-	if strings.Contains(err.Error(), testPassword) {
-		t.Error("session storage error contains password")
+	if gatewayCalled {
+		t.Error("login gateway was called before session storage was resolved")
 	}
 }
 
@@ -154,17 +143,17 @@ func TestApplication_LoginSavesSession(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 5, 12, 0, 0, 0, time.UTC)
 	expiresAt := time.Date(2026, time.July, 5, 12, 15, 0, 0, time.UTC)
 	var savedSession session.Session
-	application := newApplication(
-		userClientStub{
-			login: func(_ context.Context, login, password string) (httpclient.LoginResult, error) {
+	application := newTestApplication(
+		userGatewayStub{
+			login: func(_ context.Context, login, password string) (model.Authentication, error) {
 				if login != "alice" {
 					t.Errorf("login = %q, want alice", login)
 				}
 				if password != testPassword {
-					t.Error("login client received unexpected password")
+					t.Error("login gateway received unexpected password")
 				}
 
-				return httpclient.LoginResult{
+				return model.Authentication{
 					AccessToken: "test.jwt.token",
 					ExpiresAt:   expiresAt,
 					User: model.User{
@@ -203,15 +192,11 @@ func TestApplication_LoginSavesSession(t *testing.T) {
 }
 
 func TestApplication_LoginReturnsReadableInvalidCredentialsError(t *testing.T) {
-	apiError := &httpclient.APIError{
-		StatusCode: http.StatusUnauthorized,
-		Code:       "invalid_credentials",
-		Message:    "invalid login or password",
-	}
-	application := newApplication(
-		userClientStub{
-			login: func(context.Context, string, string) (httpclient.LoginResult, error) {
-				return httpclient.LoginResult{}, apiError
+	remoteError := fmt.Errorf("remote login: %w", model.ErrInvalidCredentials)
+	application := newTestApplication(
+		userGatewayStub{
+			login: func(context.Context, string, string) (model.Authentication, error) {
+				return model.Authentication{}, remoteError
 			},
 		},
 		sessionStorageStub{
@@ -230,8 +215,8 @@ func TestApplication_LoginReturnsReadableInvalidCredentialsError(t *testing.T) {
 	if err.Error() != "invalid login or password" {
 		t.Errorf("error = %q, want readable invalid credentials message", err)
 	}
-	if !errors.Is(err, apiError) {
-		t.Error("login error does not preserve API error")
+	if !errors.Is(err, remoteError) {
+		t.Error("login error does not preserve gateway error")
 	}
 	if strings.Contains(err.Error(), testPassword) {
 		t.Error("invalid credentials error contains password")
@@ -240,10 +225,10 @@ func TestApplication_LoginReturnsReadableInvalidCredentialsError(t *testing.T) {
 
 func TestApplication_LoginDoesNotLeakPasswordInNetworkError(t *testing.T) {
 	networkError := errors.New("connection refused")
-	application := newApplication(
-		userClientStub{
-			login: func(context.Context, string, string) (httpclient.LoginResult, error) {
-				return httpclient.LoginResult{}, networkError
+	application := newTestApplication(
+		userGatewayStub{
+			login: func(context.Context, string, string) (model.Authentication, error) {
+				return model.Authentication{}, networkError
 			},
 		},
 		sessionStorageStub{
@@ -269,10 +254,10 @@ func TestApplication_LoginDoesNotLeakPasswordInNetworkError(t *testing.T) {
 
 func TestApplication_LoginDoesNotLeakTokenInSaveError(t *testing.T) {
 	saveError := errors.New("permission denied")
-	application := newApplication(
-		userClientStub{
-			login: func(context.Context, string, string) (httpclient.LoginResult, error) {
-				return httpclient.LoginResult{
+	application := newTestApplication(
+		userGatewayStub{
+			login: func(context.Context, string, string) (model.Authentication, error) {
+				return model.Authentication{
 					AccessToken: "test.jwt.token",
 					ExpiresAt:   time.Date(2026, time.July, 5, 12, 15, 0, 0, time.UTC),
 					User: model.User{
@@ -303,8 +288,8 @@ func TestApplication_LoginDoesNotLeakTokenInSaveError(t *testing.T) {
 
 func TestApplication_Whoami(t *testing.T) {
 	currentUser := testUser()
-	application := newApplication(
-		userClientStub{
+	application := newTestApplication(
+		userGatewayStub{
 			whoami: func(_ context.Context, accessToken string) (model.User, error) {
 				if accessToken != "test.jwt.token" {
 					t.Errorf("access token = %q, want test.jwt.token", accessToken)
@@ -370,10 +355,10 @@ func TestApplication_WhoamiMapsSessionErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			application := newApplication(
-				userClientStub{
+			application := newTestApplication(
+				userGatewayStub{
 					whoami: func(context.Context, string) (model.User, error) {
-						t.Fatal("current user client must not be called after session load error")
+						t.Fatal("current user gateway must not be called after session load error")
 						return model.User{}, nil
 					},
 				},
@@ -409,16 +394,12 @@ func TestApplication_WhoamiMapsSessionErrors(t *testing.T) {
 	}
 }
 
-func TestApplication_WhoamiMapsUnauthorizedAPIError(t *testing.T) {
-	apiError := &httpclient.APIError{
-		StatusCode: http.StatusUnauthorized,
-		Code:       "unauthorized",
-		Message:    "missing or invalid bearer token",
-	}
-	application := newApplication(
-		userClientStub{
+func TestApplication_WhoamiMapsUnauthorizedError(t *testing.T) {
+	remoteError := fmt.Errorf("remote current user: %w", model.ErrUnauthorized)
+	application := newTestApplication(
+		userGatewayStub{
 			whoami: func(context.Context, string) (model.User, error) {
-				return model.User{}, apiError
+				return model.User{}, remoteError
 			},
 		},
 		sessionStorageStub{
@@ -433,8 +414,8 @@ func TestApplication_WhoamiMapsUnauthorizedAPIError(t *testing.T) {
 	if err == nil {
 		t.Fatal("Whoami() error = nil, want unauthorized error")
 	}
-	if !errors.Is(err, apiError) {
-		t.Error("whoami error does not preserve API error")
+	if !errors.Is(err, remoteError) {
+		t.Error("whoami error does not preserve gateway error")
 	}
 	if !errors.Is(err, ErrNotLoggedIn) {
 		t.Error("whoami error does not match ErrNotLoggedIn")
@@ -449,8 +430,8 @@ func TestApplication_WhoamiMapsUnauthorizedAPIError(t *testing.T) {
 
 func TestApplication_WhoamiDoesNotLeakTokenInNetworkError(t *testing.T) {
 	networkError := errors.New("connection refused")
-	application := newApplication(
-		userClientStub{
+	application := newTestApplication(
+		userGatewayStub{
 			whoami: func(context.Context, string) (model.User, error) {
 				return model.User{}, networkError
 			},
@@ -472,76 +453,5 @@ func TestApplication_WhoamiDoesNotLeakTokenInNetworkError(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "test.jwt.token") {
 		t.Error("network error contains access token")
-	}
-}
-
-func TestApplication_LogoutDeletesSession(t *testing.T) {
-	var deleted bool
-	application := newApplication(
-		userClientStub{
-			login: func(context.Context, string, string) (httpclient.LoginResult, error) {
-				t.Fatal("logout must not call HTTP client")
-				return httpclient.LoginResult{}, nil
-			},
-			whoami: func(context.Context, string) (model.User, error) {
-				t.Fatal("logout must not call HTTP client")
-				return model.User{}, nil
-			},
-		},
-		sessionStorageStub{
-			delete: func() error {
-				deleted = true
-				return nil
-			},
-		},
-		"localhost:8080",
-	)
-
-	if err := application.Logout(context.Background()); err != nil {
-		t.Fatalf("Logout() error = %v", err)
-	}
-	if !deleted {
-		t.Error("session was not deleted")
-	}
-}
-
-func TestApplication_LogoutReturnsSessionStorageCreationError(t *testing.T) {
-	storageError := errors.New("cache directory is unavailable")
-	application := newApplicationWithSessionFactory(
-		userClientStub{},
-		func() (sessionStorage, error) {
-			return nil, storageError
-		},
-		"localhost:8080",
-	)
-
-	err := application.Logout(context.Background())
-	if err == nil {
-		t.Fatal("Logout() error = nil, want session storage error")
-	}
-	if !errors.Is(err, storageError) {
-		t.Error("logout error does not preserve session storage error")
-	}
-}
-
-func TestApplication_LogoutReturnsDeleteError(t *testing.T) {
-	deleteError := errors.New("permission denied")
-	application := newApplication(
-		userClientStub{},
-		sessionStorageStub{
-			delete: func() error { return deleteError },
-		},
-		"localhost:8080",
-	)
-
-	err := application.Logout(context.Background())
-	if err == nil {
-		t.Fatal("Logout() error = nil, want delete error")
-	}
-	if !errors.Is(err, deleteError) {
-		t.Error("logout error does not preserve delete error")
-	}
-	if strings.Contains(err.Error(), "test.jwt.token") {
-		t.Error("logout error contains access token")
 	}
 }

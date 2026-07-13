@@ -7,69 +7,49 @@ import (
 	"io"
 
 	urfavecli "github.com/urfave/cli/v3"
-	"github.com/xhrobj/gopherkeeper/internal/client/config"
-	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
-	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-type userRegisterer interface {
-	Register(ctx context.Context, login, password string) (model.User, error)
-}
-
-func newRegisterCommand(input io.Reader, register passwordRunner) *urfavecli.Command {
+func newRegisterCommand(
+	input io.Reader,
+	factory clientFactory,
+	passwords passwordReader,
+) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "register",
 		Usage: "register a new user",
-		Flags: loginPasswordFlags(),
+		Flags: loginFlags(),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			return register(
+			cfg, err := configFromCommand(command)
+			if err != nil {
+				return err
+			}
+
+			application, err := factory.NewApplication(cfg)
+			if err != nil {
+				return err
+			}
+
+			return executeRegistration(
 				ctx,
-				configFromCommand(command),
-				input,
-				command.Root().Writer,
-				command.Root().ErrWriter,
+				application,
+				passwords,
+				passwordStreams{
+					input:        input,
+					output:       command.Root().Writer,
+					promptOutput: command.Root().ErrWriter,
+				},
 				command.String("login"),
-				command.Bool("password-stdin"),
 			)
 		},
 	}
 }
 
-func runRegister(
-	ctx context.Context,
-	cfg config.Config,
-	input io.Reader,
-	output io.Writer,
-	promptOutput io.Writer,
-	login string,
-	passwordStdin bool,
-) error {
-	application, err := usecase.New(cfg)
-	if err != nil {
-		return err
-	}
-
-	return executeRegistration(
-		ctx,
-		application,
-		terminalPasswordReader{},
-		passwordStreams{
-			input:        input,
-			output:       output,
-			promptOutput: promptOutput,
-		},
-		login,
-		passwordStdin,
-	)
-}
-
 func executeRegistration(
 	ctx context.Context,
-	registerer userRegisterer,
+	application application,
 	passwords passwordReader,
 	streams passwordStreams,
 	login string,
-	passwordStdin bool,
 ) error {
 	if err := validateLoginArgument(login); err != nil {
 		return err
@@ -79,13 +59,12 @@ func executeRegistration(
 		passwords,
 		streams.input,
 		streams.promptOutput,
-		passwordStdin,
 	)
 	if err != nil {
 		return err
 	}
 
-	user, err := registerer.Register(ctx, login, password)
+	user, err := application.Register(ctx, login, password)
 	if err != nil {
 		return err
 	}
@@ -101,12 +80,7 @@ func readRegistrationPassword(
 	passwords passwordReader,
 	input io.Reader,
 	promptOutput io.Writer,
-	passwordStdin bool,
 ) (string, error) {
-	if passwordStdin {
-		return passwords.ReadLine(input)
-	}
-
 	password, err := passwords.ReadHidden(input, promptOutput, "Password: ")
 	if err != nil {
 		return "", err

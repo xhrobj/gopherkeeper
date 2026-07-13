@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
 	"github.com/xhrobj/gopherkeeper/internal/client/session"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
@@ -14,8 +13,7 @@ import (
 func (a *Application) Register(ctx context.Context, login, password string) (model.User, error) {
 	user, err := a.users.Register(ctx, login, password)
 	if err != nil {
-		var apiError *httpclient.APIError
-		if errors.As(err, &apiError) && apiError.Code == "login_already_exists" {
+		if errors.Is(err, model.ErrLoginAlreadyExists) {
 			return model.User{}, newUserError(fmt.Sprintf("login %q is already registered", login), err)
 		}
 
@@ -27,15 +25,14 @@ func (a *Application) Register(ctx context.Context, login, password string) (mod
 
 // Login аутентифицирует пользователя и сохраняет online-сессию локально.
 func (a *Application) Login(ctx context.Context, login, password string) (model.User, error) {
-	sessions, err := a.sessionStorage()
+	sessions, err := a.sessions()
 	if err != nil {
-		return model.User{}, fmt.Errorf("create online session storage: %w", err)
+		return model.User{}, err
 	}
 
 	result, err := a.users.Login(ctx, login, password)
 	if err != nil {
-		var apiError *httpclient.APIError
-		if errors.As(err, &apiError) && apiError.Code == "invalid_credentials" {
+		if errors.Is(err, model.ErrInvalidCredentials) {
 			return model.User{}, newUserError("invalid login or password", err)
 		}
 
@@ -51,20 +48,6 @@ func (a *Application) Login(ctx context.Context, login, password string) (model.
 	}
 
 	return result.User, nil
-}
-
-// Logout удаляет локальную online-сессию Клиента.
-func (a *Application) Logout(_ context.Context) error {
-	sessions, err := a.sessionStorage()
-	if err != nil {
-		return fmt.Errorf("create online session storage: %w", err)
-	}
-
-	if err := sessions.Delete(); err != nil {
-		return fmt.Errorf("delete online session: %w", err)
-	}
-
-	return nil
 }
 
 // Whoami возвращает пользователя из текущей online-сессии.
@@ -83,9 +66,9 @@ func (a *Application) Whoami(ctx context.Context) (model.User, error) {
 }
 
 func (a *Application) loadSession() (session.Session, error) {
-	sessions, err := a.sessionStorage()
+	sessions, err := a.sessions()
 	if err != nil {
-		return session.Session{}, fmt.Errorf("create online session storage: %w", err)
+		return session.Session{}, err
 	}
 
 	storedSession, err := sessions.Load(a.serverAddress)
@@ -110,8 +93,7 @@ func mapSessionLoadError(err error) error {
 }
 
 func mapCurrentUserError(err error) error {
-	var apiError *httpclient.APIError
-	if errors.As(err, &apiError) && apiError.Code == "unauthorized" {
+	if errors.Is(err, model.ErrUnauthorized) {
 		return newUserError("not logged in", errors.Join(ErrNotLoggedIn, err))
 	}
 

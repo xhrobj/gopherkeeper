@@ -12,17 +12,13 @@ type passwordStreams struct {
 	promptOutput io.Writer
 }
 
-func loginPasswordFlags() []urfavecli.Flag {
+func loginFlags() []urfavecli.Flag {
 	return []urfavecli.Flag{
 		&urfavecli.StringFlag{
 			Name:     "login",
 			Aliases:  []string{"l"},
 			Usage:    "user login",
 			Required: true,
-		},
-		&urfavecli.BoolFlag{
-			Name:  "password-stdin",
-			Usage: "read password from standard input",
 		},
 	}
 }

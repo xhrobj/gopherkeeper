@@ -13,8 +13,13 @@ func TestLogoutCommand_Configuration(t *testing.T) {
 	isolateClientConfig(t)
 
 	var gotConfig config.Config
-	var output bytes.Buffer
+	factory := newClientFactoryStub(t)
+	factory.newLogoutApplication = func(cfg config.Config) (userLogoutter, error) {
+		gotConfig = cfg
+		return userLogoutterStub{logout: func(context.Context) error { return nil }}, nil
+	}
 
+	var output bytes.Buffer
 	err := runTestCommand(
 		t,
 		[]string{
@@ -27,12 +32,7 @@ func TestLogoutCommand_Configuration(t *testing.T) {
 		nil,
 		&output,
 		io.Discard,
-		commandRunners{
-			logout: func(_ context.Context, cfg config.Config, _ io.Writer) error {
-				gotConfig = cfg
-				return nil
-			},
-		},
+		factory,
 	)
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
@@ -45,5 +45,8 @@ func TestLogoutCommand_Configuration(t *testing.T) {
 	}
 	if gotConfig != wantConfig {
 		t.Errorf("configuration = %+v, want %+v", gotConfig, wantConfig)
+	}
+	if got := output.String(); got != "logged out\n" {
+		t.Errorf("output = %q, want logged out", got)
 	}
 }

@@ -106,10 +106,10 @@ func TestTextPayload_ValidateNil(t *testing.T) {
 	}
 }
 
-func TestRecord_Metadata(t *testing.T) {
+func TestEncryptedRecord_Metadata(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 8, 12, 0, 0, 0, time.UTC)
 	updatedAt := time.Date(2026, time.July, 8, 12, 5, 0, 0, time.UTC)
-	record := Record{
+	record := EncryptedRecord{
 		ID:            "550e8400-e29b-41d4-a716-446655440000",
 		UserID:        42,
 		Type:          RecordTypeText,

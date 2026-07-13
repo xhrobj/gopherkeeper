@@ -11,7 +11,7 @@ const (
 
 const (
 	errorMessageInvalidCredentials   = "invalid login or password"
-	errorMessagePayloadTooLarge      = "request body is too large"
+	errorMessagePayloadTooLarge      = "payload is too large"
 	errorMessageUnsupportedMediaType = "content type must be application/json"
 	errorMessageInternal             = "internal server error"
 )

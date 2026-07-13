@@ -15,7 +15,7 @@ func TestNewRecordPayload(t *testing.T) {
 		{name: "text", recordType: RecordTypeText, wantType: RecordTypeText},
 		{name: "credentials", recordType: RecordTypeCredentials, wantType: RecordTypeCredentials},
 		{name: "card", recordType: RecordTypeCard, wantType: RecordTypeCard},
-		{name: "binary is not implemented", recordType: RecordTypeBinary, wantErr: ErrRecordTypeUnsupported},
+		{name: "binary", recordType: RecordTypeBinary, wantType: RecordTypeBinary},
 		{name: "unknown", recordType: RecordType("unknown"), wantErr: ErrRecordTypeUnsupported},
 	}
 
@@ -53,6 +53,8 @@ func TestRecordPayload_RecordType(t *testing.T) {
 			},
 			want: RecordTypeCredentials,
 		},
+		{name: "card", payload: &CardPayload{Number: "2013 0614 2020 0619"}, want: RecordTypeCard},
+		{name: "binary", payload: &BinaryPayload{Filename: "secret.bin", Data: []byte{0x2a}}, want: RecordTypeBinary},
 	}
 
 	for _, tt := range tests {

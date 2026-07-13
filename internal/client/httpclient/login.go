@@ -10,18 +10,6 @@ import (
 
 const loginPath = "/api/v1/auth/login"
 
-// LoginResult содержит результат успешной аутентификации пользователя.
-type LoginResult struct {
-	// AccessToken содержит bearer token для авторизованных online-запросов.
-	AccessToken string
-
-	// ExpiresAt содержит время истечения срока действия token'а.
-	ExpiresAt time.Time
-
-	// User содержит данные аутентифицированного пользователя.
-	User model.User
-}
-
 type loginRequest struct {
 	Login    string `json:"login"`
 	Password string `json:"password"`
@@ -34,7 +22,7 @@ type loginResponse struct {
 }
 
 // Login аутентифицирует пользователя на Сервере и возвращает bearer token.
-func (c *Client) Login(ctx context.Context, login, password string) (LoginResult, error) {
+func (c *Client) Login(ctx context.Context, login, password string) (model.Authentication, error) {
 	var loggedIn loginResponse
 
 	if err := c.doJSON(ctx, jsonRequest{
@@ -44,13 +32,22 @@ func (c *Client) Login(ctx context.Context, login, password string) (LoginResult
 		requestBody:    loginRequest{Login: login, Password: password},
 		expectedStatus: http.StatusOK,
 		responseBody:   &loggedIn,
+		errorCause:     loginErrorCause,
 	}); err != nil {
-		return LoginResult{}, err
+		return model.Authentication{}, err
 	}
 
-	return LoginResult{
+	return model.Authentication{
 		AccessToken: loggedIn.AccessToken,
 		ExpiresAt:   loggedIn.ExpiresAt,
 		User:        userFromResponse(loggedIn.User),
 	}, nil
+}
+
+func loginErrorCause(code string) error {
+	if code == "invalid_credentials" {
+		return model.ErrInvalidCredentials
+	}
+
+	return nil
 }

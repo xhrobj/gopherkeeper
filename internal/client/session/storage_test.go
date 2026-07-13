@@ -42,8 +42,8 @@ func TestFileStorage_SaveCreatesPrivateFile(t *testing.T) {
 		t.Fatalf("Save() error = %v", err)
 	}
 
-	assertFileMode(t, filepath.Dir(storage.Path()), 0o700)
-	assertFileMode(t, storage.Path(), 0o600)
+	assertFileMode(t, filepath.Dir(storage.path), 0o700)
+	assertFileMode(t, storage.path, 0o600)
 }
 
 func TestFileStorage_DeleteRemovesSessionFile(t *testing.T) {
@@ -56,7 +56,7 @@ func TestFileStorage_DeleteRemovesSessionFile(t *testing.T) {
 		t.Fatalf("Delete() error = %v", err)
 	}
 
-	_, err := os.Stat(storage.Path())
+	_, err := os.Stat(storage.path)
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("stat deleted session = %v, want not exist", err)
 	}
@@ -84,7 +84,7 @@ func TestFileStorage_LoadRejectsExpiredSession(t *testing.T) {
 	session := testSession()
 	session.ExpiresAt = testNow()
 
-	if err := writeRawSession(storage.Path(), session); err != nil {
+	if err := writeRawSession(storage.path, session); err != nil {
 		t.Fatalf("write session: %v", err)
 	}
 
@@ -132,7 +132,7 @@ func TestFileStorage_LoadRejectsInvalidJSON(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			storage := newTestStorage(t, "session.json")
-			if err := os.WriteFile(storage.Path(), []byte(tt.body), 0o600); err != nil {
+			if err := os.WriteFile(storage.path, []byte(tt.body), 0o600); err != nil {
 				t.Fatalf("write session file: %v", err)
 			}
 
@@ -190,7 +190,7 @@ func TestFileStorage_SaveRejectsInvalidSession(t *testing.T) {
 	}
 }
 
-func TestNewFileStorageUsesDefaultPath(t *testing.T) {
+func TestNewFileStorage_UsesDefaultPath(t *testing.T) {
 	storage, err := NewFileStorage("")
 	if err != nil {
 		t.Fatalf("NewFileStorage() error = %v", err)
@@ -201,8 +201,8 @@ func TestNewFileStorageUsesDefaultPath(t *testing.T) {
 		t.Fatalf("UserCacheDir() error = %v", err)
 	}
 	want := filepath.Join(cacheDir, "gopherkeeper", "session.json")
-	if storage.Path() != want {
-		t.Errorf("Path() = %q, want %q", storage.Path(), want)
+	if storage.path != want {
+		t.Errorf("storage path = %q, want %q", storage.path, want)
 	}
 }
 

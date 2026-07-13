@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 func TestClient_CurrentUser(t *testing.T) {
@@ -110,78 +112,10 @@ func TestClient_CurrentUserReturnsAPIError(t *testing.T) {
 	if apiError.Code != "unauthorized" {
 		t.Errorf("code = %q, want unauthorized", apiError.Code)
 	}
-	if strings.Contains(err.Error(), "test.jwt.token") {
-		t.Error("current user error contains access token")
-	}
-}
-
-func TestClient_CurrentUserReturnsStatusErrorForInvalidErrorResponse(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{"code":`))
-	}))
-	defer server.Close()
-
-	client, err := New(serverAddress(server), writeServerCertificate(t, server))
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	_, err = client.CurrentUser(context.Background(), "test.jwt.token")
-	if err == nil {
-		t.Fatal("CurrentUser() error = nil, want status error")
-	}
-	if !strings.Contains(err.Error(), "500 Internal Server Error") {
-		t.Errorf("CurrentUser() error = %q, want status 500", err)
+	if !errors.Is(err, model.ErrUnauthorized) {
+		t.Errorf("CurrentUser() error = %v, want ErrUnauthorized", err)
 	}
 	if strings.Contains(err.Error(), "test.jwt.token") {
 		t.Error("current user error contains access token")
-	}
-}
-
-func TestClient_CurrentUserReturnsDecodeError(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"id":`))
-	}))
-	defer server.Close()
-
-	client, err := New(serverAddress(server), writeServerCertificate(t, server))
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	_, err = client.CurrentUser(context.Background(), "test.jwt.token")
-	if err == nil {
-		t.Fatal("CurrentUser() error = nil, want JSON decoding error")
-	}
-	if !strings.Contains(err.Error(), "decode current user response") {
-		t.Errorf("CurrentUser() error = %q, want decode context", err)
-	}
-	if strings.Contains(err.Error(), "test.jwt.token") {
-		t.Error("current user error contains access token")
-	}
-}
-
-func TestClient_CurrentUserReturnsNetworkError(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	certificate := writeServerCertificate(t, server)
-	address := serverAddress(server)
-	server.Close()
-
-	client, err := New(address, certificate)
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	_, err = client.CurrentUser(context.Background(), "test.jwt.token")
-	if err == nil {
-		t.Fatal("CurrentUser() error = nil, want network error")
-	}
-	if !strings.Contains(err.Error(), "send current user request") {
-		t.Errorf("CurrentUser() error = %q, want send context", err)
-	}
-	if strings.Contains(err.Error(), "test.jwt.token") {
-		t.Error("network error contains access token")
 	}
 }

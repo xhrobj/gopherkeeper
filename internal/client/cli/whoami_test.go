@@ -13,12 +13,6 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-type currentUserGetterFunc func(context.Context) (model.User, error)
-
-func (f currentUserGetterFunc) Whoami(ctx context.Context) (model.User, error) {
-	return f(ctx)
-}
-
 func TestExecuteWhoami(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 4, 12, 0, 0, 0, time.UTC)
 	var output bytes.Buffer

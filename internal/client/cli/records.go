@@ -5,171 +5,101 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"text/tabwriter"
-	"time"
 
 	urfavecli "github.com/urfave/cli/v3"
-	"github.com/xhrobj/gopherkeeper/internal/client/config"
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 const (
 	titleFlag         = "title"
-	textFileFlag      = "text-file"
 	metadataFileFlag  = "metadata-file"
+	outputFlag        = "output"
 	revisionFlag      = "revision"
 	recordIDArgsUsage = "<record-id>"
 )
 
-type textRecordCreator interface {
-	CreateTextRecord(ctx context.Context, request usecase.CreateTextRecordRequest) (usecase.TextRecord, error)
-}
-
-type textRecordUpdater interface {
-	UpdateTextRecord(ctx context.Context, request usecase.UpdateTextRecordRequest) (usecase.TextRecord, error)
-}
-
-type recordLister interface {
-	ListRecords(ctx context.Context) ([]model.RecordMetadata, error)
-}
-
-type recordGetter interface {
-	GetRecord(ctx context.Context, recordID string) (usecase.Record, error)
-}
-
-type recordDeleter interface {
-	DeleteRecord(ctx context.Context, request usecase.DeleteRecordRequest) error
-}
-
-func newRecordsCommand(input io.Reader, runners commandRunners) *urfavecli.Command {
+func newRecordsCommand(
+	input io.Reader,
+	factory clientFactory,
+	passwords passwordReader,
+) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "records",
 		Usage: "manage private records",
 		Commands: []*urfavecli.Command{
-			newCreateTextRecordCommand(runners.createTextRecord),
-			newCreateCredentialsRecordCommand(input, runners.createCredentialsRecord),
-			newCreateCardRecordCommand(input, runners.createCardRecord),
-			newUpdateTextRecordCommand(runners.updateTextRecord),
-			newUpdateCredentialsRecordCommand(input, runners.updateCredentialsRecord),
-			newUpdateCardRecordCommand(input, runners.updateCardRecord),
-			newListRecordsCommand(runners.listRecords),
-			newGetRecordCommand(runners.getRecord),
-			newDeleteRecordCommand(runners.deleteRecord),
+			newCreateTextRecordCommand(factory),
+			newCreateCredentialsRecordCommand(input, factory, passwords),
+			newCreateCardRecordCommand(input, factory, passwords),
+			newCreateBinaryRecordCommand(factory),
+			newUpdateTextRecordCommand(factory),
+			newUpdateCredentialsRecordCommand(input, factory, passwords),
+			newUpdateCardRecordCommand(input, factory, passwords),
+			newUpdateBinaryRecordCommand(factory),
+			newListRecordsCommand(factory),
+			newGetRecordCommand(factory),
+			newDeleteRecordCommand(factory),
 		},
 	}
 }
-
-func newCreateTextRecordCommand(create textRecordCreateRunner) *urfavecli.Command {
-	return &urfavecli.Command{
-		Name:  "create-text",
-		Usage: "create a private text record",
-		Flags: []urfavecli.Flag{
-			&urfavecli.StringFlag{
-				Name:     titleFlag,
-				Usage:    "record title",
-				Required: true,
-			},
-			&urfavecli.StringFlag{
-				Name:     textFileFlag,
-				Usage:    "path to file with private text payload",
-				Required: true,
-			},
-			&urfavecli.StringFlag{
-				Name:  metadataFileFlag,
-				Usage: "path to optional file with private metadata",
-			},
-		},
-		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			return create(
-				ctx,
-				configFromCommand(command),
-				command.Root().Writer,
-				command.String(titleFlag),
-				command.String(textFileFlag),
-				command.String(metadataFileFlag),
-			)
-		},
-	}
-}
-
-func newUpdateTextRecordCommand(update textRecordUpdateRunner) *urfavecli.Command {
-	return &urfavecli.Command{
-		Name:      "update-text",
-		Usage:     "update a private text record",
-		ArgsUsage: recordIDArgsUsage,
-		Flags: []urfavecli.Flag{
-			&urfavecli.Int64Flag{
-				Name:     revisionFlag,
-				Aliases:  []string{"r"},
-				Usage:    "expected record revision",
-				Required: true,
-			},
-			&urfavecli.StringFlag{
-				Name:     titleFlag,
-				Usage:    "new record title",
-				Required: true,
-			},
-			&urfavecli.StringFlag{
-				Name:     textFileFlag,
-				Usage:    "path to file with new private text payload",
-				Required: true,
-			},
-			&urfavecli.StringFlag{
-				Name:  metadataFileFlag,
-				Usage: "path to optional file with new private metadata",
-			},
-		},
-		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			recordID := command.Args().First()
-			if recordID == "" {
-				return errors.New("record id is required")
-			}
-
-			return update(
-				ctx,
-				configFromCommand(command),
-				command.Root().Writer,
-				textRecordUpdateCommandRequest{
-					recordID:         recordID,
-					expectedRevision: command.Int64(revisionFlag),
-					title:            command.String(titleFlag),
-					textFile:         command.String(textFileFlag),
-					metadataFile:     command.String(metadataFileFlag),
-				},
-			)
-		},
-	}
-}
-
-func newListRecordsCommand(list outputRunner) *urfavecli.Command {
+func newListRecordsCommand(factory clientFactory) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "list",
 		Usage: "list private record metadata",
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			return list(ctx, configFromCommand(command), command.Root().Writer)
+			cfg, err := configFromCommand(command)
+			if err != nil {
+				return err
+			}
+
+			application, err := factory.NewApplication(cfg)
+			if err != nil {
+				return err
+			}
+
+			return executeListRecords(ctx, application, command.Root().Writer)
 		},
 	}
 }
-
-func newGetRecordCommand(get recordGetRunner) *urfavecli.Command {
+func newGetRecordCommand(factory clientFactory) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:      "get",
 		Usage:     "get a private record",
 		ArgsUsage: recordIDArgsUsage,
+		Flags: []urfavecli.Flag{
+			&urfavecli.StringFlag{
+				Name:  outputFlag,
+				Usage: "path for saving a binary record",
+			},
+		},
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			recordID := command.Args().First()
 			if recordID == "" {
 				return errors.New("record id is required")
 			}
 
-			return get(ctx, configFromCommand(command), command.Root().Writer, recordID)
+			cfg, err := configFromCommand(command)
+			if err != nil {
+				return err
+			}
+
+			application, err := factory.NewApplication(cfg)
+			if err != nil {
+				return err
+			}
+
+			return executeGetRecord(
+				ctx,
+				application,
+				command.Root().Writer,
+				recordID,
+				command.String(outputFlag),
+			)
 		},
 	}
 }
-
-func newDeleteRecordCommand(delete recordDeleteRunner) *urfavecli.Command {
+func newDeleteRecordCommand(factory clientFactory) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:      "delete",
 		Usage:     "delete a private record",
@@ -188,9 +118,19 @@ func newDeleteRecordCommand(delete recordDeleteRunner) *urfavecli.Command {
 				return errors.New("record id is required")
 			}
 
-			return delete(
+			cfg, err := configFromCommand(command)
+			if err != nil {
+				return err
+			}
+
+			application, err := factory.NewApplication(cfg)
+			if err != nil {
+				return err
+			}
+
+			return executeDeleteRecord(
 				ctx,
-				configFromCommand(command),
+				application,
 				command.Root().Writer,
 				recordID,
 				command.Int64(revisionFlag),
@@ -198,165 +138,14 @@ func newDeleteRecordCommand(delete recordDeleteRunner) *urfavecli.Command {
 		},
 	}
 }
-
-func runCreateTextRecord(
-	ctx context.Context,
-	cfg config.Config,
-	output io.Writer,
-	title string,
-	textFile string,
-	metadataFile string,
-) error {
-	application, err := usecase.New(cfg)
-	if err != nil {
-		return err
-	}
-
-	return executeCreateTextRecord(ctx, application, output, title, textFile, metadataFile)
-}
-
-func runListRecords(
-	ctx context.Context,
-	cfg config.Config,
-	output io.Writer,
-) error {
-	application, err := usecase.New(cfg)
-	if err != nil {
-		return err
-	}
-
-	return executeListRecords(ctx, application, output)
-}
-
-func runUpdateTextRecord(
-	ctx context.Context,
-	cfg config.Config,
-	output io.Writer,
-	request textRecordUpdateCommandRequest,
-) error {
-	application, err := usecase.New(cfg)
-	if err != nil {
-		return err
-	}
-
-	return executeUpdateTextRecord(ctx, application, output, request)
-}
-
-func runDeleteRecord(
-	ctx context.Context,
-	cfg config.Config,
-	output io.Writer,
-	recordID string,
-	expectedRevision int64,
-) error {
-	application, err := usecase.New(cfg)
-	if err != nil {
-		return err
-	}
-
-	return executeDeleteRecord(ctx, application, output, recordID, expectedRevision)
-}
-
-func runGetRecord(
-	ctx context.Context,
-	cfg config.Config,
-	output io.Writer,
-	recordID string,
-) error {
-	application, err := usecase.New(cfg)
-	if err != nil {
-		return err
-	}
-
-	return executeGetRecord(ctx, application, output, recordID)
-}
-
-func executeCreateTextRecord(
-	ctx context.Context,
-	creator textRecordCreator,
-	output io.Writer,
-	title string,
-	textFile string,
-	metadataFile string,
-) error {
-	text, err := readRequiredTextFile(textFile)
-	if err != nil {
-		return err
-	}
-
-	metadata, err := readOptionalTextFile(metadataFile)
-	if err != nil {
-		return err
-	}
-
-	record, err := creator.CreateTextRecord(ctx, usecase.CreateTextRecordRequest{
-		Title:    title,
-		Text:     text,
-		Metadata: metadata,
-	})
-	if err != nil {
-		return err
-	}
-
-	if _, err := fmt.Fprintf(
-		output,
-		"Created text record %s with revision %d.\n",
-		record.Metadata.ID,
-		record.Metadata.Revision,
-	); err != nil {
-		return fmt.Errorf("write created text record: %w", err)
-	}
-
-	return nil
-}
-
-func executeUpdateTextRecord(
-	ctx context.Context,
-	updater textRecordUpdater,
-	output io.Writer,
-	request textRecordUpdateCommandRequest,
-) error {
-	text, err := readRequiredTextFile(request.textFile)
-	if err != nil {
-		return err
-	}
-
-	metadata, err := readOptionalTextFile(request.metadataFile)
-	if err != nil {
-		return err
-	}
-
-	record, err := updater.UpdateTextRecord(ctx, usecase.UpdateTextRecordRequest{
-		RecordID:         request.recordID,
-		ExpectedRevision: request.expectedRevision,
-		Title:            request.title,
-		Text:             text,
-		Metadata:         metadata,
-	})
-	if err != nil {
-		return err
-	}
-
-	if _, err := fmt.Fprintf(
-		output,
-		"Updated text record %s to revision %d.\n",
-		record.Metadata.ID,
-		record.Metadata.Revision,
-	); err != nil {
-		return fmt.Errorf("write updated text record: %w", err)
-	}
-
-	return nil
-}
-
 func executeDeleteRecord(
 	ctx context.Context,
-	deleter recordDeleter,
+	application application,
 	output io.Writer,
 	recordID string,
 	expectedRevision int64,
 ) error {
-	if err := deleter.DeleteRecord(ctx, usecase.DeleteRecordRequest{
+	if err := application.DeleteRecord(ctx, usecase.DeleteRecordRequest{
 		RecordID:         recordID,
 		ExpectedRevision: expectedRevision,
 	}); err != nil {
@@ -369,9 +158,8 @@ func executeDeleteRecord(
 
 	return nil
 }
-
-func executeListRecords(ctx context.Context, lister recordLister, output io.Writer) error {
-	records, err := lister.ListRecords(ctx)
+func executeListRecords(ctx context.Context, application application, output io.Writer) error {
+	records, err := application.ListRecords(ctx)
 	if err != nil {
 		return err
 	}
@@ -407,24 +195,48 @@ func executeListRecords(ctx context.Context, lister recordLister, output io.Writ
 
 	return nil
 }
-
-func executeGetRecord(ctx context.Context, getter recordGetter, output io.Writer, recordID string) error {
-	record, err := getter.GetRecord(ctx, recordID)
+func executeGetRecord(
+	ctx context.Context,
+	application application,
+	output io.Writer,
+	recordID, outputPath string,
+) error {
+	record, err := application.GetRecord(ctx, recordID)
 	if err != nil {
 		return err
 	}
 
-	if _, err := fmt.Fprintf(
-		output,
-		"ID: %s\nType: %s\nTitle: %s\nRevision: %d\nCreated at: %s\nUpdated at: %s\n",
-		record.Metadata.ID,
-		record.Metadata.Type,
-		record.Metadata.Title,
-		record.Metadata.Revision,
-		formatRecordTime(record.Metadata.CreatedAt),
-		formatRecordTime(record.Metadata.UpdatedAt),
-	); err != nil {
-		return fmt.Errorf("write record metadata: %w", err)
+	if record.Metadata.Type == model.RecordTypeBinary {
+		return writeBinaryRecord(output, record, outputPath)
+	}
+	if outputPath != "" {
+		return errors.New("--output can only be used with binary records")
+	}
+
+	return writeNonBinaryRecord(output, record)
+}
+
+func writeBinaryRecord(output io.Writer, record model.Record, outputPath string) error {
+	payload, ok := record.Payload.(*model.BinaryPayload)
+	if !ok || payload == nil {
+		return errors.New("unexpected binary payload")
+	}
+	if outputPath == "" {
+		return errors.New("output path is required for binary record")
+	}
+	if err := writeBinaryFile(outputPath, payload.Data); err != nil {
+		return err
+	}
+	if err := writeRecordHeader(output, record.Metadata); err != nil {
+		return err
+	}
+
+	return writeBinaryRecordPayload(output, payload, outputPath)
+}
+
+func writeNonBinaryRecord(output io.Writer, record model.Record) error {
+	if err := writeRecordHeader(output, record.Metadata); err != nil {
+		return err
 	}
 
 	switch payload := record.Payload.(type) {
@@ -449,110 +261,4 @@ func executeGetRecord(ctx context.Context, getter recordGetter, output io.Writer
 	default:
 		return errors.New("unsupported record payload")
 	}
-}
-
-func writeTextRecordPayload(output io.Writer, payload *model.TextPayload) error {
-	if _, err := fmt.Fprintf(output, "\nText:\n%s\n", payload.Text); err != nil {
-		return fmt.Errorf("write text record: %w", err)
-	}
-
-	return writeRecordMetadataPayload(output, payload.Metadata, "text record")
-}
-
-func writeCredentialsRecordPayload(output io.Writer, payload *model.CredentialsPayload) error {
-	if _, err := fmt.Fprintf(
-		output,
-		"\nLogin: %s\nPassword: %s\n",
-		payload.Login,
-		payload.Password,
-	); err != nil {
-		return fmt.Errorf("write credentials record: %w", err)
-	}
-
-	if payload.URL != "" {
-		if _, err := fmt.Fprintf(output, "URL: %s\n", payload.URL); err != nil {
-			return fmt.Errorf("write credentials record URL: %w", err)
-		}
-	}
-
-	return writeRecordMetadataPayload(output, payload.Metadata, "credentials record")
-}
-
-func writeCardRecordPayload(output io.Writer, payload *model.CardPayload) error {
-	if _, err := fmt.Fprintf(output, "\nNumber: %s\n", payload.Number); err != nil {
-		return fmt.Errorf("write card record: %w", err)
-	}
-
-	if payload.Cardholder != "" {
-		if _, err := fmt.Fprintf(output, "Cardholder: %s\n", payload.Cardholder); err != nil {
-			return fmt.Errorf("write cardholder: %w", err)
-		}
-	}
-
-	if payload.ExpiryMonth != nil && payload.ExpiryYear != nil {
-		if _, err := fmt.Fprintf(
-			output,
-			"Expiry: %02d/%d\n",
-			*payload.ExpiryMonth,
-			*payload.ExpiryYear,
-		); err != nil {
-			return fmt.Errorf("write card expiry: %w", err)
-		}
-	}
-
-	if payload.CVV != "" {
-		if _, err := fmt.Fprintf(output, "CVV: %s\n", payload.CVV); err != nil {
-			return fmt.Errorf("write card CVV: %w", err)
-		}
-	}
-
-	return writeRecordMetadataPayload(output, payload.Metadata, "card record")
-}
-
-func writeRecordMetadataPayload(output io.Writer, metadata string, description string) error {
-	if metadata == "" {
-		return nil
-	}
-
-	if _, err := fmt.Fprintf(output, "\nMetadata:\n%s\n", metadata); err != nil {
-		return fmt.Errorf("write %s metadata: %w", description, err)
-	}
-
-	return nil
-}
-
-func readRequiredTextFile(path string) (string, error) {
-	return readLimitedTextFile(path, "text file", model.TextPayloadMaxSize)
-}
-
-func readOptionalTextFile(path string) (string, error) {
-	if path == "" {
-		return "", nil
-	}
-
-	return readLimitedTextFile(path, "metadata file", model.MetadataMaxSize)
-}
-
-func readLimitedTextFile(path string, description string, maxSize int64) (string, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return "", fmt.Errorf("stat %s: %w", description, err)
-	}
-	if info.IsDir() {
-		return "", fmt.Errorf("%s is a directory", description)
-	}
-	if info.Size() > maxSize {
-		return "", fmt.Errorf("%s is too large: %w", description, model.ErrPayloadTooLarge)
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("read %s: %w", description, err)
-	}
-
-	return string(data), nil
-}
-
-func formatRecordTime(value time.Time) string {
-	return value.UTC().Format(time.RFC3339)
 }

@@ -72,11 +72,6 @@ func newFileStorage(path string, now nowFunc) (*FileStorage, error) {
 	return &FileStorage{path: resolvedPath, now: now}, nil
 }
 
-// Path возвращает фактический путь к session-файлу.
-func (s *FileStorage) Path() string {
-	return s.path
-}
-
 // Save атомарно сохраняет online-сессию в файл.
 func (s *FileStorage) Save(session Session) error {
 	if err := s.validate(session); err != nil {

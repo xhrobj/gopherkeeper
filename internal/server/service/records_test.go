@@ -55,6 +55,16 @@ func TestRecordService_Create(t *testing.T) {
 				Metadata:    "test card",
 			},
 		},
+		{
+			name:  "binary record",
+			title: "Alice backup",
+			payload: &model.BinaryPayload{
+				Filename:    "backup.bin",
+				Data:        []byte{0x00, 0x42, 0xfe, 0xff},
+				ContentType: "application/octet-stream",
+				Metadata:    "private backup",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -87,7 +97,7 @@ func TestRecordService_Create(t *testing.T) {
 				},
 			}
 			records := &recordRepositoryStub{
-				createFunc: func(_ context.Context, record model.Record) (model.Record, error) {
+				createFunc: func(_ context.Context, record model.EncryptedRecord) (model.EncryptedRecord, error) {
 					if err := model.ValidateRecordID(record.ID); err != nil {
 						t.Fatalf("Create() record ID is invalid: %v", err)
 					}
@@ -223,6 +233,16 @@ func TestRecordService_Get(t *testing.T) {
 				Metadata:    "test card",
 			},
 		},
+		{
+			name:       "binary record",
+			recordType: model.RecordTypeBinary,
+			payload: &model.BinaryPayload{
+				Filename:    "backup.bin",
+				Data:        []byte{0x00, 0x42, 0xfe, 0xff},
+				ContentType: "application/octet-stream",
+				Metadata:    "private backup",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -231,7 +251,7 @@ func TestRecordService_Get(t *testing.T) {
 			if err != nil {
 				t.Fatalf("json.Marshal() error = %v", err)
 			}
-			stored := model.Record{
+			stored := model.EncryptedRecord{
 				ID:            recordID,
 				UserID:        42,
 				Type:          tt.recordType,
@@ -245,7 +265,7 @@ func TestRecordService_Get(t *testing.T) {
 				Ciphertext:    []byte("ciphertext"),
 			}
 			records := &recordRepositoryStub{
-				getFunc: func(_ context.Context, userID int64, gotRecordID string) (model.Record, error) {
+				getFunc: func(_ context.Context, userID int64, gotRecordID string) (model.EncryptedRecord, error) {
 					if userID != 42 || gotRecordID != recordID {
 						t.Fatalf("Get() args = %d, %q", userID, gotRecordID)
 					}
@@ -291,8 +311,8 @@ func TestRecordService_Get(t *testing.T) {
 func TestRecordService_GetRejectsInvalidDecryptedPayload(t *testing.T) {
 	recordID := "550e8400-e29b-41d4-a716-446655440000"
 	records := &recordRepositoryStub{
-		getFunc: func(context.Context, int64, string) (model.Record, error) {
-			return model.Record{
+		getFunc: func(context.Context, int64, string) (model.EncryptedRecord, error) {
+			return model.EncryptedRecord{
 				ID:            recordID,
 				UserID:        42,
 				Type:          model.RecordTypeCredentials,
@@ -319,11 +339,11 @@ func TestRecordService_GetRejectsInvalidDecryptedPayload(t *testing.T) {
 
 func TestRecordService_GetRejectsUnsupportedType(t *testing.T) {
 	records := &recordRepositoryStub{
-		getFunc: func(context.Context, int64, string) (model.Record, error) {
-			return model.Record{
+		getFunc: func(context.Context, int64, string) (model.EncryptedRecord, error) {
+			return model.EncryptedRecord{
 				ID:     "550e8400-e29b-41d4-a716-446655440000",
 				UserID: 42,
-				Type:   model.RecordTypeBinary,
+				Type:   model.RecordType("otp"),
 			}, nil
 		},
 	}
@@ -341,8 +361,8 @@ func TestRecordService_GetRejectsUnsupportedType(t *testing.T) {
 
 func TestRecordService_GetRepositoryError(t *testing.T) {
 	records := &recordRepositoryStub{
-		getFunc: func(context.Context, int64, string) (model.Record, error) {
-			return model.Record{}, model.ErrRecordNotFound
+		getFunc: func(context.Context, int64, string) (model.EncryptedRecord, error) {
+			return model.EncryptedRecord{}, model.ErrRecordNotFound
 		},
 	}
 	crypto := &recordPayloadCryptoStub{}
@@ -361,6 +381,7 @@ func TestRecordService_RejectsNilPayload(t *testing.T) {
 	var textPayload *model.TextPayload
 	var credentialsPayload *model.CredentialsPayload
 	var cardPayload *model.CardPayload
+	var binaryPayload *model.BinaryPayload
 
 	tests := []struct {
 		name    string
@@ -370,6 +391,7 @@ func TestRecordService_RejectsNilPayload(t *testing.T) {
 		{name: "text", payload: textPayload, wantErr: model.ErrInvalidTextPayload},
 		{name: "credentials", payload: credentialsPayload, wantErr: model.ErrInvalidCredentialsPayload},
 		{name: "card", payload: cardPayload, wantErr: model.ErrInvalidCardPayload},
+		{name: "binary", payload: binaryPayload, wantErr: model.ErrInvalidBinaryPayload},
 	}
 
 	for _, tt := range tests {
@@ -442,7 +464,7 @@ type updateRecordFixture struct {
 	recordID  string
 	createdAt time.Time
 	updatedAt time.Time
-	current   model.Record
+	current   model.EncryptedRecord
 	encrypted recordcrypto.EncryptedPayload
 	payload   model.TextPayload
 }
@@ -456,7 +478,7 @@ func newUpdateRecordFixture() updateRecordFixture {
 		recordID:  recordID,
 		createdAt: createdAt,
 		updatedAt: updatedAt,
-		current: model.Record{
+		current: model.EncryptedRecord{
 			ID:            recordID,
 			UserID:        42,
 			Type:          model.RecordTypeText,
@@ -511,11 +533,11 @@ func newUpdateRepositoryStub(t *testing.T, fixture updateRecordFixture) *recordR
 	t.Helper()
 
 	return &recordRepositoryStub{
-		getFunc: func(_ context.Context, userID int64, recordID string) (model.Record, error) {
+		getFunc: func(_ context.Context, userID int64, recordID string) (model.EncryptedRecord, error) {
 			assertUpdateGetArgs(t, userID, recordID, fixture)
 			return fixture.current, nil
 		},
-		updateFunc: func(_ context.Context, record model.Record, expectedRevision int64) (model.Record, error) {
+		updateFunc: func(_ context.Context, record model.EncryptedRecord, expectedRevision int64) (model.EncryptedRecord, error) {
 			assertUpdateRecordPatch(t, record, expectedRevision, fixture)
 			updated := record
 			updated.Revision = 2
@@ -536,7 +558,7 @@ func assertUpdateGetArgs(t *testing.T, userID int64, recordID string, fixture up
 
 func assertUpdateRecordPatch(
 	t *testing.T,
-	record model.Record,
+	record model.EncryptedRecord,
 	expectedRevision int64,
 	fixture updateRecordFixture,
 ) {
@@ -561,7 +583,7 @@ func assertUpdateRecordPatch(
 	}
 }
 
-func assertUpdatedRecord(t *testing.T, got DecryptedRecord, fixture updateRecordFixture) {
+func assertUpdatedRecord(t *testing.T, got model.Record, fixture updateRecordFixture) {
 	t.Helper()
 
 	if got.Metadata.ID != fixture.recordID || got.Metadata.Title != "Updated Alice note" ||
@@ -693,7 +715,7 @@ func TestRecordService_UpdateCurrentRecordErrors(t *testing.T) {
 	recordID := "550e8400-e29b-41d4-a716-446655440000"
 	tests := []struct {
 		name    string
-		current model.Record
+		current model.EncryptedRecord
 		getErr  error
 		wantErr error
 	}{
@@ -704,7 +726,7 @@ func TestRecordService_UpdateCurrentRecordErrors(t *testing.T) {
 		},
 		{
 			name: "unsupported type",
-			current: model.Record{
+			current: model.EncryptedRecord{
 				ID:       recordID,
 				UserID:   42,
 				Type:     model.RecordTypeCredentials,
@@ -714,7 +736,7 @@ func TestRecordService_UpdateCurrentRecordErrors(t *testing.T) {
 		},
 		{
 			name: "stale revision",
-			current: model.Record{
+			current: model.EncryptedRecord{
 				ID:       recordID,
 				UserID:   42,
 				Type:     model.RecordTypeText,
@@ -727,7 +749,7 @@ func TestRecordService_UpdateCurrentRecordErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			records := &recordRepositoryStub{
-				getFunc: func(context.Context, int64, string) (model.Record, error) {
+				getFunc: func(context.Context, int64, string) (model.EncryptedRecord, error) {
 					return tt.current, tt.getErr
 				},
 			}
@@ -760,8 +782,8 @@ func TestRecordService_UpdateCryptoError(t *testing.T) {
 	recordID := "550e8400-e29b-41d4-a716-446655440000"
 	errCrypto := errors.New("crypto unavailable")
 	records := &recordRepositoryStub{
-		getFunc: func(context.Context, int64, string) (model.Record, error) {
-			return model.Record{
+		getFunc: func(context.Context, int64, string) (model.EncryptedRecord, error) {
+			return model.EncryptedRecord{
 				ID:       recordID,
 				UserID:   42,
 				Type:     model.RecordTypeText,
@@ -824,16 +846,16 @@ func TestRecordService_UpdateRepositoryError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			records := &recordRepositoryStub{
-				getFunc: func(context.Context, int64, string) (model.Record, error) {
-					return model.Record{
+				getFunc: func(context.Context, int64, string) (model.EncryptedRecord, error) {
+					return model.EncryptedRecord{
 						ID:       recordID,
 						UserID:   42,
 						Type:     model.RecordTypeText,
 						Revision: 1,
 					}, nil
 				},
-				updateFunc: func(context.Context, model.Record, int64) (model.Record, error) {
-					return model.Record{}, tt.updateErr
+				updateFunc: func(context.Context, model.EncryptedRecord, int64) (model.EncryptedRecord, error) {
+					return model.EncryptedRecord{}, tt.updateErr
 				},
 			}
 			crypto := &recordPayloadCryptoStub{
@@ -1017,10 +1039,10 @@ func TestRecordService_DeleteRepositoryError(t *testing.T) {
 }
 
 type recordRepositoryStub struct {
-	createFunc func(context.Context, model.Record) (model.Record, error)
+	createFunc func(context.Context, model.EncryptedRecord) (model.EncryptedRecord, error)
 	listFunc   func(context.Context, int64) ([]model.RecordMetadata, error)
-	getFunc    func(context.Context, int64, string) (model.Record, error)
-	updateFunc func(context.Context, model.Record, int64) (model.Record, error)
+	getFunc    func(context.Context, int64, string) (model.EncryptedRecord, error)
+	updateFunc func(context.Context, model.EncryptedRecord, int64) (model.EncryptedRecord, error)
 	deleteFunc func(context.Context, int64, string, int64) error
 
 	createCalls int
@@ -1030,10 +1052,10 @@ type recordRepositoryStub struct {
 	deleteCalls int
 }
 
-func (s *recordRepositoryStub) Create(ctx context.Context, record model.Record) (model.Record, error) {
+func (s *recordRepositoryStub) Create(ctx context.Context, record model.EncryptedRecord) (model.EncryptedRecord, error) {
 	s.createCalls++
 	if s.createFunc == nil {
-		return model.Record{}, errors.New("unexpected Create call")
+		return model.EncryptedRecord{}, errors.New("unexpected Create call")
 	}
 
 	return s.createFunc(ctx, record)
@@ -1048,10 +1070,10 @@ func (s *recordRepositoryStub) ListMetadata(ctx context.Context, userID int64) (
 	return s.listFunc(ctx, userID)
 }
 
-func (s *recordRepositoryStub) Get(ctx context.Context, userID int64, recordID string) (model.Record, error) {
+func (s *recordRepositoryStub) Get(ctx context.Context, userID int64, recordID string) (model.EncryptedRecord, error) {
 	s.getCalls++
 	if s.getFunc == nil {
-		return model.Record{}, errors.New("unexpected Get call")
+		return model.EncryptedRecord{}, errors.New("unexpected Get call")
 	}
 
 	return s.getFunc(ctx, userID, recordID)
@@ -1059,12 +1081,12 @@ func (s *recordRepositoryStub) Get(ctx context.Context, userID int64, recordID s
 
 func (s *recordRepositoryStub) Update(
 	ctx context.Context,
-	record model.Record,
+	record model.EncryptedRecord,
 	expectedRevision int64,
-) (model.Record, error) {
+) (model.EncryptedRecord, error) {
 	s.updateCalls++
 	if s.updateFunc == nil {
-		return model.Record{}, errors.New("unexpected Update call")
+		return model.EncryptedRecord{}, errors.New("unexpected Update call")
 	}
 
 	return s.updateFunc(ctx, record, expectedRevision)

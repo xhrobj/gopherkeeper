@@ -6,40 +6,30 @@ import (
 	"io"
 
 	urfavecli "github.com/urfave/cli/v3"
-	"github.com/xhrobj/gopherkeeper/internal/client/config"
-	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 )
 
-type userLogoutter interface {
-	Logout(ctx context.Context) error
-}
-
-func newLogoutCommand(logout outputRunner) *urfavecli.Command {
+func newLogoutCommand(factory clientFactory) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "logout",
 		Usage: "clear local online session",
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			return logout(ctx, configFromCommand(command), command.Root().Writer)
+			cfg, err := configFromCommand(command)
+			if err != nil {
+				return err
+			}
+
+			application, err := factory.NewLogoutApplication(cfg)
+			if err != nil {
+				return err
+			}
+
+			return executeLogout(ctx, application, command.Root().Writer)
 		},
 	}
 }
 
-func runLogout(
-	ctx context.Context,
-	cfg config.Config,
-	output io.Writer,
-) error {
-	application := usecase.NewLocal(cfg)
-
-	return executeLogout(ctx, application, output)
-}
-
-func executeLogout(
-	ctx context.Context,
-	logoutter userLogoutter,
-	output io.Writer,
-) error {
-	if err := logoutter.Logout(ctx); err != nil {
+func executeLogout(ctx context.Context, application userLogoutter, output io.Writer) error {
+	if err := application.Logout(ctx); err != nil {
 		return err
 	}
 

@@ -19,34 +19,6 @@ const recordsPath = "/api/v1/records"
 
 var errRecordPayloadRequired = errors.New("record payload is required")
 
-// CreateRecordRequest содержит данные для создания записи через HTTP API.
-type CreateRecordRequest struct {
-	// Title содержит открытое название записи.
-	Title string
-
-	// Payload содержит типизированный приватный payload.
-	Payload model.RecordPayload
-}
-
-// UpdateRecordRequest содержит данные для изменения записи через HTTP API.
-type UpdateRecordRequest struct {
-	// Title содержит новое открытое название записи.
-	Title string
-
-	// Payload содержит новый типизированный приватный payload.
-	Payload model.RecordPayload
-}
-
-// Record содержит открытую metadata и расшифрованный типизированный payload,
-// возвращённые Сервером.
-type Record struct {
-	// Metadata содержит открытые поля записи.
-	Metadata model.RecordMetadata
-
-	// Payload содержит приватный payload согласно типу записи.
-	Payload model.RecordPayload
-}
-
 type recordRequest struct {
 	Type    model.RecordType    `json:"type"`
 	Title   string              `json:"title"`
@@ -80,11 +52,12 @@ type listRecordsResponse struct {
 func (c *Client) CreateRecord(
 	ctx context.Context,
 	accessToken string,
-	request CreateRecordRequest,
-) (Record, error) {
-	body, err := newRecordRequest(request.Title, request.Payload)
+	title string,
+	payload model.RecordPayload,
+) (model.Record, error) {
+	body, err := newRecordRequest(title, payload)
 	if err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 
 	var created recordResponse
@@ -96,8 +69,9 @@ func (c *Client) CreateRecord(
 		requestBody:    body,
 		expectedStatus: http.StatusCreated,
 		responseBody:   &created,
+		errorCause:     recordErrorCause,
 	}); err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 
 	return recordFromResponse(created)
@@ -114,6 +88,7 @@ func (c *Client) ListRecords(ctx context.Context, accessToken string) ([]model.R
 		accessToken:    accessToken,
 		expectedStatus: http.StatusOK,
 		responseBody:   &listed,
+		errorCause:     recordErrorCause,
 	}); err != nil {
 		return nil, err
 	}
@@ -127,7 +102,7 @@ func (c *Client) ListRecords(ctx context.Context, accessToken string) ([]model.R
 }
 
 // GetRecord возвращает запись текущего пользователя с payload согласно её типу.
-func (c *Client) GetRecord(ctx context.Context, accessToken string, recordID string) (Record, error) {
+func (c *Client) GetRecord(ctx context.Context, accessToken string, recordID string) (model.Record, error) {
 	var record recordResponse
 
 	if err := c.doJSON(ctx, jsonRequest{
@@ -137,8 +112,9 @@ func (c *Client) GetRecord(ctx context.Context, accessToken string, recordID str
 		accessToken:    accessToken,
 		expectedStatus: http.StatusOK,
 		responseBody:   &record,
+		errorCause:     recordErrorCause,
 	}); err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 
 	return recordFromResponse(record)
@@ -150,11 +126,12 @@ func (c *Client) UpdateRecord(
 	accessToken string,
 	recordID string,
 	expectedRevision int64,
-	request UpdateRecordRequest,
-) (Record, error) {
-	body, err := newRecordRequest(request.Title, request.Payload)
+	title string,
+	payload model.RecordPayload,
+) (model.Record, error) {
+	body, err := newRecordRequest(title, payload)
 	if err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 
 	var updated recordResponse
@@ -169,8 +146,9 @@ func (c *Client) UpdateRecord(
 		requestBody:    body,
 		expectedStatus: http.StatusOK,
 		responseBody:   &updated,
+		errorCause:     recordErrorCause,
 	}); err != nil {
-		return Record{}, err
+		return model.Record{}, err
 	}
 
 	return recordFromResponse(updated)
@@ -192,6 +170,7 @@ func (c *Client) DeleteRecord(
 			"If-Match": recordRevisionETag(expectedRevision),
 		},
 		expectedStatus: http.StatusNoContent,
+		errorCause:     recordErrorCause,
 	})
 }
 
@@ -199,10 +178,6 @@ func newRecordRequest(title string, payload model.RecordPayload) (recordRequest,
 	if payload == nil {
 		return recordRequest{}, errRecordPayloadRequired
 	}
-	if err := payload.Validate(); err != nil {
-		return recordRequest{}, err
-	}
-
 	return recordRequest{
 		Type:    payload.RecordType(),
 		Title:   title,
@@ -210,19 +185,19 @@ func newRecordRequest(title string, payload model.RecordPayload) (recordRequest,
 	}, nil
 }
 
-func recordFromResponse(response recordResponse) (Record, error) {
+func recordFromResponse(response recordResponse) (model.Record, error) {
 	payload, err := model.NewRecordPayload(response.Type)
 	if err != nil {
-		return Record{}, fmt.Errorf("select record payload: %w", err)
+		return model.Record{}, fmt.Errorf("select record payload: %w", err)
 	}
 	if err := decodeRecordPayload(response.Payload, payload); err != nil {
-		return Record{}, fmt.Errorf("decode record payload: %w", err)
+		return model.Record{}, fmt.Errorf("decode record payload: %w", err)
 	}
 	if err := payload.Validate(); err != nil {
-		return Record{}, fmt.Errorf("validate record payload: %w", err)
+		return model.Record{}, fmt.Errorf("validate record payload: %w", err)
 	}
 
-	return Record{
+	return model.Record{
 		Metadata: recordMetadataFromResponse(recordMetadataResponse{
 			ID:        response.ID,
 			Type:      response.Type,
@@ -266,5 +241,24 @@ func recordMetadataFromResponse(response recordMetadataResponse) model.RecordMet
 		Revision:  response.Revision,
 		CreatedAt: response.CreatedAt,
 		UpdatedAt: response.UpdatedAt,
+	}
+}
+
+func recordErrorCause(code string) error {
+	switch code {
+	case "unauthorized":
+		return model.ErrUnauthorized
+	case "record_not_found":
+		return model.ErrRecordNotFound
+	case "record_revision_conflict":
+		return model.ErrRecordRevisionConflict
+	case "precondition_required":
+		return model.ErrRecordPreconditionRequired
+	case "payload_too_large":
+		return model.ErrPayloadTooLarge
+	case "invalid_request":
+		return model.ErrInvalidRecordData
+	default:
+		return nil
 	}
 }
