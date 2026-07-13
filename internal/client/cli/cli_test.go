@@ -109,26 +109,26 @@ func (s *applicationStub) DeleteRecord(ctx context.Context, request usecase.Dele
 	return s.deleteRecord(ctx, request)
 }
 
-type logoutApplicationStub struct {
+type userLogoutterStub struct {
 	logout func(context.Context) error
 }
 
-func (s logoutApplicationStub) Logout(ctx context.Context) error {
+func (s userLogoutterStub) Logout(ctx context.Context) error {
 	return s.logout(ctx)
 }
 
-type healthClientStub struct {
+type healthCheckerStub struct {
 	health func(context.Context) (string, error)
 }
 
-func (s healthClientStub) Health(ctx context.Context) (string, error) {
+func (s healthCheckerStub) Health(ctx context.Context) (string, error) {
 	return s.health(ctx)
 }
 
 type clientFactoryStub struct {
 	newApplication       func(config.Config) (application, error)
-	newLogoutApplication func(config.Config) (logoutApplication, error)
-	newHealthClient      func(config.Config) (healthClient, error)
+	newLogoutApplication func(config.Config) (userLogoutter, error)
+	newHealthClient      func(config.Config) (healthChecker, error)
 }
 
 func newClientFactoryStub(t *testing.T) *clientFactoryStub {
@@ -140,12 +140,12 @@ func newClientFactoryStub(t *testing.T) *clientFactoryStub {
 			t.Fatal("application factory must not be called")
 			return nil, nil
 		},
-		newLogoutApplication: func(config.Config) (logoutApplication, error) {
+		newLogoutApplication: func(config.Config) (userLogoutter, error) {
 			t.Helper()
 			t.Fatal("logout application factory must not be called")
 			return nil, nil
 		},
-		newHealthClient: func(config.Config) (healthClient, error) {
+		newHealthClient: func(config.Config) (healthChecker, error) {
 			t.Helper()
 			t.Fatal("health client factory must not be called")
 			return nil, nil
@@ -157,11 +157,11 @@ func (s *clientFactoryStub) NewApplication(cfg config.Config) (application, erro
 	return s.newApplication(cfg)
 }
 
-func (s *clientFactoryStub) NewLogoutApplication(cfg config.Config) (logoutApplication, error) {
+func (s *clientFactoryStub) NewLogoutApplication(cfg config.Config) (userLogoutter, error) {
 	return s.newLogoutApplication(cfg)
 }
 
-func (s *clientFactoryStub) NewHealthClient(cfg config.Config) (healthClient, error) {
+func (s *clientFactoryStub) NewHealthClient(cfg config.Config) (healthChecker, error) {
 	return s.newHealthClient(cfg)
 }
 
@@ -235,6 +235,6 @@ func currentUserGetterFunc(
 	return &applicationStub{whoami: fn}
 }
 
-func userLogoutterFunc(fn func(context.Context) error) logoutApplication {
-	return logoutApplicationStub{logout: fn}
+func userLogoutterFunc(fn func(context.Context) error) userLogoutter {
+	return userLogoutterStub{logout: fn}
 }

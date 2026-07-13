@@ -28,7 +28,7 @@ func newLogoutCommand(factory clientFactory) *urfavecli.Command {
 	}
 }
 
-func executeLogout(ctx context.Context, application logoutApplication, output io.Writer) error {
+func executeLogout(ctx context.Context, application userLogoutter, output io.Writer) error {
 	if err := application.Logout(ctx); err != nil {
 		return err
 	}

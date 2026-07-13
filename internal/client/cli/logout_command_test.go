@@ -14,9 +14,9 @@ func TestLogoutCommand_Configuration(t *testing.T) {
 
 	var gotConfig config.Config
 	factory := newClientFactoryStub(t)
-	factory.newLogoutApplication = func(cfg config.Config) (logoutApplication, error) {
+	factory.newLogoutApplication = func(cfg config.Config) (userLogoutter, error) {
 		gotConfig = cfg
-		return logoutApplicationStub{logout: func(context.Context) error { return nil }}, nil
+		return userLogoutterStub{logout: func(context.Context) error { return nil }}, nil
 	}
 
 	var output bytes.Buffer

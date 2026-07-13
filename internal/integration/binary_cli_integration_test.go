@@ -4,7 +4,6 @@ package integration_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -23,97 +22,92 @@ var createdBinaryRecordPattern = regexp.MustCompile(
 	`^Created binary record ([0-9a-f-]+) with revision ([0-9]+)\.$`,
 )
 
+type binaryRecordFixture struct {
+	title        string
+	binaryFile   string
+	filename     string
+	contentType  string
+	metadataFile string
+	metadata     string
+	data         []byte
+}
+
+type binaryRecordExpectation struct {
+	recordID   string
+	revision   int64
+	outputPath string
+	fixture    binaryRecordFixture
+}
+
+type binaryRequestErrorExpectation struct {
+	body   string
+	status int
+	code   string
+}
+
 func TestIntegration_CLIBinaryRecordRoundTrip(t *testing.T) {
 	config, pool, httpLogs := newRecordCLIEnvironment(t)
 
-	initialData := []byte("gopherkeeper-binary-secret-42\x00\xff\x10")
-	initialFile := writeIntegrationBinaryFile(t, "backup.bin", initialData)
-	initialMetadata := "private binary metadata"
-	initialMetadataFile := writeIntegrationFile(t, "backup-metadata.txt", initialMetadata)
-	contentType := "application/octet-stream"
+	initial := binaryRecordFixture{
+		title:       "Alice backup",
+		filename:    "backup.bin",
+		contentType: "application/octet-stream",
+		metadata:    "private binary metadata",
+		data:        []byte("gopherkeeper-binary-secret-42\x00\xff\x10"),
+	}
+	initial.binaryFile = writeIntegrationBinaryFile(t, initial.filename, initial.data)
+	initial.metadataFile = writeIntegrationFile(t, "backup-metadata.txt", initial.metadata)
 
-	recordID := createBinaryRecord(
-		t,
-		config,
-		"Alice backup",
-		initialFile,
-		contentType,
-		initialMetadataFile,
-		initialData,
-	)
+	recordID := createBinaryRecord(t, config, initial)
 	assertPlaintextAbsentFromPostgres(
 		t,
 		config.ctx,
 		pool,
 		recordID,
-		"backup.bin",
-		contentType,
-		initialMetadata,
+		initial.filename,
+		initial.contentType,
+		initial.metadata,
 		"gopherkeeper-binary-secret-42",
 	)
-	assertBinaryList(
-		t,
-		config,
-		recordID,
-		"Alice backup",
-		"backup.bin",
-		contentType,
-		initialMetadata,
-		initialData,
-	)
+	assertBinaryList(t, config, recordID, initial)
 
 	initialOutput := filepath.Join(t.TempDir(), "restored-backup.bin")
-	assertBinaryRecord(
-		t,
-		config,
-		recordID,
-		1,
-		initialOutput,
-		initialData,
-		"backup.bin",
-		contentType,
-		initialMetadata,
-	)
-	assertBinaryOutputNotOverwritten(t, config, recordID, initialOutput, initialData)
+	assertBinaryRecord(t, config, binaryRecordExpectation{
+		recordID:   recordID,
+		revision:   1,
+		outputPath: initialOutput,
+		fixture:    initial,
+	})
+	assertBinaryOutputNotOverwritten(t, config, recordID, initialOutput, initial.data)
 
-	updatedData := []byte("gopherkeeper-updated-binary-secret-69\x00\xfe\x11")
-	updatedFile := writeIntegrationBinaryFile(t, "backup-v2.bin", updatedData)
-	updatedMetadata := "updated private binary metadata"
-	updatedMetadataFile := writeIntegrationFile(t, "backup-v2-metadata.txt", updatedMetadata)
-	updateBinaryRecord(
-		t,
-		config,
-		recordID,
-		1,
-		"Alice backup updated",
-		updatedFile,
-		contentType,
-		updatedMetadataFile,
-		updatedData,
-	)
+	updated := binaryRecordFixture{
+		title:       "Alice backup updated",
+		filename:    "backup-v2.bin",
+		contentType: initial.contentType,
+		metadata:    "updated private binary metadata",
+		data:        []byte("gopherkeeper-updated-binary-secret-69\x00\xfe\x11"),
+	}
+	updated.binaryFile = writeIntegrationBinaryFile(t, updated.filename, updated.data)
+	updated.metadataFile = writeIntegrationFile(t, "backup-v2-metadata.txt", updated.metadata)
+	updateBinaryRecord(t, config, recordID, 1, updated)
 	assertPlaintextAbsentFromPostgres(
 		t,
 		config.ctx,
 		pool,
 		recordID,
-		"backup-v2.bin",
-		contentType,
-		updatedMetadata,
+		updated.filename,
+		updated.contentType,
+		updated.metadata,
 		"gopherkeeper-updated-binary-secret-69",
 	)
 
 	updatedOutput := filepath.Join(t.TempDir(), "restored-backup-v2.bin")
-	assertBinaryRecord(
-		t,
-		config,
-		recordID,
-		2,
-		updatedOutput,
-		updatedData,
-		"backup-v2.bin",
-		contentType,
-		updatedMetadata,
-	)
+	assertBinaryRecord(t, config, binaryRecordExpectation{
+		recordID:   recordID,
+		revision:   2,
+		outputPath: updatedOutput,
+		fixture:    updated,
+	})
 
 	assertEmptyBinaryRoundTrip(t, config)
 	assertOversizedBinaryRejectedLocally(t, config)
@@ -122,36 +116,26 @@ func TestIntegration_CLIBinaryRecordRoundTrip(t *testing.T) {
 		t,
 		httpLogs.String(),
 		config.sessionFile,
-		[][]byte{initialData, updatedData},
-		"backup.bin",
-		"backup-v2.bin",
-		initialMetadata,
-		updatedMetadata,
+		[][]byte{initial.data, updated.data},
+		initial.filename,
+		updated.filename,
+		initial.metadata,
+		updated.metadata,
 	)
 }
 
 func createBinaryRecord(
 	t *testing.T,
 	config recordCLIConfig,
-	title string,
-	binaryFile string,
-	contentType string,
-	metadataFile string,
-	data []byte,
+	fixture binaryRecordFixture,
 ) string {
 	t.Helper()
 
-	stdout, stderr, err := runCreateBinaryRecordCommand(
-		config,
-		title,
-		binaryFile,
-		contentType,
-		metadataFile,
-	)
+	stdout, stderr, err := runCreateBinaryRecordCommand(config, fixture)
 	if err != nil {
 		t.Fatalf("create binary record: %v", err)
 	}
-	assertOutputDoesNotContainBinaryData(t, stdout+stderr, data)
+	assertOutputDoesNotContainBinaryData(t, stdout+stderr, fixture.data)
 	if stderr != "" {
 		t.Errorf("create stderr = %q, want empty output", stderr)
 	}
@@ -172,27 +156,15 @@ func updateBinaryRecord(
 	config recordCLIConfig,
 	recordID string,
 	revision int64,
-	title string,
-	binaryFile string,
-	contentType string,
-	metadataFile string,
-	data []byte,
+	fixture binaryRecordFixture,
 ) {
 	t.Helper()
 
-	stdout, stderr, err := runUpdateBinaryRecordCommand(
-		config,
-		recordID,
-		revision,
-		title,
-		binaryFile,
-		contentType,
-		metadataFile,
-	)
+	stdout, stderr, err := runUpdateBinaryRecordCommand(config, recordID, revision, fixture)
 	if err != nil {
 		t.Fatalf("update binary record: %v", err)
 	}
-	assertOutputDoesNotContainBinaryData(t, stdout+stderr, data)
+	assertOutputDoesNotContainBinaryData(t, stdout+stderr, fixture.data)
 
 	wantUpdate := fmt.Sprintf("Updated binary record %s to revision 2.\n", recordID)
 	if stdout != wantUpdate {
@@ -207,11 +179,7 @@ func assertBinaryList(
 	t *testing.T,
 	config recordCLIConfig,
 	recordID string,
-	title string,
-	filename string,
-	contentType string,
-	metadata string,
-	data []byte,
+	fixture binaryRecordFixture,
 ) {
 	t.Helper()
 
@@ -227,17 +195,17 @@ func assertBinaryList(
 	if stderr != "" {
 		t.Errorf("list stderr = %q, want empty output", stderr)
 	}
-	for _, want := range []string{recordID, "binary", title, "1"} {
+	for _, want := range []string{recordID, "binary", fixture.title, "1"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("list stdout = %q, want %q", stdout, want)
 		}
 	}
 	privateValues := []string{
-		filename,
-		contentType,
-		metadata,
-		string(data),
-		base64.StdEncoding.EncodeToString(data),
+		fixture.filename,
+		fixture.contentType,
+		fixture.metadata,
+		string(fixture.data),
+		base64.StdEncoding.EncodeToString(fixture.data),
 	}
 	for _, secret := range privateValues {
 		if secret != "" && strings.Contains(stdout, secret) {
@@ -249,17 +217,11 @@ func assertBinaryList(
 func assertBinaryRecord(
 	t *testing.T,
 	config recordCLIConfig,
-	recordID string,
-	revision int64,
-	outputPath string,
-	wantData []byte,
-	filename string,
-	contentType string,
-	metadata string,
+	expected binaryRecordExpectation,
 ) {
 	t.Helper()
 
-	stdout, stderr, err := runGetBinaryRecordCommand(config, recordID, outputPath)
+	stdout, stderr, err := runGetBinaryRecordCommand(config, expected.recordID, expected.outputPath)
 	if err != nil {
 		t.Fatalf("get binary record: %v", err)
 	}
@@ -267,39 +229,39 @@ func assertBinaryRecord(
 		t.Errorf("get stderr = %q, want empty output", stderr)
 	}
 
-	gotData, err := os.ReadFile(outputPath)
+	gotData, err := os.ReadFile(expected.outputPath)
 	if err != nil {
 		t.Fatalf("read restored binary file: %v", err)
 	}
-	if !bytes.Equal(gotData, wantData) {
-		t.Errorf("restored binary data = %v, want %v", gotData, wantData)
+	if !bytes.Equal(gotData, expected.fixture.data) {
+		t.Errorf("restored binary data = %v, want %v", gotData, expected.fixture.data)
 	}
 
 	for _, want := range []string{
 		"Type: binary",
-		fmt.Sprintf("Revision: %d", revision),
-		"Filename: " + filename,
-		fmt.Sprintf("Size: %d bytes", len(wantData)),
-		"Saved to: " + outputPath,
+		fmt.Sprintf("Revision: %d", expected.revision),
+		"Filename: " + expected.fixture.filename,
+		fmt.Sprintf("Size: %d bytes", len(expected.fixture.data)),
+		"Saved to: " + expected.outputPath,
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("get stdout = %q, want %q", stdout, want)
 		}
 	}
-	if contentType != "" && !strings.Contains(stdout, "Content type: "+contentType) {
-		t.Errorf("get stdout = %q, want content type %q", stdout, contentType)
+	if expected.fixture.contentType != "" &&
+		!strings.Contains(stdout, "Content type: "+expected.fixture.contentType) {
+		t.Errorf("get stdout = %q, want content type %q", stdout, expected.fixture.contentType)
 	}
-	if metadata != "" && !strings.Contains(stdout, "Metadata:\n"+metadata) {
-		t.Errorf("get stdout = %q, want metadata %q", stdout, metadata)
+	if expected.fixture.metadata != "" && !strings.Contains(stdout, "Metadata:\n"+expected.fixture.metadata) {
+		t.Errorf("get stdout = %q, want metadata %q", stdout, expected.fixture.metadata)
 	}
-	assertOutputDoesNotContainBinaryData(t, stdout+stderr, wantData)
+	assertOutputDoesNotContainBinaryData(t, stdout+stderr, expected.fixture.data)
 }
 
 func assertBinaryOutputNotOverwritten(
 	t *testing.T,
 	config recordCLIConfig,
-	recordID string,
-	outputPath string,
+	recordID, outputPath string,
 	wantData []byte,
 ) {
 	t.Helper()
@@ -322,10 +284,20 @@ func assertBinaryOutputNotOverwritten(
 func assertEmptyBinaryRoundTrip(t *testing.T, config recordCLIConfig) {
 	t.Helper()
 
-	emptyFile := writeIntegrationBinaryFile(t, "empty.bin", []byte{})
-	recordID := createBinaryRecord(t, config, "Empty backup", emptyFile, "", "", []byte{})
+	fixture := binaryRecordFixture{
+		title:    "Empty backup",
+		filename: "empty.bin",
+		data:     []byte{},
+	}
+	fixture.binaryFile = writeIntegrationBinaryFile(t, fixture.filename, fixture.data)
+	recordID := createBinaryRecord(t, config, fixture)
 	outputPath := filepath.Join(t.TempDir(), "restored-empty.bin")
-	assertBinaryRecord(t, config, recordID, 1, outputPath, []byte{}, "empty.bin", "", "")
+	assertBinaryRecord(t, config, binaryRecordExpectation{
+		recordID:   recordID,
+		revision:   1,
+		outputPath: outputPath,
+		fixture:    fixture,
+	})
 
 	stdout, stderr, err := runDeleteRecordCommand(
 		config.ctx,
@@ -346,15 +318,14 @@ func assertEmptyBinaryRoundTrip(t *testing.T, config recordCLIConfig) {
 func assertOversizedBinaryRejectedLocally(t *testing.T, config recordCLIConfig) {
 	t.Helper()
 
-	oversized := bytes.Repeat([]byte{0x2a}, model.BinaryPayloadMaxSize+1)
-	oversizedFile := writeIntegrationBinaryFile(t, "oversized.bin", oversized)
-	stdout, stderr, err := runCreateBinaryRecordCommand(
-		config,
-		"Oversized backup",
-		oversizedFile,
-		"application/octet-stream",
-		"",
-	)
+	fixture := binaryRecordFixture{
+		title:       "Oversized backup",
+		filename:    "oversized.bin",
+		contentType: "application/octet-stream",
+		data:        bytes.Repeat([]byte{0x2a}, model.BinaryPayloadMaxSize+1),
+	}
+	fixture.binaryFile = writeIntegrationBinaryFile(t, fixture.filename, fixture.data)
+	stdout, stderr, err := runCreateBinaryRecordCommand(config, fixture)
 	assertCLIErrorContains(t, "create oversized binary record", err, "payload too large")
 	if stdout != "" || stderr != "" {
 		t.Errorf("oversized output = %q, stderr = %q, want empty", stdout, stderr)
@@ -369,13 +340,14 @@ func assertInvalidBinaryRequestsRejectedByServer(t *testing.T, config recordCLIC
 
 	assertBinaryCreateRequestError(
 		t,
-		config.ctx,
+		config,
 		client,
-		config.address,
 		accessToken,
-		`{"type":"binary","title":"Damaged","payload":{"filename":"damaged.bin","data":"not-base64***"}}`,
-		http.StatusBadRequest,
-		"invalid_request",
+		binaryRequestErrorExpectation{
+			body:   `{"type":"binary","title":"Damaged","payload":{"filename":"damaged.bin","data":"not-base64***"}}`,
+			status: http.StatusBadRequest,
+			code:   "invalid_request",
+		},
 	)
 
 	oversizedBody, err := json.Marshal(map[string]any{
@@ -391,33 +363,31 @@ func assertInvalidBinaryRequestsRejectedByServer(t *testing.T, config recordCLIC
 	}
 	assertBinaryCreateRequestError(
 		t,
-		config.ctx,
+		config,
 		client,
-		config.address,
 		accessToken,
-		string(oversizedBody),
-		http.StatusRequestEntityTooLarge,
-		"payload_too_large",
+		binaryRequestErrorExpectation{
+			body:   string(oversizedBody),
+			status: http.StatusRequestEntityTooLarge,
+			code:   "payload_too_large",
+		},
 	)
 }
 
 func assertBinaryCreateRequestError(
 	t *testing.T,
-	ctx context.Context,
+	config recordCLIConfig,
 	client *http.Client,
-	address string,
 	accessToken string,
-	body string,
-	wantStatus int,
-	wantCode string,
+	expected binaryRequestErrorExpectation,
 ) {
 	t.Helper()
 
 	request, err := http.NewRequestWithContext(
-		ctx,
+		config.ctx,
 		http.MethodPost,
-		"https://"+address+"/api/v1/records",
-		strings.NewReader(body),
+		"https://"+config.address+"/api/v1/records",
+		strings.NewReader(expected.body),
 	)
 	if err != nil {
 		t.Fatalf("create binary request: %v", err)
@@ -435,16 +405,21 @@ func assertBinaryCreateRequestError(
 	if err != nil {
 		t.Fatalf("read binary error response: %v", err)
 	}
-	if response.StatusCode != wantStatus {
-		t.Fatalf("binary response status = %d, want %d: %s", response.StatusCode, wantStatus, responseBody)
+	if response.StatusCode != expected.status {
+		t.Fatalf(
+			"binary response status = %d, want %d: %s",
+			response.StatusCode,
+			expected.status,
+			responseBody,
+		)
 	}
 
 	var apiError apiErrorResponse
 	if err := json.Unmarshal(responseBody, &apiError); err != nil {
 		t.Fatalf("decode binary error response: %v", err)
 	}
-	if apiError.Code != wantCode {
-		t.Errorf("binary error code = %q, want %q", apiError.Code, wantCode)
+	if apiError.Code != expected.code {
+		t.Errorf("binary error code = %q, want %q", apiError.Code, expected.code)
 	}
 	for _, secret := range []string{accessToken, "not-base64***"} {
 		if strings.Contains(string(responseBody), secret) {
@@ -455,10 +430,7 @@ func assertBinaryCreateRequestError(
 
 func runCreateBinaryRecordCommand(
 	config recordCLIConfig,
-	title string,
-	binaryFile string,
-	contentType string,
-	metadataFile string,
+	fixture binaryRecordFixture,
 ) (string, string, error) {
 	args := []string{
 		"gkeep",
@@ -466,14 +438,14 @@ func runCreateBinaryRecordCommand(
 		"--ca-cert", config.caCertFile,
 		"--session-file", config.sessionFile,
 		"records", "create-binary",
-		"--title", title,
-		"--binary-file", binaryFile,
+		"--title", fixture.title,
+		"--binary-file", fixture.binaryFile,
 	}
-	if contentType != "" {
-		args = append(args, "--content-type", contentType)
+	if fixture.contentType != "" {
+		args = append(args, "--content-type", fixture.contentType)
 	}
-	if metadataFile != "" {
-		args = append(args, "--metadata-file", metadataFile)
+	if fixture.metadataFile != "" {
+		args = append(args, "--metadata-file", fixture.metadataFile)
 	}
 
 	return runClientCommand(config.ctx, args)
@@ -483,10 +455,7 @@ func runUpdateBinaryRecordCommand(
 	config recordCLIConfig,
 	recordID string,
 	revision int64,
-	title string,
-	binaryFile string,
-	contentType string,
-	metadataFile string,
+	fixture binaryRecordFixture,
 ) (string, string, error) {
 	args := []string{
 		"gkeep",
@@ -495,14 +464,14 @@ func runUpdateBinaryRecordCommand(
 		"--session-file", config.sessionFile,
 		"records", "update-binary", recordID,
 		"--revision", fmt.Sprintf("%d", revision),
-		"--title", title,
-		"--binary-file", binaryFile,
+		"--title", fixture.title,
+		"--binary-file", fixture.binaryFile,
 	}
-	if contentType != "" {
-		args = append(args, "--content-type", contentType)
+	if fixture.contentType != "" {
+		args = append(args, "--content-type", fixture.contentType)
 	}
-	if metadataFile != "" {
-		args = append(args, "--metadata-file", metadataFile)
+	if fixture.metadataFile != "" {
+		args = append(args, "--metadata-file", fixture.metadataFile)
 	}
 
 	return runClientCommand(config.ctx, args)
@@ -510,8 +479,7 @@ func runUpdateBinaryRecordCommand(
 
 func runGetBinaryRecordCommand(
 	config recordCLIConfig,
-	recordID string,
-	outputPath string,
+	recordID, outputPath string,
 ) (string, string, error) {
 	return runClientCommand(config.ctx, []string{
 		"gkeep",
@@ -566,8 +534,7 @@ func assertOutputDoesNotContainBinaryData(t *testing.T, output string, data []by
 
 func assertBinaryHTTPLogsDoNotContainSecrets(
 	t *testing.T,
-	logs string,
-	sessionFile string,
+	logs, sessionFile string,
 	payloads [][]byte,
 	secrets ...string,
 ) {

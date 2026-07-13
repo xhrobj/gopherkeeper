@@ -28,7 +28,7 @@ func newHealthCommand(factory clientFactory) *urfavecli.Command {
 	}
 }
 
-func executeHealth(ctx context.Context, client healthClient, output io.Writer) error {
+func executeHealth(ctx context.Context, client healthChecker, output io.Writer) error {
 	status, err := client.Health(ctx)
 	if err != nil {
 		return err

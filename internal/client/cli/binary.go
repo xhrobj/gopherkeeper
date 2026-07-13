@@ -166,7 +166,7 @@ func executeUpdateBinaryRecord(
 	})
 }
 
-func readBinaryPayload(binaryFile string, contentType string, metadataFile string) (model.BinaryPayload, error) {
+func readBinaryPayload(binaryFile, contentType, metadataFile string) (model.BinaryPayload, error) {
 	filename, data, err := readBinaryFile(binaryFile)
 	if err != nil {
 		return model.BinaryPayload{}, err

@@ -21,18 +21,18 @@ type application interface {
 	DeleteRecord(ctx context.Context, request usecase.DeleteRecordRequest) error
 }
 
-type logoutApplication interface {
+type userLogoutter interface {
 	Logout(ctx context.Context) error
 }
 
-type healthClient interface {
+type healthChecker interface {
 	Health(ctx context.Context) (string, error)
 }
 
 type clientFactory interface {
 	NewApplication(cfg config.Config) (application, error)
-	NewLogoutApplication(cfg config.Config) (logoutApplication, error)
-	NewHealthClient(cfg config.Config) (healthClient, error)
+	NewLogoutApplication(cfg config.Config) (userLogoutter, error)
+	NewHealthClient(cfg config.Config) (healthChecker, error)
 }
 
 type defaultClientFactory struct{}
@@ -41,10 +41,10 @@ func (defaultClientFactory) NewApplication(cfg config.Config) (application, erro
 	return app.New(cfg)
 }
 
-func (defaultClientFactory) NewLogoutApplication(cfg config.Config) (logoutApplication, error) {
+func (defaultClientFactory) NewLogoutApplication(cfg config.Config) (userLogoutter, error) {
 	return app.NewLogout(cfg)
 }
 
-func (defaultClientFactory) NewHealthClient(cfg config.Config) (healthClient, error) {
+func (defaultClientFactory) NewHealthClient(cfg config.Config) (healthChecker, error) {
 	return httpclient.New(cfg.Address, cfg.CACertFile)
 }

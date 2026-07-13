@@ -199,8 +199,7 @@ func executeGetRecord(
 	ctx context.Context,
 	application application,
 	output io.Writer,
-	recordID string,
-	outputPath string,
+	recordID, outputPath string,
 ) error {
 	record, err := application.GetRecord(ctx, recordID)
 	if err != nil {
@@ -208,27 +207,34 @@ func executeGetRecord(
 	}
 
 	if record.Metadata.Type == model.RecordTypeBinary {
-		payload, ok := record.Payload.(*model.BinaryPayload)
-		if !ok || payload == nil {
-			return errors.New("unexpected binary payload")
-		}
-		if outputPath == "" {
-			return errors.New("output path is required for binary record")
-		}
-		if err := writeBinaryFile(outputPath, payload.Data); err != nil {
-			return err
-		}
-
-		if err := writeRecordHeader(output, record.Metadata); err != nil {
-			return err
-		}
-
-		return writeBinaryRecordPayload(output, payload, outputPath)
+		return writeBinaryRecord(output, record, outputPath)
 	}
-
 	if outputPath != "" {
 		return errors.New("--output can only be used with binary records")
 	}
+
+	return writeNonBinaryRecord(output, record)
+}
+
+func writeBinaryRecord(output io.Writer, record model.Record, outputPath string) error {
+	payload, ok := record.Payload.(*model.BinaryPayload)
+	if !ok || payload == nil {
+		return errors.New("unexpected binary payload")
+	}
+	if outputPath == "" {
+		return errors.New("output path is required for binary record")
+	}
+	if err := writeBinaryFile(outputPath, payload.Data); err != nil {
+		return err
+	}
+	if err := writeRecordHeader(output, record.Metadata); err != nil {
+		return err
+	}
+
+	return writeBinaryRecordPayload(output, payload, outputPath)
+}
+
+func writeNonBinaryRecord(output io.Writer, record model.Record) error {
 	if err := writeRecordHeader(output, record.Metadata); err != nil {
 		return err
 	}

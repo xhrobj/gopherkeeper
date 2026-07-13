@@ -1071,7 +1071,7 @@ func newCreateRecordRequest(body string) *http.Request {
 	return request
 }
 
-func newUpdateRecordRequest(recordID string, body string) *http.Request {
+func newUpdateRecordRequest(recordID, body string) *http.Request {
 	request := httptest.NewRequest(http.MethodPut, "/api/v1/records/"+recordID, strings.NewReader(body))
 	request.SetPathValue("id", recordID)
 	request.Header.Set("Content-Type", "application/json")
@@ -1191,7 +1191,7 @@ func assertRecordResponse(
 	assertJSONValue(t, body.Payload, wantPayload)
 }
 
-func assertRecordMetadataResponse(t *testing.T, got recordMetadataResponse, want recordMetadataResponse) {
+func assertRecordMetadataResponse(t *testing.T, got, want recordMetadataResponse) {
 	t.Helper()
 
 	if got.ID != want.ID {

@@ -115,8 +115,8 @@ func TestRun_HealthCommandOutputDoesNotContainBanner(t *testing.T) {
 	isolateClientConfig(t)
 
 	factory := newClientFactoryStub(t)
-	factory.newHealthClient = func(config.Config) (healthClient, error) {
-		return healthClientStub{health: func(context.Context) (string, error) {
+	factory.newHealthClient = func(config.Config) (healthChecker, error) {
+		return healthCheckerStub{health: func(context.Context) (string, error) {
 			return "ok", nil
 		}}, nil
 	}
@@ -273,9 +273,9 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 
 			var got config.Config
 			factory := newClientFactoryStub(t)
-			factory.newHealthClient = func(cfg config.Config) (healthClient, error) {
+			factory.newHealthClient = func(cfg config.Config) (healthChecker, error) {
 				got = cfg
-				return healthClientStub{health: func(context.Context) (string, error) {
+				return healthCheckerStub{health: func(context.Context) (string, error) {
 					return "ok", nil
 				}}, nil
 			}
@@ -316,7 +316,7 @@ func TestRun_ReturnsConfigurationError(t *testing.T) {
 			t.Setenv("CONFIG", tt.envConfig)
 
 			factory := newClientFactoryStub(t)
-			factory.newHealthClient = func(config.Config) (healthClient, error) {
+			factory.newHealthClient = func(config.Config) (healthChecker, error) {
 				t.Fatal("health client must not be created after configuration error")
 				return nil, nil
 			}
@@ -336,7 +336,7 @@ func TestRun_ReturnsFlagParsingError(t *testing.T) {
 	isolateClientConfig(t)
 
 	factory := newClientFactoryStub(t)
-	factory.newHealthClient = func(config.Config) (healthClient, error) {
+	factory.newHealthClient = func(config.Config) (healthChecker, error) {
 		t.Fatal("health client must not be created after flag parsing error")
 		return nil, nil
 	}
