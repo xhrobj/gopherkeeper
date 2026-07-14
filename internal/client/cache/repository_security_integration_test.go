@@ -196,29 +196,26 @@ func TestIntegration_RepositoryRejectsTamperedEncryptedData(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-			repository, err := OpenRepository(ctx, testLocation(t), []byte("cache-password"))
-			if err != nil {
-				t.Fatalf("OpenRepository() error = %v", err)
-			}
-			t.Cleanup(func() {
-				if err := repository.Close(); err != nil {
-					t.Errorf("Repository.Close() error = %v", err)
-				}
-			})
-
-			record := securityTextRecord()
-			if err := repository.Upsert(ctx, record); err != nil {
-				t.Fatalf("Upsert() error = %v", err)
-			}
-			if _, err := repository.database.db.ExecContext(ctx, tt.query, record.Metadata.ID); err != nil {
-				t.Fatalf("tamper %s: %v", tt.name, err)
-			}
-
-			if _, err := repository.Get(ctx, record.Metadata.ID); !errors.Is(err, ErrCorruptedCacheRecord) {
-				t.Fatalf("Get() error = %v, want ErrCorruptedCacheRecord", err)
-			}
+			assertRepositoryRejectsTamperedEncryptedData(t, tt.name, tt.query)
 		})
+	}
+}
+
+func assertRepositoryRejectsTamperedEncryptedData(t *testing.T, tamperedPart, query string) {
+	t.Helper()
+
+	ctx := context.Background()
+	repository := openSecurityTestRepository(t, ctx, testLocation(t), []byte("cache-password"))
+	record := securityTextRecord()
+
+	if err := repository.Upsert(ctx, record); err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+	if _, err := repository.database.db.ExecContext(ctx, query, record.Metadata.ID); err != nil {
+		t.Fatalf("tamper %s: %v", tamperedPart, err)
+	}
+	if _, err := repository.Get(ctx, record.Metadata.ID); !errors.Is(err, ErrCorruptedCacheRecord) {
+		t.Fatalf("Get() error = %v, want ErrCorruptedCacheRecord", err)
 	}
 }
 
