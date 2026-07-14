@@ -18,7 +18,8 @@ func TestResolve(t *testing.T) {
 	configFile := writeConfigFile(t, `{
   "address": "localhost:8081",
   "ca_cert_file": "file-ca.pem",
-  "session_file": "file-session.json"
+  "session_file": "file-session.json",
+  "cache_dir": "file-cache"
 }`)
 
 	tests := []struct {
@@ -38,6 +39,7 @@ func TestResolve(t *testing.T) {
 				Address:     "localhost:8081",
 				CACertFile:  "file-ca.pem",
 				SessionFile: "file-session.json",
+				CacheDir:    "file-cache",
 			},
 		},
 		{
@@ -47,11 +49,13 @@ func TestResolve(t *testing.T) {
 				Address:     stringPointer("localhost:8082"),
 				CACertFile:  stringPointer("override-ca.pem"),
 				SessionFile: stringPointer("override-session.json"),
+				CacheDir:    stringPointer("override-cache"),
 			},
 			want: Config{
 				Address:     "localhost:8082",
 				CACertFile:  "override-ca.pem",
 				SessionFile: "override-session.json",
+				CacheDir:    "override-cache",
 			},
 		},
 		{
@@ -59,6 +63,7 @@ func TestResolve(t *testing.T) {
 			configFile: configFile,
 			overrides: Overrides{
 				CACertFile: stringPointer(""),
+				CacheDir:   stringPointer(""),
 			},
 			want: Config{
 				Address:     "localhost:8081",

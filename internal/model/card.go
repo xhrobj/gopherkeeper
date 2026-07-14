@@ -53,6 +53,9 @@ func (payload *CardPayload) Validate() error {
 	if payload.ExpiryMonth != nil && (*payload.ExpiryMonth < 1 || *payload.ExpiryMonth > 12) {
 		return ErrInvalidCardPayload
 	}
+	if payload.ExpiryYear != nil && (*payload.ExpiryYear < 1 || *payload.ExpiryYear > 9999) {
+		return ErrInvalidCardPayload
+	}
 
 	return validatePayloadMetadata(payload.Metadata, ErrInvalidCardPayload)
 }

@@ -156,8 +156,8 @@ func TestExecuteUpdateTextRecord_ReturnsReadError(t *testing.T) {
 			textFile:         "missing.txt",
 		},
 	)
-	if err == nil || !strings.Contains(err.Error(), "stat text file") {
-		t.Fatalf("executeUpdateTextRecord() error = %v, want text file stat error", err)
+	if err == nil || !strings.Contains(err.Error(), "open text file") {
+		t.Fatalf("executeUpdateTextRecord() error = %v, want text file open error", err)
 	}
 }
 

@@ -77,10 +77,15 @@ func NewHandler(deps Dependencies) http.Handler {
 	router.Route("/api/v1", func(router chi.Router) {
 		router.Route("/auth", func(router chi.Router) {
 			router.Method(http.MethodPost, "/register", registerHandler(deps.Registerer))
-			router.Method(http.MethodPost, "/login", loginHandler(deps.Authenticator))
+			router.With(middleware.WithNoStore).Method(
+				http.MethodPost,
+				"/login",
+				loginHandler(deps.Authenticator),
+			)
 		})
 
 		router.Group(func(router chi.Router) {
+			router.Use(middleware.WithNoStore)
 			router.Use(func(handler http.Handler) http.Handler {
 				return middleware.WithAuthentication(handler, deps.TokenValidator)
 			})

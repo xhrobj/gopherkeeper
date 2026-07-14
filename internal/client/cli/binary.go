@@ -36,12 +36,7 @@ func newCreateBinaryRecordCommand(factory clientFactory) *urfavecli.Command {
 		Usage: "create a private binary record",
 		Flags: binaryRecordFlags(false),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			cfg, err := configFromCommand(command)
-			if err != nil {
-				return err
-			}
-
-			application, err := factory.NewApplication(cfg)
+			application, err := applicationFromCommand(command, factory)
 			if err != nil {
 				return err
 			}
@@ -73,12 +68,7 @@ func newUpdateBinaryRecordCommand(factory clientFactory) *urfavecli.Command {
 				return errors.New("record id is required")
 			}
 
-			cfg, err := configFromCommand(command)
-			if err != nil {
-				return err
-			}
-
-			application, err := factory.NewApplication(cfg)
+			application, err := applicationFromCommand(command, factory)
 			if err != nil {
 				return err
 			}

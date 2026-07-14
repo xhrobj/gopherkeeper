@@ -134,15 +134,9 @@ paths:
           description: Пользователь аутентифицирован
           headers:
             Cache-Control:
-              description: Ответ с token не должен сохраняться в HTTP-кэшах.
-              schema:
-                type: string
-                example: no-store
+              $ref: '#/components/headers/CacheControlNoStore'
             Pragma:
-              description: HTTP/1.0-совместимый запрет кэширования ответа с token.
-              schema:
-                type: string
-                example: no-cache
+              $ref: '#/components/headers/PragmaNoCache'
           content:
             application/json:
               schema:
@@ -200,6 +194,11 @@ paths:
       responses:
         '200':
           description: Текущий пользователь найден
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControlNoStore'
+            Pragma:
+              $ref: '#/components/headers/PragmaNoCache'
           content:
             application/json:
               schema:
@@ -211,6 +210,10 @@ paths:
         '401':
           description: Bearer token отсутствует или не прошёл проверку
           headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControlNoStore'
+            Pragma:
+              $ref: '#/components/headers/PragmaNoCache'
             WWW-Authenticate:
               description: Ожидаемая Сервером схема аутентификации.
               schema:
@@ -294,6 +297,10 @@ paths:
         '201':
           description: Запись создана
           headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControlNoStore'
+            Pragma:
+              $ref: '#/components/headers/PragmaNoCache'
             ETag:
               description: Текущая revision созданной записи.
               schema:
@@ -344,6 +351,11 @@ paths:
       responses:
         '200':
           description: Список metadata записей
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControlNoStore'
+            Pragma:
+              $ref: '#/components/headers/PragmaNoCache'
           content:
             application/json:
               schema:
@@ -377,6 +389,10 @@ paths:
         '200':
           description: Запись найдена
           headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControlNoStore'
+            Pragma:
+              $ref: '#/components/headers/PragmaNoCache'
             ETag:
               description: Текущая revision записи.
               schema:
@@ -494,6 +510,10 @@ paths:
         '200':
           description: Запись изменена
           headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControlNoStore'
+            Pragma:
+              $ref: '#/components/headers/PragmaNoCache'
             ETag:
               description: Новая revision записи после успешного update.
               schema:
@@ -570,6 +590,11 @@ paths:
       responses:
         '204':
           description: Запись физически удалена
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/CacheControlNoStore'
+            Pragma:
+              $ref: '#/components/headers/PragmaNoCache'
         '400':
           description: Некорректный UUID записи или If-Match
           content:
@@ -601,10 +626,26 @@ components:
       bearerFormat: JWT
       description: JWT bearer token из ответа `POST /api/v1/auth/login`.
 
+  headers:
+    CacheControlNoStore:
+      description: Приватный ответ не должен сохраняться в HTTP-кэшах.
+      schema:
+        type: string
+        example: no-store
+    PragmaNoCache:
+      description: HTTP/1.0-совместимый запрет кеширования приватного ответа.
+      schema:
+        type: string
+        example: no-cache
+
   responses:
     Unauthorized:
       description: Отсутствующий, некорректный или просроченный bearer token
       headers:
+        Cache-Control:
+          $ref: '#/components/headers/CacheControlNoStore'
+        Pragma:
+          $ref: '#/components/headers/PragmaNoCache'
         WWW-Authenticate:
           description: Ожидаемая Сервером схема аутентификации.
           schema:
@@ -875,6 +916,14 @@ components:
         - binary
       example: text
 
+    RecordTitle:
+      type: string
+      minLength: 1
+      description: >-
+        Открытое название записи. Runtime ограничивает значение 256 UTF-8 bytes и запрещает
+        управляющие Unicode-символы, включая tab, CR/LF и ESC.
+      example: Alice private note
+
     TextPayload:
       type: object
       additionalProperties: false
@@ -950,8 +999,12 @@ components:
           example: 3
         expiry_year:
           type: integer
+          format: int32
           nullable: true
-          description: Необязательный год окончания срока действия. Передаётся только вместе с expiry_month.
+          minimum: 1
+          maximum: 9999
+          description: >-
+            Необязательный год окончания срока действия. Передаётся только вместе с expiry_month.
           example: 2038
         cvv:
           type: string
@@ -1024,10 +1077,7 @@ components:
             - text
           example: text
         title:
-          type: string
-          description: Открытое название записи, видимое в списке metadata.
-          minLength: 1
-          example: Alice private note
+          $ref: '#/components/schemas/RecordTitle'
         payload:
           $ref: '#/components/schemas/TextPayload'
 
@@ -1045,10 +1095,7 @@ components:
             - credentials
           example: credentials
         title:
-          type: string
-          description: Открытое название записи, видимое в списке metadata.
-          minLength: 1
-          example: GitHub
+          $ref: '#/components/schemas/RecordTitle'
         payload:
           $ref: '#/components/schemas/CredentialsPayload'
 
@@ -1066,10 +1113,7 @@ components:
             - card
           example: card
         title:
-          type: string
-          description: Открытое название записи, видимое в списке metadata.
-          minLength: 1
-          example: "Joel's card"
+          $ref: '#/components/schemas/RecordTitle'
         payload:
           $ref: '#/components/schemas/CardPayload'
 
@@ -1087,10 +1131,7 @@ components:
             - binary
           example: binary
         title:
-          type: string
-          description: Открытое название записи, видимое в списке metadata.
-          minLength: 1
-          example: Alice encrypted backup
+          $ref: '#/components/schemas/RecordTitle'
         payload:
           $ref: '#/components/schemas/BinaryPayload'
 
@@ -1123,10 +1164,7 @@ components:
             - text
           example: text
         title:
-          type: string
-          description: Новое открытое название записи, видимое в списке metadata.
-          minLength: 1
-          example: Alice updated note
+          $ref: '#/components/schemas/RecordTitle'
         payload:
           $ref: '#/components/schemas/TextPayload'
 
@@ -1145,10 +1183,7 @@ components:
             - credentials
           example: credentials
         title:
-          type: string
-          description: Новое открытое название записи, видимое в списке metadata.
-          minLength: 1
-          example: GitHub updated
+          $ref: '#/components/schemas/RecordTitle'
         payload:
           $ref: '#/components/schemas/CredentialsPayload'
 
@@ -1167,10 +1202,7 @@ components:
             - card
           example: card
         title:
-          type: string
-          description: Новое открытое название записи, видимое в списке metadata.
-          minLength: 1
-          example: "Joel's card updated"
+          $ref: '#/components/schemas/RecordTitle'
         payload:
           $ref: '#/components/schemas/CardPayload'
 
@@ -1189,10 +1221,7 @@ components:
             - binary
           example: binary
         title:
-          type: string
-          description: Новое открытое название записи, видимое в списке metadata.
-          minLength: 1
-          example: Alice updated backup
+          $ref: '#/components/schemas/RecordTitle'
         payload:
           $ref: '#/components/schemas/BinaryPayload'
 
@@ -1214,8 +1243,7 @@ components:
         type:
           $ref: '#/components/schemas/RecordType'
         title:
-          type: string
-          example: Alice private note
+          $ref: '#/components/schemas/RecordTitle'
         revision:
           type: integer
           format: int64
@@ -1266,8 +1294,7 @@ components:
             - text
           example: text
         title:
-          type: string
-          example: Alice private note
+          $ref: '#/components/schemas/RecordTitle'
         revision:
           type: integer
           format: int64
@@ -1306,8 +1333,7 @@ components:
             - credentials
           example: credentials
         title:
-          type: string
-          example: GitHub
+          $ref: '#/components/schemas/RecordTitle'
         revision:
           type: integer
           format: int64
@@ -1346,8 +1372,7 @@ components:
             - card
           example: card
         title:
-          type: string
-          example: "Joel's card"
+          $ref: '#/components/schemas/RecordTitle'
         revision:
           type: integer
           format: int64
@@ -1386,8 +1411,7 @@ components:
             - binary
           example: binary
         title:
-          type: string
-          example: Alice encrypted backup
+          $ref: '#/components/schemas/RecordTitle'
         revision:
           type: integer
           format: int64

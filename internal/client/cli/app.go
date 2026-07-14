@@ -22,6 +22,8 @@ const banner = `
 
 `
 
+const notAvailable = "¯\\_(ツ)_/¯"
+
 type runOptions struct {
 	input       io.Reader
 	output      io.Writer
@@ -100,7 +102,7 @@ func newRootCommand(
 	defaults := config.Default()
 	version := info.Version
 	if version == "" {
-		version = "¯\\_(ツ)_/¯"
+		version = notAvailable
 	}
 
 	return &urfavecli.Command{
@@ -133,6 +135,11 @@ func newRootCommand(
 				Name:  sessionFileFlag,
 				Usage: "path to online session file",
 				Value: defaults.SessionFile,
+			},
+			&urfavecli.StringFlag{
+				Name:  cacheDirFlag,
+				Usage: "base directory for encrypted local cache",
+				Value: defaults.CacheDir,
 			},
 		},
 		Before: func(ctx context.Context, command *urfavecli.Command) (context.Context, error) {

@@ -182,6 +182,7 @@ func isolateClientConfig(t *testing.T) {
 	t.Setenv("ADDRESS", "")
 	t.Setenv("CA_CERT_FILE", "")
 	t.Setenv("SESSION_FILE", "")
+	t.Setenv("CACHE_DIR", "")
 }
 
 func runTestCommand(

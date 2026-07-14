@@ -9,55 +9,41 @@ import (
 
 func TestConfigFromCommand(t *testing.T) {
 	want := config.Config{Address: "localhost:8080"}
+	command := &urfavecli.Command{Metadata: map[string]any{
+		clientConfigMetadataKey: want,
+	}}
 
-	tests := []struct {
-		name      string
-		metadata  map[string]any
-		want      config.Config
-		wantError string
-	}{
-		{
-			name: "valid config",
-			metadata: map[string]any{
-				clientConfigMetadataKey: want,
-			},
-			want: want,
-		},
-		{
-			name:      "missing config",
-			metadata:  map[string]any{},
-			wantError: "client config is missing",
-		},
-		{
-			name: "unexpected config type",
-			metadata: map[string]any{
-				clientConfigMetadataKey: "invalid",
-			},
-			wantError: "client config has unexpected type",
-		},
+	got, err := configFromCommand(command)
+	if err != nil {
+		t.Fatalf("configFromCommand() error = %v", err)
 	}
+	if got != want {
+		t.Errorf("configFromCommand() = %+v, want %+v", got, want)
+	}
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			command := &urfavecli.Command{Metadata: tt.metadata}
+func TestConfigFromCommand_ReturnsMissingConfigError(t *testing.T) {
+	command := &urfavecli.Command{Metadata: map[string]any{}}
 
-			got, err := configFromCommand(command)
-			if tt.wantError != "" {
-				if err == nil {
-					t.Fatalf("configFromCommand() error = nil, want %q", tt.wantError)
-				}
-				if err.Error() != tt.wantError {
-					t.Fatalf("configFromCommand() error = %q, want %q", err, tt.wantError)
-				}
-				return
-			}
+	_, err := configFromCommand(command)
+	if err == nil {
+		t.Fatal("configFromCommand() error = nil, want client config is missing")
+	}
+	if got, want := err.Error(), "client config is missing"; got != want {
+		t.Errorf("configFromCommand() error = %q, want %q", got, want)
+	}
+}
 
-			if err != nil {
-				t.Fatalf("configFromCommand() error = %v", err)
-			}
-			if got != tt.want {
-				t.Errorf("configFromCommand() = %+v, want %+v", got, tt.want)
-			}
-		})
+func TestConfigFromCommand_ReturnsUnexpectedTypeError(t *testing.T) {
+	command := &urfavecli.Command{Metadata: map[string]any{
+		clientConfigMetadataKey: "invalid",
+	}}
+
+	_, err := configFromCommand(command)
+	if err == nil {
+		t.Fatal("configFromCommand() error = nil, want client config has unexpected type")
+	}
+	if got, want := err.Error(), "client config has unexpected type"; got != want {
+		t.Errorf("configFromCommand() error = %q, want %q", got, want)
 	}
 }

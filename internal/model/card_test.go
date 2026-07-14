@@ -10,8 +10,12 @@ func TestCardPayload_Validate(t *testing.T) {
 	january := 1
 	december := 12
 	year := 2038
+	firstYear := 1
+	lastYear := 9999
 	zeroMonth := 0
 	lateMonth := 13
+	zeroYear := 0
+	lateYear := 10000
 
 	tests := []struct {
 		name    string
@@ -41,6 +45,22 @@ func TestCardPayload_Validate(t *testing.T) {
 				Number:      "2013 0614 2020 0619",
 				ExpiryMonth: &december,
 				ExpiryYear:  &year,
+			},
+		},
+		{
+			name: "first year",
+			payload: &CardPayload{
+				Number:      "2013 0614 2020 0619",
+				ExpiryMonth: &january,
+				ExpiryYear:  &firstYear,
+			},
+		},
+		{
+			name: "last year",
+			payload: &CardPayload{
+				Number:      "2013 0614 2020 0619",
+				ExpiryMonth: &january,
+				ExpiryYear:  &lastYear,
 			},
 		},
 		{
@@ -91,6 +111,24 @@ func TestCardPayload_Validate(t *testing.T) {
 				Number:      "2013 0614 2020 0619",
 				ExpiryMonth: &lateMonth,
 				ExpiryYear:  &year,
+			},
+			wantErr: ErrInvalidCardPayload,
+		},
+		{
+			name: "year below range",
+			payload: &CardPayload{
+				Number:      "2013 0614 2020 0619",
+				ExpiryMonth: &january,
+				ExpiryYear:  &zeroYear,
+			},
+			wantErr: ErrInvalidCardPayload,
+		},
+		{
+			name: "year above range",
+			payload: &CardPayload{
+				Number:      "2013 0614 2020 0619",
+				ExpiryMonth: &january,
+				ExpiryYear:  &lateYear,
 			},
 			wantErr: ErrInvalidCardPayload,
 		},

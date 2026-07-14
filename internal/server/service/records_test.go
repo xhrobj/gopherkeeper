@@ -142,6 +142,36 @@ func TestRecordService_Create(t *testing.T) {
 	}
 }
 
+func TestRecordService_CreateRejectsInvalidTitle(t *testing.T) {
+	tests := []struct {
+		name  string
+		title string
+	}{
+		{name: "control character", title: "Alice\nnote"},
+		{name: "too large", title: strings.Repeat("a", model.RecordTitleMaxSize+1)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			crypto := &recordPayloadCryptoStub{}
+			records := &recordRepositoryStub{}
+			service := NewRecordService(records, crypto)
+
+			_, err := service.Create(context.Background(), CreateRecordRequest{
+				UserID:  42,
+				Title:   tt.title,
+				Payload: &model.TextPayload{Text: "secret note"},
+			})
+			if !errors.Is(err, model.ErrInvalidRecordTitle) {
+				t.Fatalf("Create() error = %v, want ErrInvalidRecordTitle", err)
+			}
+			if crypto.encryptCalls != 0 || records.createCalls != 0 {
+				t.Fatalf("calls: Encrypt=%d Create=%d, want 0", crypto.encryptCalls, records.createCalls)
+			}
+		})
+	}
+}
+
 func TestRecordService_CreateValidationError(t *testing.T) {
 	crypto := &recordPayloadCryptoStub{}
 	records := &recordRepositoryStub{}
@@ -671,6 +701,17 @@ func TestRecordService_UpdateValidationError(t *testing.T) {
 				RecordID:         recordID,
 				ExpectedRevision: 1,
 				Title:            "   ",
+				Payload:          &model.TextPayload{Text: "secret note"},
+			},
+			wantErr: model.ErrInvalidRecordTitle,
+		},
+		{
+			name: "control character in title",
+			request: UpdateRecordRequest{
+				UserID:           42,
+				RecordID:         recordID,
+				ExpectedRevision: 1,
+				Title:            "Alice\tnote",
 				Payload:          &model.TextPayload{Text: "secret note"},
 			},
 			wantErr: model.ErrInvalidRecordTitle,

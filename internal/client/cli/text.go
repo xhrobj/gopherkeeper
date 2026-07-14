@@ -40,12 +40,7 @@ func newCreateTextRecordCommand(factory clientFactory) *urfavecli.Command {
 			},
 		},
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			cfg, err := configFromCommand(command)
-			if err != nil {
-				return err
-			}
-
-			application, err := factory.NewApplication(cfg)
+			application, err := applicationFromCommand(command, factory)
 			if err != nil {
 				return err
 			}
@@ -94,12 +89,7 @@ func newUpdateTextRecordCommand(factory clientFactory) *urfavecli.Command {
 				return errors.New("record id is required")
 			}
 
-			cfg, err := configFromCommand(command)
-			if err != nil {
-				return err
-			}
-
-			application, err := factory.NewApplication(cfg)
+			application, err := applicationFromCommand(command, factory)
 			if err != nil {
 				return err
 			}

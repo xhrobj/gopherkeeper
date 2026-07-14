@@ -49,7 +49,7 @@ bin/gkeep
 make gen-tls-certs
 ```
 
-Команда создаёт локальный CA certificate и server certificate в каталоге `.certs/`. Для локального self-signed TLS Клиенту нужен файл `.certs/ca.pem`.
+Команда создаёт локальный CA certificate и server certificate в каталоге `.local/certs/`. Для локального self-signed TLS Клиенту нужен файл `.local/certs/ca.pem`.
 
 ### 4. Настроить JSON-конфиг Клиента
 
@@ -64,8 +64,9 @@ cp configs/client.example.json configs/client.json
 ```json
 {
   "address": "localhost:8080",
-  "ca_cert_file": ".certs/ca.pem",
-  "session_file": ""
+  "ca_cert_file": ".local/certs/ca.pem",
+  "session_file": "",
+  "cache_dir": ""
 }
 ```
 
@@ -75,17 +76,26 @@ cp configs/client.example.json configs/client.json
 <user-cache-dir>/gopherkeeper/session.json
 ```
 
-Для локальной разработки можно явно указать session-файл внутри проекта, например в каталоге `.session/`:
+Если `cache_dir` оставить пустым, отдельные кеши аккаунтов будут располагаться в системном пользовательском cache-каталоге:
+
+```text
+<user-cache-dir>/gopherkeeper/cache/<account-id>/cache.db
+```
+
+`account-id` детерминированно вычисляется из адреса Сервера и канонического login. Исходные значения не используются как части пути.
+
+Для локальной разработки можно явно указать session-файл внутри проекта, например в каталоге `.local/session/`:
 
 ```json
 {
   "address": "localhost:8080",
-  "ca_cert_file": ".certs/ca.pem",
-  "session_file": ".session/session.json"
+  "ca_cert_file": ".local/certs/ca.pem",
+  "session_file": ".local/session/session.json",
+  "cache_dir": ".local/cache"
 }
 ```
 
-Каталог `.session/` предназначен только для локального dev-запуска и не коммитится в репозиторий.
+Каталог `.local/session/` предназначен только для локального dev-запуска и не коммитится в репозиторий.
 
 Клиент читает JSON-конфиг по флагу `--config` / `-c` или через переменную окружения `CONFIG`.
 
@@ -289,14 +299,14 @@ not logged in
 Подготовить файл с приватным текстом:
 
 ```bash
-mkdir -p .tmp
-printf 'secret note\n' > .tmp/note.txt
+mkdir -p .local/tmp
+printf 'secret note\n' > .local/tmp/note.txt
 ```
 
 Создать запись:
 
 ```bash
-gkeep records create-text --title 'my note' --text-file .tmp/note.txt
+gkeep records create-text --title 'my note' --text-file .local/tmp/note.txt
 ```
 
 Ожидаемый результат:
@@ -360,7 +370,7 @@ Created card record <record-id> with revision 1.
 Подготовить файл с приватными бинарными данными:
 
 ```bash
-printf '\x00\x01\x02\xff' > .tmp/backup.bin
+printf '\x00\x01\x02\xff' > .local/tmp/backup.bin
 ```
 
 Создать запись:
@@ -368,7 +378,7 @@ printf '\x00\x01\x02\xff' > .tmp/backup.bin
 ```bash
 gkeep records create-binary \
   --title 'backup' \
-  --binary-file .tmp/backup.bin \
+  --binary-file .local/tmp/backup.bin \
   --content-type application/octet-stream
 ```
 
@@ -378,9 +388,7 @@ gkeep records create-binary \
 Created binary record <record-id> with revision 1.
 ```
 
-Имя `backup.bin` сохраняется внутри зашифрованного payload. Необязательные `content_type` и metadata также
-хранятся приватно. Размер бинарных данных после Base64-декодирования не должен превышать 2 МиБ; пустой файл
-допустим.
+Имя `backup.bin` сохраняется внутри зашифрованного payload. Необязательные `content_type` и metadata также хранятся приватно. Размер бинарных данных после Base64-декодирования не должен превышать 2 МиБ; пустой файл допустим.
 
 ### 16. Получить список записей
 
@@ -406,15 +414,12 @@ ID                                    TYPE         TITLE       REVISION  UPDATED
 gkeep records get <record-id>
 ```
 
-Клиент определяет тип записи и выводит расшифрованный payload владельцу. Для credentials вывод содержит login,
-password, URL и metadata. Для card вывод содержит полный номер карты, cardholder, срок действия, CVV и metadata.
-Это секретный вывод: не запускайте команду в общем терминале и не перенаправляйте результат в небезопасные логи
-или файлы.
+Клиент определяет тип записи и выводит расшифрованный payload владельцу. Для credentials вывод содержит login, password, URL и metadata. Для card вывод содержит полный номер карты, cardholder, срок действия, CVV и metadata. Это секретный вывод: не запускайте команду в общем терминале и не перенаправляйте результат в небезопасные логи или файлы.
 
 Binary-запись сохраняется только в явно указанный файл:
 
 ```bash
-gkeep records get <binary-record-id> --output .tmp/restored-backup.bin
+gkeep records get <binary-record-id> --output .local/tmp/restored-backup.bin
 ```
 
 Ожидаемый вывод содержит приватные metadata файла, но не сами бинарные данные:
@@ -429,25 +434,24 @@ Updated at: 2026-07-12T12:03:00Z
 
 Filename: backup.bin
 Size: 4 bytes
-Saved to: .tmp/restored-backup.bin
+Saved to: .local/tmp/restored-backup.bin
 Content type: application/octet-stream
 ```
 
-Stored filename не используется как локальный путь. Клиент не перезаписывает существующий output-файл: для
-повторного сохранения нужно удалить его или указать новый путь.
+Stored filename не используется как локальный путь. Клиент не перезаписывает существующий output-файл: для повторного сохранения нужно удалить его или указать новый путь.
 
 ### 18. Обновить text-запись
 
 Подготовить новый файл с приватным текстом:
 
 ```bash
-printf 'updated secret note\n' > .tmp/note-updated.txt
+printf 'updated secret note\n' > .local/tmp/note-updated.txt
 ```
 
 Обновить запись, передав ожидаемую текущую ревизию:
 
 ```bash
-gkeep records update-text <record-id> --revision 1 --title 'updated note' --text-file .tmp/note-updated.txt
+gkeep records update-text <record-id> --revision 1 --title 'updated note' --text-file .local/tmp/note-updated.txt
 ```
 
 Ожидаемый результат:
@@ -489,12 +493,12 @@ Updated card record <record-id> to revision 2.
 Подготовить новый файл и передать ожидаемую текущую ревизию:
 
 ```bash
-printf '\x10\x20\x30\x40' > .tmp/backup-updated.bin
+printf '\x10\x20\x30\x40' > .local/tmp/backup-updated.bin
 
 gkeep records update-binary <record-id> \
   --revision 1 \
   --title 'updated backup' \
-  --binary-file .tmp/backup-updated.bin \
+  --binary-file .local/tmp/backup-updated.bin \
   --content-type application/octet-stream
 ```
 
@@ -504,15 +508,13 @@ gkeep records update-binary <record-id> \
 Updated binary record <record-id> to revision 2.
 ```
 
-Для всех update-команд `--revision` обязателен. Клиент передаёт её Серверу в HTTP-заголовке `If-Match`, чтобы
-не перетереть изменения с другого устройства. Устаревшая ревизия возвращает:
+Для всех update-команд `--revision` обязателен. Клиент передаёт её Серверу в HTTP-заголовке `If-Match`, чтобы не перетереть изменения с другого устройства. Устаревшая ревизия возвращает:
 
 ```text
 record revision conflict
 ```
 
-Тип записи изменить нельзя: text-запись обновляется только через `update-text`, credentials-запись — через
-`update-credentials`, card-запись — через `update-card`, binary-запись — через `update-binary`.
+Тип записи изменить нельзя: text-запись обновляется только через `update-text`, credentials-запись — через `update-credentials`, card-запись — через `update-card`, binary-запись — через `update-binary`.
 
 ### 22. Удалить запись
 
@@ -552,13 +554,15 @@ logged out
 {
   "address": "localhost:8080",
   "ca_cert_file": "",
-  "session_file": ""
+  "session_file": "",
+  "cache_dir": ""
 }
 ```
 
 - `address` — адрес Сервера в формате `host:port`;
 - `ca_cert_file` — путь к дополнительному CA certificate для проверки TLS;
-- `session_file` — путь к локальному session-файлу Клиента.
+- `session_file` — путь к локальному session-файлу Клиента;
+- `cache_dir` — базовый каталог локального зашифрованного кеша.
 
 Соответствие источников конфигурации:
 
@@ -568,8 +572,11 @@ logged out
 | Адрес Сервера | `address` | `--address`, `-a` | `ADDRESS` |
 | Дополнительный CA certificate | `ca_cert_file` | `--ca-cert` | `CA_CERT_FILE` |
 | Session-файл | `session_file` | `--session-file` | `SESSION_FILE` |
+| Каталог локального кеша | `cache_dir` | `--cache-dir` | `CACHE_DIR` |
 
 По умолчанию session-файл хранится как `gopherkeeper/session.json` внутри системного каталога пользовательского кеша. Файл создаётся с правами `0600`, а родительский каталог — с правами `0700`.
+
+По умолчанию базовый каталог локального кеша хранится как `gopherkeeper/cache` внутри системного пользовательского cache-каталога. Для каждой пары Сервер + canonical login используется отдельный SHA-256 идентификатор каталога.
 
 ## Требования к учётным данным
 

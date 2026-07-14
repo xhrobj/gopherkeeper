@@ -144,6 +144,7 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 		envAddress     string
 		envCACert      string
 		envSessionFile string
+		envCacheDir    string
 		envConfig      string
 		args           []string
 		want           config.Config
@@ -155,12 +156,13 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 		},
 		{
 			name:      "config file",
-			envConfig: writeClientConfig(t, `{"address":"localhost:8081","ca_cert_file":"file-ca.pem","session_file":"file-session.json"}`),
+			envConfig: writeClientConfig(t, `{"address":"localhost:8081","ca_cert_file":"file-ca.pem","session_file":"file-session.json","cache_dir":"file-cache"}`),
 			args:      []string{"gopherkeeper", "health"},
 			want: config.Config{
 				Address:     "localhost:8081",
 				CACertFile:  "file-ca.pem",
 				SessionFile: "file-session.json",
+				CacheDir:    "file-cache",
 			},
 		},
 		{
@@ -168,24 +170,28 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 			envAddress:     "localhost:8081",
 			envCACert:      "env-ca.pem",
 			envSessionFile: "env-session.json",
+			envCacheDir:    "env-cache",
 			args:           []string{"gopherkeeper", "health"},
 			want: config.Config{
 				Address:     "localhost:8081",
 				CACertFile:  "env-ca.pem",
 				SessionFile: "env-session.json",
+				CacheDir:    "env-cache",
 			},
 		},
 		{
 			name:           "environment > config file",
-			envConfig:      writeClientConfig(t, `{"address":"localhost:8081","ca_cert_file":"file-ca.pem","session_file":"file-session.json"}`),
+			envConfig:      writeClientConfig(t, `{"address":"localhost:8081","ca_cert_file":"file-ca.pem","session_file":"file-session.json","cache_dir":"file-cache"}`),
 			envAddress:     "localhost:8082",
 			envCACert:      "env-ca.pem",
 			envSessionFile: "env-session.json",
+			envCacheDir:    "env-cache",
 			args:           []string{"gopherkeeper", "health"},
 			want: config.Config{
 				Address:     "localhost:8082",
 				CACertFile:  "env-ca.pem",
 				SessionFile: "env-session.json",
+				CacheDir:    "env-cache",
 			},
 		},
 		{
@@ -215,17 +221,20 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 			envAddress:     "localhost:8081",
 			envCACert:      "env-ca.pem",
 			envSessionFile: "env-session.json",
+			envCacheDir:    "env-cache",
 			args: []string{
 				"gopherkeeper",
 				"-a", "localhost:8082",
 				"--ca-cert", "flag-ca.pem",
 				"--session-file", "flag-session.json",
+				"--cache-dir", "flag-cache",
 				"health",
 			},
 			want: config.Config{
 				Address:     "localhost:8082",
 				CACertFile:  "flag-ca.pem",
 				SessionFile: "flag-session.json",
+				CacheDir:    "flag-cache",
 			},
 		},
 		{
@@ -233,17 +242,20 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 			envAddress:     "localhost:8081",
 			envCACert:      "env-ca.pem",
 			envSessionFile: "env-session.json",
+			envCacheDir:    "env-cache",
 			args: []string{
 				"gopherkeeper",
 				"health",
 				"-a", "localhost:8082",
 				"--ca-cert", "flag-ca.pem",
 				"--session-file", "flag-session.json",
+				"--cache-dir", "flag-cache",
 			},
 			want: config.Config{
 				Address:     "localhost:8082",
 				CACertFile:  "flag-ca.pem",
 				SessionFile: "flag-session.json",
+				CacheDir:    "flag-cache",
 			},
 		},
 		{
@@ -254,11 +266,13 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 				"--address=localhost:8083",
 				"--ca-cert=inline-ca.pem",
 				"--session-file=inline-session.json",
+				"--cache-dir=inline-cache",
 			},
 			want: config.Config{
 				Address:     "localhost:8083",
 				CACertFile:  "inline-ca.pem",
 				SessionFile: "inline-session.json",
+				CacheDir:    "inline-cache",
 			},
 		},
 	}
@@ -269,6 +283,7 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 			t.Setenv("ADDRESS", tt.envAddress)
 			t.Setenv("CA_CERT_FILE", tt.envCACert)
 			t.Setenv("SESSION_FILE", tt.envSessionFile)
+			t.Setenv("CACHE_DIR", tt.envCacheDir)
 			t.Setenv("CONFIG", tt.envConfig)
 
 			var got config.Config

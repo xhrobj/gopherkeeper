@@ -45,7 +45,7 @@ SERVER := $(BIN_DIR)/$(SERVER_NAME)
 CLIENT := $(BIN_DIR)/$(CLIENT_NAME)
 
 # TLS-сертификаты для локальной разработки
-TLS_CERT_DIR := .certs
+TLS_CERT_DIR := .local/certs
 
 TLS_CA_CERT ?= $(TLS_CERT_DIR)/ca.pem
 TLS_SERVER_CERT ?= $(TLS_CERT_DIR)/server.pem
@@ -77,7 +77,7 @@ export DATABASE_DSN
 # NOTE: создать локальный конфиг Клиента:
 # `cp configs/client.example.json configs/client.json`
 # и указать в нем как минимум путь к self-signed TLS CA-сертификату, например:
-# `"ca_cert_file": ".certs/ca.pem"`
+# `"ca_cert_file": ".local/certs/ca.pem"`
 CLIENT_CONFIG ?= configs/client.json
 
 # обновить профиль покрытия и вывести общий процент

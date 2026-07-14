@@ -95,6 +95,7 @@ func assertHealthResponse(
 	if strings.Contains(string(bodyBytes), "database connection failed") {
 		t.Error("response body contains internal database error")
 	}
+	assertNoStoreHeadersAbsent(t, response)
 }
 
 func TestHealthHandler_RejectsUnsupportedMethod(t *testing.T) {
@@ -139,6 +140,7 @@ func TestNewHandler_RoutesRegistration(t *testing.T) {
 	if response.Code != http.StatusCreated {
 		t.Errorf("status code = %d, want %d", response.Code, http.StatusCreated)
 	}
+	assertNoStoreHeadersAbsent(t, response)
 }
 
 func TestNewHandler_RoutesLogin(t *testing.T) {
@@ -174,6 +176,7 @@ func TestNewHandler_RoutesLogin(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Errorf("status code = %d, want %d", response.Code, http.StatusOK)
 	}
+	assertNoStoreHeaders(t, response)
 }
 
 func TestNewHandler_RoutesCurrentUser(t *testing.T) {
@@ -217,6 +220,7 @@ func TestNewHandler_RoutesCurrentUser(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Errorf("status code = %d, want %d", response.Code, http.StatusOK)
 	}
+	assertNoStoreHeaders(t, response)
 }
 
 func TestNewHandler_RoutesRecords(t *testing.T) {
@@ -328,7 +332,75 @@ func TestNewHandler_RoutesRecords(t *testing.T) {
 			if response.Code != tt.wantStatus {
 				t.Errorf("status code = %d, want %d", response.Code, tt.wantStatus)
 			}
+			assertNoStoreHeaders(t, response)
 		})
+	}
+}
+
+func TestNewHandler_AddsNoStoreHeadersToPrivateErrors(t *testing.T) {
+	tests := []struct {
+		name       string
+		request    *http.Request
+		wantStatus int
+	}{
+		{
+			name: "invalid login request",
+			request: func() *http.Request {
+				request := httptest.NewRequest(
+					http.MethodPost,
+					"/api/v1/auth/login",
+					strings.NewReader(`{"login":`),
+				)
+				request.Header.Set("Content-Type", "application/json")
+				return request
+			}(),
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "unauthorized current user",
+			request:    httptest.NewRequest(http.MethodGet, "/api/v1/users/me", nil),
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:       "unauthorized records",
+			request:    httptest.NewRequest(http.MethodGet, "/api/v1/records", nil),
+			wantStatus: http.StatusUnauthorized,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+
+			NewHandler(newTestDependencies(t)).ServeHTTP(response, tt.request)
+
+			if response.Code != tt.wantStatus {
+				t.Errorf("status code = %d, want %d", response.Code, tt.wantStatus)
+			}
+			assertNoStoreHeaders(t, response)
+		})
+	}
+}
+
+func assertNoStoreHeaders(t *testing.T, response *httptest.ResponseRecorder) {
+	t.Helper()
+
+	if got := response.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
+	}
+	if got := response.Header().Get("Pragma"); got != "no-cache" {
+		t.Errorf("Pragma = %q, want no-cache", got)
+	}
+}
+
+func assertNoStoreHeadersAbsent(t *testing.T, response *httptest.ResponseRecorder) {
+	t.Helper()
+
+	if got := response.Header().Get("Cache-Control"); got != "" {
+		t.Errorf("Cache-Control = %q, want empty", got)
+	}
+	if got := response.Header().Get("Pragma"); got != "" {
+		t.Errorf("Pragma = %q, want empty", got)
 	}
 }
 
