@@ -7,15 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	_ "modernc.org/sqlite"
 )
 
-const (
-	busyTimeout       = 5 * time.Second
-	busyTimeoutPragma = "PRAGMA busy_timeout = 5000"
-)
+const busyTimeoutPragma = "PRAGMA busy_timeout = 5000"
 
 var (
 	// ErrInvalidLocation означает, что расположение SQLite-кеша не соответствует

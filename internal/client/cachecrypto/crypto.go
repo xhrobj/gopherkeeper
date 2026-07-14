@@ -12,27 +12,37 @@ import (
 )
 
 const (
-	CryptoVersion   uint8 = 1
-	aes256KeySize         = 32
-	keyCheckMessage       = "gopherkeeper-local-cache-key-check-v1"
+	// CryptoVersion содержит текущую версию локального AES-GCM контейнера.
+	CryptoVersion uint8 = 1
+
+	aes256KeySize   = 32
+	keyCheckMessage = "gopherkeeper-local-cache-key-check-v1"
 )
 
 var (
+	// ErrInvalidLocalKey сообщает, что локальный ключ не подходит для AES-256-GCM.
 	ErrInvalidLocalKey = errors.New("invalid local cache key")
-	ErrInvalidAAD      = errors.New("invalid local cache AAD")
-	ErrOpenLocalCache  = errors.New("invalid password or corrupted local cache")
+
+	// ErrInvalidAAD сообщает, что authenticated data локального кеша некорректны.
+	ErrInvalidAAD = errors.New("invalid local cache AAD")
+
+	// ErrOpenLocalCache скрывает различие между неправильным password и повреждением локального кеша.
+	ErrOpenLocalCache = errors.New("invalid password or corrupted local cache")
 )
 
+// EncryptedData содержит локальный AES-GCM ciphertext и его nonce.
 type EncryptedData struct {
 	CryptoVersion uint8
 	Nonce         []byte
 	Ciphertext    []byte
 }
 
+// Service выполняет AES-256-GCM шифрование локального кеша.
 type Service struct {
 	aead cipher.AEAD
 }
 
+// NewService создаёт Service из 32-байтового локального ключа.
 func NewService(key []byte) (*Service, error) {
 	if len(key) != aes256KeySize {
 		return nil, ErrInvalidLocalKey
@@ -51,6 +61,7 @@ func NewService(key []byte) (*Service, error) {
 	return &Service{aead: aead}, nil
 }
 
+// Encrypt шифрует plaintext с обязательными authenticated data.
 func (service *Service) Encrypt(plaintext, aad []byte) (EncryptedData, error) {
 	if len(aad) == 0 {
 		return EncryptedData{}, ErrInvalidAAD
@@ -68,6 +79,7 @@ func (service *Service) Encrypt(plaintext, aad []byte) (EncryptedData, error) {
 	}, nil
 }
 
+// Decrypt расшифровывает ciphertext и проверяет его версию, nonce и authentication tag.
 func (service *Service) Decrypt(encrypted EncryptedData, aad []byte) ([]byte, error) {
 	if encrypted.CryptoVersion != CryptoVersion ||
 		len(encrypted.Nonce) != service.aead.NonceSize() ||
@@ -84,6 +96,7 @@ func (service *Service) Decrypt(encrypted EncryptedData, aad []byte) ([]byte, er
 	return plaintext, nil
 }
 
+// BuildKeyCheckAAD создаёт authenticated data для verifier локального кеша аккаунта.
 func BuildKeyCheckAAD(accountID string) ([]byte, error) {
 	if accountID == "" {
 		return nil, ErrInvalidAAD
@@ -96,6 +109,7 @@ func BuildKeyCheckAAD(accountID string) ([]byte, error) {
 	)), nil
 }
 
+// BuildRecordAAD привязывает ciphertext к аккаунту, записи и её ревизии.
 func BuildRecordAAD(accountID, recordID string, revision int64) ([]byte, error) {
 	if accountID == "" || model.ValidateRecordID(recordID) != nil || revision <= 0 {
 		return nil, ErrInvalidAAD
@@ -110,6 +124,7 @@ func BuildRecordAAD(accountID, recordID string, revision int64) ([]byte, error) 
 	)), nil
 }
 
+// CreateKeyCheck создаёт зашифрованный verifier правильности локального ключа.
 func (service *Service) CreateKeyCheck(accountID string) (EncryptedData, error) {
 	aad, err := BuildKeyCheckAAD(accountID)
 	if err != nil {
@@ -119,6 +134,7 @@ func (service *Service) CreateKeyCheck(accountID string) (EncryptedData, error) 
 	return service.Encrypt([]byte(keyCheckMessage), aad)
 }
 
+// VerifyKeyCheck проверяет локальный ключ без хранения password или derived key на диске.
 func (service *Service) VerifyKeyCheck(accountID string, encrypted EncryptedData) error {
 	aad, err := BuildKeyCheckAAD(accountID)
 	if err != nil {
