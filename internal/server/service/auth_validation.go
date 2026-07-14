@@ -103,9 +103,9 @@ func isLoginCharacter(character byte) bool {
 }
 
 func isASCIILetterOrDigit(character byte) bool {
-	return character >= 'a' && character <= 'z' ||
-		character >= 'A' && character <= 'Z' ||
-		character >= '0' && character <= '9'
+	return (character >= 'a' && character <= 'z') ||
+		(character >= 'A' && character <= 'Z') ||
+		(character >= '0' && character <= '9')
 }
 
 func isPasswordCharacter(character byte) bool {

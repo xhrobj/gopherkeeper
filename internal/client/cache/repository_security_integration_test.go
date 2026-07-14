@@ -22,6 +22,24 @@ func TestIntegration_RepositoryDoesNotPersistPlaintext(t *testing.T) {
 	ctx := context.Background()
 	location := testLocation(t)
 	password := []byte("cache-password-marker-38-correct-horse-battery-staple")
+	repository := openSecurityTestRepository(t, ctx, location, password)
+
+	enableWALForSecurityTest(t, ctx, repository)
+
+	records, markers := securityTestRecords()
+	upsertSecurityTestRecords(t, ctx, repository, records)
+	markers = append(markers, password, deriveSecurityTestKey(t, ctx, repository, password))
+
+	assertDirectoryDoesNotContainMarkers(t, location.Directory, markers)
+}
+
+func openSecurityTestRepository(
+	t *testing.T,
+	ctx context.Context,
+	location Location,
+	password []byte,
+) *Repository {
+	t.Helper()
 
 	repository, err := OpenRepository(ctx, location, password)
 	if err != nil {
@@ -33,6 +51,12 @@ func TestIntegration_RepositoryDoesNotPersistPlaintext(t *testing.T) {
 		}
 	})
 
+	return repository
+}
+
+func enableWALForSecurityTest(t *testing.T, ctx context.Context, repository *Repository) {
+	t.Helper()
+
 	var journalMode string
 	if err := repository.database.db.QueryRowContext(ctx, "PRAGMA journal_mode = WAL").Scan(&journalMode); err != nil {
 		t.Fatalf("enable WAL journal mode: %v", err)
@@ -43,13 +67,30 @@ func TestIntegration_RepositoryDoesNotPersistPlaintext(t *testing.T) {
 	if _, err := repository.database.db.ExecContext(ctx, "PRAGMA wal_autocheckpoint = 0"); err != nil {
 		t.Fatalf("disable WAL autocheckpoint: %v", err)
 	}
+}
 
-	records, markers := securityTestRecords()
+func upsertSecurityTestRecords(
+	t *testing.T,
+	ctx context.Context,
+	repository *Repository,
+	records []model.Record,
+) {
+	t.Helper()
+
 	for _, record := range records {
 		if err := repository.Upsert(ctx, record); err != nil {
 			t.Fatalf("Upsert(%s) error = %v", record.Metadata.Type, err)
 		}
 	}
+}
+
+func deriveSecurityTestKey(
+	t *testing.T,
+	ctx context.Context,
+	repository *Repository,
+	password []byte,
+) []byte {
+	t.Helper()
 
 	var salt []byte
 	if err := repository.database.db.QueryRowContext(
@@ -58,41 +99,58 @@ func TestIntegration_RepositoryDoesNotPersistPlaintext(t *testing.T) {
 	).Scan(&salt); err != nil {
 		t.Fatalf("read KDF salt: %v", err)
 	}
+
 	derivedKey, err := cachecrypto.DeriveKey(password, salt, cachecrypto.KDFVersion)
 	if err != nil {
 		t.Fatalf("DeriveKey() error = %v", err)
 	}
-	markers = append(markers, password, derivedKey)
+	return derivedKey
+}
 
-	files, err := os.ReadDir(location.Directory)
+func assertDirectoryDoesNotContainMarkers(t *testing.T, directory string, markers [][]byte) {
+	t.Helper()
+
+	files := regularFilesInDirectory(t, directory)
+	if len(files) == 0 {
+		t.Fatal("account directory contains no regular SQLite files")
+	}
+	for _, path := range files {
+		assertFileDoesNotContainMarkers(t, path, markers)
+	}
+}
+
+func regularFilesInDirectory(t *testing.T, directory string) []string {
+	t.Helper()
+
+	entries, err := os.ReadDir(directory)
 	if err != nil {
 		t.Fatalf("ReadDir() error = %v", err)
 	}
 
-	regularFiles := 0
-	for _, entry := range files {
+	files := make([]string, 0, len(entries))
+	for _, entry := range entries {
 		info, err := entry.Info()
 		if err != nil {
 			t.Fatalf("inspect %s: %v", entry.Name(), err)
 		}
-		if !info.Mode().IsRegular() {
-			continue
-		}
-		regularFiles++
-
-		path := filepath.Join(location.Directory, entry.Name())
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read %s: %v", entry.Name(), err)
-		}
-		for _, marker := range markers {
-			if bytes.Contains(data, marker) {
-				t.Fatalf("local cache file %s contains plaintext marker %q", entry.Name(), marker)
-			}
+		if info.Mode().IsRegular() {
+			files = append(files, filepath.Join(directory, entry.Name()))
 		}
 	}
-	if regularFiles == 0 {
-		t.Fatal("account directory contains no regular SQLite files")
+	return files
+}
+
+func assertFileDoesNotContainMarkers(t *testing.T, path string, markers [][]byte) {
+	t.Helper()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", filepath.Base(path), err)
+	}
+	for _, marker := range markers {
+		if bytes.Contains(data, marker) {
+			t.Fatalf("local cache file %s contains plaintext marker %q", filepath.Base(path), marker)
+		}
 	}
 }
 
@@ -204,25 +262,31 @@ func TestIntegration_OpenRepositoryRejectsTamperedMetadata(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-			location := testLocation(t)
-			password := []byte("cache-password")
-
-			repository, err := OpenRepository(ctx, location, password)
-			if err != nil {
-				t.Fatalf("OpenRepository() first error = %v", err)
-			}
-			if _, err := repository.database.db.ExecContext(ctx, tt.query); err != nil {
-				t.Fatalf("tamper metadata: %v", err)
-			}
-			if err := repository.Close(); err != nil {
-				t.Fatalf("Repository.Close() error = %v", err)
-			}
-
-			if _, err := OpenRepository(ctx, location, password); !errors.Is(err, tt.wantErr) {
-				t.Fatalf("OpenRepository() error = %v, want %v", err, tt.wantErr)
-			}
+			assertOpenRepositoryRejectsTamperedMetadata(t, tt.query, tt.wantErr)
 		})
+	}
+}
+
+func assertOpenRepositoryRejectsTamperedMetadata(t *testing.T, query string, wantErr error) {
+	t.Helper()
+
+	ctx := context.Background()
+	location := testLocation(t)
+	password := []byte("cache-password")
+
+	repository, err := OpenRepository(ctx, location, password)
+	if err != nil {
+		t.Fatalf("OpenRepository() first error = %v", err)
+	}
+	if _, err := repository.database.db.ExecContext(ctx, query); err != nil {
+		t.Fatalf("tamper metadata: %v", err)
+	}
+	if err := repository.Close(); err != nil {
+		t.Fatalf("Repository.Close() error = %v", err)
+	}
+
+	if _, err := OpenRepository(ctx, location, password); !errors.Is(err, wantErr) {
+		t.Fatalf("OpenRepository() error = %v, want %v", err, wantErr)
 	}
 }
 

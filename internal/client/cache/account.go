@@ -143,7 +143,7 @@ func validateCanonicalLogin(login string) error {
 }
 
 func isLowerASCIILetterOrDigit(character byte) bool {
-	return character >= 'a' && character <= 'z' || character >= '0' && character <= '9'
+	return (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9')
 }
 
 func buildAccountID(serverAddress, canonicalLogin string) string {
