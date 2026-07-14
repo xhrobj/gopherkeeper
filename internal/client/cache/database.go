@@ -27,6 +27,7 @@ var (
 type Database struct {
 	db       *sql.DB
 	location Location
+	created  bool
 }
 
 // Open создаёт account directory, открывает SQLite-файл и настраивает одно
@@ -77,7 +78,7 @@ func Open(ctx context.Context, location Location) (*Database, error) {
 		return closeOnError(err)
 	}
 
-	return &Database{db: db, location: resolved}, nil
+	return &Database{db: db, location: resolved, created: created}, nil
 }
 
 // Close закрывает SQLite-кеш.

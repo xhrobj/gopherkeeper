@@ -1,2 +1,2 @@
-// Package cache реализует размещение, открытие и схему локального SQLite-кеша GophKeeper.
+// Package cache реализует размещение, открытие, схему и зашифрованный SQLite-кеш GophKeeper.
 package cache
