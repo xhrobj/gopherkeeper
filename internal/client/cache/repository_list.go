@@ -5,17 +5,12 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 // RecordState содержит открытое состояние записи, достаточное для сравнения ревизий при синхронизации.
-type RecordState struct {
-	// ID содержит UUID локальной записи.
-	ID string
-
-	// Revision содержит текущую локальную ревизию записи.
-	Revision int64
-}
+type RecordState = usecase.RecordState
 
 // ListState возвращает только открытые ID и revision без расшифрования записей.
 func (repository *Repository) ListState(ctx context.Context) (states []RecordState, err error) {
