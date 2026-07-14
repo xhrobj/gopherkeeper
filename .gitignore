@@ -22,6 +22,9 @@ __MACOSX/
 .env.*
 !.env.example
 
+# каталог локального зашифрованного кеша Клиента
+.local/cache/
+
 # сертификаты и ключи Local TLS
 .local/certs/
 

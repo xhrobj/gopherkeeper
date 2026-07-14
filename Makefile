@@ -25,7 +25,7 @@ ENV_FILE ?= .env
 export LOG_LEVEL
 
 # данные о сборке подставляются в бинарники Клиента и Сервера через ldflags
-BUILD_VERSION ?= v0.8.0
+BUILD_VERSION ?= v0.7.0
 BUILD_DATE ?= $(shell date +%Y-%m-%d)
 BUILD_COMMIT ?= $(shell git rev-parse --short HEAD)
 
@@ -77,7 +77,7 @@ export DATABASE_DSN
 # NOTE: создать локальный конфиг Клиента:
 # `cp configs/client.example.json configs/client.json`
 # и указать в нем как минимум путь к self-signed TLS CA-сертификату, например:
-# `"ca_cert_file": ".certs/ca.pem"`
+# `"ca_cert_file": ".local/certs/ca.pem"`
 CLIENT_CONFIG ?= configs/client.json
 
 # обновить профиль покрытия и вывести общий процент
