@@ -156,3 +156,24 @@ WHERE type = 'table'
 
 	return nil
 }
+
+func verifyExistingSchema(ctx context.Context, db *sql.DB) error {
+	version, err := readSchemaVersion(ctx, db)
+	if err != nil {
+		return err
+	}
+
+	switch version {
+	case currentSchemaVersion:
+		return verifySchemaV1(ctx, db)
+	case 0:
+		return fmt.Errorf("%w: schema is not initialized", ErrInvalidSchema)
+	default:
+		return fmt.Errorf(
+			"%w: got %d, supported %d",
+			ErrUnsupportedSchemaVersion,
+			version,
+			currentSchemaVersion,
+		)
+	}
+}

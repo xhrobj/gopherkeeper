@@ -119,7 +119,7 @@ func (a *Application) openSyncCache(
 	ctx context.Context,
 	canonicalLogin string,
 	password string,
-) (CacheRepository, error) {
+) (SyncCacheRepository, error) {
 	repository, err := a.caches(
 		ctx,
 		a.serverAddress,

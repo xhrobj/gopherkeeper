@@ -95,7 +95,7 @@ func TestIntegration_CLIRegistrationFlow(t *testing.T) {
 	if err == nil {
 		t.Fatal("duplicate registration command error = nil")
 	}
-	if !strings.Contains(err.Error(), `login "ALICE" is already registered`) {
+	if !strings.Contains(err.Error(), `login "alice" is already registered`) {
 		t.Errorf("duplicate registration error = %q, want readable message", err)
 	}
 	if stdout != "" {

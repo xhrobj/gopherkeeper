@@ -15,25 +15,10 @@ func TestNew(t *testing.T) {
 		wantInfo  bool
 		wantError string
 	}{
-		{
-			name:     "default level",
-			wantInfo: true,
-		},
-		{
-			name:      "debug level",
-			level:     "debug",
-			wantDebug: true,
-			wantInfo:  true,
-		},
-		{
-			name:  "error level",
-			level: "error",
-		},
-		{
-			name:      "invalid level",
-			level:     "verbose",
-			wantError: `LOG_LEVEL "verbose"`,
-		},
+		{name: "default level", wantInfo: true},
+		{name: "debug level", level: "debug", wantDebug: true, wantInfo: true},
+		{name: "error level", level: "error"},
+		{name: "invalid level", level: "verbose", wantError: `LOG_LEVEL "verbose"`},
 	}
 
 	for _, tt := range tests {

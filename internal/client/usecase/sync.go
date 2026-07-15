@@ -6,22 +6,29 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-// CacheRepository описывает операции зашифрованного локального кеша,
+// SyncCacheRepository описывает операции зашифрованного локального кеша,
 // необходимые application-сценарию синхронизации.
-type CacheRepository interface {
+type SyncCacheRepository interface {
 	ListState(ctx context.Context) ([]RecordState, error)
 	ApplyChanges(ctx context.Context, upserts []model.Record, deleteIDs []string) error
 	Close() error
 }
 
-// CacheRepositoryProvider лениво открывает зашифрованный кеш конкретного
+// OfflineCacheRepository описывает только операции чтения существующего кеша.
+type OfflineCacheRepository interface {
+	ListMetadata(ctx context.Context) ([]model.RecordMetadata, error)
+	Get(ctx context.Context, recordID string) (model.Record, error)
+	Close() error
+}
+
+// SyncCacheRepositoryProvider лениво открывает зашифрованный кеш конкретного
 // аккаунта только после успешной повторной аутентификации пользователя.
-type CacheRepositoryProvider func(
+type SyncCacheRepositoryProvider func(
 	ctx context.Context,
 	serverAddress string,
 	canonicalLogin string,
 	password []byte,
-) (CacheRepository, error)
+) (SyncCacheRepository, error)
 
 // SyncRequest содержит параметры явной синхронизации локального кеша.
 type SyncRequest struct {

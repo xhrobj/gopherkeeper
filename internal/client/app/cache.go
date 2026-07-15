@@ -8,15 +8,18 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 )
 
-var _ usecase.CacheRepository = (*cache.Repository)(nil)
+var (
+	_ usecase.SyncCacheRepository    = (*cache.Repository)(nil)
+	_ usecase.OfflineCacheRepository = (*cache.Repository)(nil)
+)
 
-func encryptedCacheRepositoryProvider(baseDirectory string) usecase.CacheRepositoryProvider {
+func encryptedSyncCacheRepositoryProvider(baseDirectory string) usecase.SyncCacheRepositoryProvider {
 	return func(
 		ctx context.Context,
 		serverAddress string,
 		canonicalLogin string,
 		password []byte,
-	) (usecase.CacheRepository, error) {
+	) (usecase.SyncCacheRepository, error) {
 		location, err := cache.ResolveLocation(baseDirectory, serverAddress, canonicalLogin)
 		if err != nil {
 			return nil, fmt.Errorf("resolve encrypted local cache: %w", err)

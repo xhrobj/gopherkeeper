@@ -56,9 +56,9 @@ func TestNewDoesNotOpenEncryptedCache(t *testing.T) {
 	}
 }
 
-func TestEncryptedCacheRepositoryProviderRejectsInvalidIdentityWithoutCreatingCache(t *testing.T) {
+func TestEncryptedSyncCacheRepositoryProviderRejectsInvalidIdentityWithoutCreatingCache(t *testing.T) {
 	cacheDirectory := filepath.Join(t.TempDir(), "encrypted-cache")
-	provider := encryptedCacheRepositoryProvider(cacheDirectory)
+	provider := encryptedSyncCacheRepositoryProvider(cacheDirectory)
 
 	_, err := provider(context.Background(), "localhost:8080", "Alice", []byte("password"))
 	if !errors.Is(err, cache.ErrInvalidAccountIdentity) {

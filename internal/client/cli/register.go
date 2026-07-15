@@ -46,7 +46,8 @@ func executeRegistration(
 	streams passwordStreams,
 	login string,
 ) error {
-	if err := validateLoginArgument(login); err != nil {
+	canonicalLogin, err := canonicalizeLoginArgument(login)
+	if err != nil {
 		return err
 	}
 
@@ -59,7 +60,7 @@ func executeRegistration(
 		return err
 	}
 
-	user, err := application.Register(ctx, login, password)
+	user, err := application.Register(ctx, canonicalLogin, password)
 	if err != nil {
 		return err
 	}

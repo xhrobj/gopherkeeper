@@ -48,8 +48,8 @@ func TestExecuteRegistration(t *testing.T) {
 	err := executeRegistration(
 		context.Background(),
 		userRegistererFunc(func(_ context.Context, login, password string) (model.User, error) {
-			if login != " Alice " {
-				t.Errorf("login = %q, want %q", login, " Alice ")
+			if login != "alice" {
+				t.Errorf("login = %q, want alice", login)
 			}
 			if password != testRegistrationPassword {
 				t.Error("registrar received unexpected password")
@@ -152,21 +152,9 @@ func TestReadInputLine(t *testing.T) {
 		input string
 		want  string
 	}{
-		{
-			name:  "newline",
-			input: testRegistrationPassword + "\nignored",
-			want:  testRegistrationPassword,
-		},
-		{
-			name:  "Windows newline",
-			input: testRegistrationPassword + "\r\n",
-			want:  testRegistrationPassword,
-		},
-		{
-			name:  "EOF after value",
-			input: testRegistrationPassword,
-			want:  testRegistrationPassword,
-		},
+		{name: "newline", input: testRegistrationPassword + "\nignored", want: testRegistrationPassword},
+		{name: "Windows newline", input: testRegistrationPassword + "\r\n", want: testRegistrationPassword},
+		{name: "EOF after value", input: testRegistrationPassword, want: testRegistrationPassword},
 	}
 
 	for _, tt := range tests {

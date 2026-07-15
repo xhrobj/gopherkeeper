@@ -588,7 +588,7 @@ type syncTestDependencies struct {
 	users                UserGateway
 	records              RecordGateway
 	sessions             SessionStorage
-	cache                CacheRepository
+	cache                SyncCacheRepository
 	cacheProviderCheck   func(string, string, []byte)
 	cacheProviderError   error
 	sessionProviderError error
@@ -608,7 +608,7 @@ func newSyncTestApplication(dependencies syncTestDependencies) *Application {
 			_ context.Context,
 			serverAddress, canonicalLogin string,
 			password []byte,
-		) (CacheRepository, error) {
+		) (SyncCacheRepository, error) {
 			if dependencies.cacheProviderCheck != nil {
 				dependencies.cacheProviderCheck(serverAddress, canonicalLogin, password)
 			}
@@ -667,7 +667,7 @@ func successfulSyncCache(
 	localRecords []RecordState,
 	newRecord model.Record,
 	closed *bool,
-) CacheRepository {
+) SyncCacheRepository {
 	t.Helper()
 	return cacheRepositoryStub{
 		listState: func(context.Context) ([]RecordState, error) {

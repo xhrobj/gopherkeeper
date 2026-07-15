@@ -13,7 +13,7 @@ type Application struct {
 	users         UserGateway
 	records       RecordGateway
 	sessions      SessionStorageProvider
-	caches        CacheRepositoryProvider
+	caches        SyncCacheRepositoryProvider
 	serverAddress string
 }
 
@@ -38,7 +38,7 @@ func New(
 	users UserGateway,
 	records RecordGateway,
 	sessions SessionStorageProvider,
-	caches CacheRepositoryProvider,
+	caches SyncCacheRepositoryProvider,
 	serverAddress string,
 ) *Application {
 	return &Application{

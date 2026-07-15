@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"text/tabwriter"
 
 	urfavecli "github.com/urfave/cli/v3"
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
@@ -149,36 +148,7 @@ func executeListRecords(ctx context.Context, application application, output io.
 		return err
 	}
 
-	if len(records) == 0 {
-		if _, err := fmt.Fprintln(output, "No records found."); err != nil {
-			return fmt.Errorf("write empty record list: %w", err)
-		}
-
-		return nil
-	}
-
-	writer := tabwriter.NewWriter(output, 0, 0, 2, ' ', 0)
-	if _, err := fmt.Fprintln(writer, "ID\tTYPE\tTITLE\tREVISION\tUPDATED AT"); err != nil {
-		return fmt.Errorf("write record list header: %w", err)
-	}
-	for _, record := range records {
-		if _, err := fmt.Fprintf(
-			writer,
-			"%s\t%s\t%s\t%d\t%s\n",
-			record.ID,
-			record.Type,
-			record.Title,
-			record.Revision,
-			formatRecordTime(record.UpdatedAt),
-		); err != nil {
-			return fmt.Errorf("write record list item: %w", err)
-		}
-	}
-	if err := writer.Flush(); err != nil {
-		return fmt.Errorf("flush record list: %w", err)
-	}
-
-	return nil
+	return writeRecordList(output, records)
 }
 func executeGetRecord(
 	ctx context.Context,
@@ -191,14 +161,7 @@ func executeGetRecord(
 		return err
 	}
 
-	if record.Metadata.Type == model.RecordTypeBinary {
-		return writeBinaryRecord(output, record, outputPath)
-	}
-	if outputPath != "" {
-		return errors.New("--output can only be used with binary records")
-	}
-
-	return writeNonBinaryRecord(output, record)
+	return writeRecord(output, record, outputPath)
 }
 
 func writeBinaryRecord(output io.Writer, record model.Record, outputPath string) error {

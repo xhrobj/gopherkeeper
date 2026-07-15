@@ -18,6 +18,12 @@ import (
 
 const testRegistrationPassword = "correct-horse-battery-staple"
 
+type errorResponseExpectation struct {
+	status  int
+	code    string
+	message string
+}
+
 type userRegistererFunc func(context.Context, string, string) (model.User, error)
 
 func (f userRegistererFunc) Register(
@@ -99,56 +105,33 @@ func TestRegisterHandler_CreatesUser(t *testing.T) {
 
 func TestRegisterHandler_MapsServiceErrors(t *testing.T) {
 	internalError := errors.New("database connection details")
+	invalidRequest := errorResponseExpectation{
+		status:  http.StatusBadRequest,
+		code:    errorCodeInvalidRequest,
+		message: errorMessageInvalidRegistrationRequest,
+	}
+	loginConflict := errorResponseExpectation{
+		status:  http.StatusConflict,
+		code:    errorCodeLoginAlreadyExists,
+		message: errorMessageLoginAlreadyExists,
+	}
+	internal := errorResponseExpectation{
+		status:  http.StatusInternalServerError,
+		code:    errorCodeInternal,
+		message: errorMessageInternal,
+	}
 
 	tests := []struct {
-		name        string
-		serviceErr  error
-		wantStatus  int
-		wantCode    string
-		wantMessage string
+		name       string
+		serviceErr error
+		want       errorResponseExpectation
 	}{
-		{
-			name:        "invalid login",
-			serviceErr:  service.ErrInvalidLogin,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRegistrationRequest,
-		},
-		{
-			name:        "invalid password",
-			serviceErr:  service.ErrInvalidPassword,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRegistrationRequest,
-		},
-		{
-			name:        "password too short",
-			serviceErr:  service.ErrPasswordTooShort,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRegistrationRequest,
-		},
-		{
-			name:        "password too long",
-			serviceErr:  service.ErrPasswordTooLong,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRegistrationRequest,
-		},
-		{
-			name:        "login already exists",
-			serviceErr:  fmt.Errorf("repository: %w", model.ErrLoginAlreadyExists),
-			wantStatus:  http.StatusConflict,
-			wantCode:    errorCodeLoginAlreadyExists,
-			wantMessage: errorMessageLoginAlreadyExists,
-		},
-		{
-			name:        "internal error",
-			serviceErr:  internalError,
-			wantStatus:  http.StatusInternalServerError,
-			wantCode:    errorCodeInternal,
-			wantMessage: errorMessageInternal,
-		},
+		{name: "invalid login", serviceErr: service.ErrInvalidLogin, want: invalidRequest},
+		{name: "invalid password", serviceErr: service.ErrInvalidPassword, want: invalidRequest},
+		{name: "password too short", serviceErr: service.ErrPasswordTooShort, want: invalidRequest},
+		{name: "password too long", serviceErr: service.ErrPasswordTooLong, want: invalidRequest},
+		{name: "login already exists", serviceErr: fmt.Errorf("repository: %w", model.ErrLoginAlreadyExists), want: loginConflict},
+		{name: "internal error", serviceErr: internalError, want: internal},
 	}
 
 	for _, tt := range tests {
@@ -166,13 +149,7 @@ func TestRegisterHandler_MapsServiceErrors(t *testing.T) {
 
 			registerHandler(registrar).ServeHTTP(response, request)
 
-			assertErrorResponse(
-				t,
-				response,
-				tt.wantStatus,
-				tt.wantCode,
-				tt.wantMessage,
-			)
+			assertErrorResponse(t, response, tt.want.status, tt.want.code, tt.want.message)
 			if strings.Contains(response.Body.String(), internalError.Error()) {
 				t.Error("response body contains internal error details")
 			}

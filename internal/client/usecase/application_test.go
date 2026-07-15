@@ -83,7 +83,7 @@ func TestNew(t *testing.T) {
 		userGatewayStub{},
 		recordGatewayStub{},
 		func() (SessionStorage, error) { return sessionStorageStub{}, nil },
-		func(context.Context, string, string, []byte) (CacheRepository, error) { return nil, nil },
+		func(context.Context, string, string, []byte) (SyncCacheRepository, error) { return nil, nil },
 		"localhost:8080",
 	)
 	if application.users == nil {

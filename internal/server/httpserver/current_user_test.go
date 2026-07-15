@@ -65,27 +65,24 @@ func TestCurrentUserHandler_RejectsMissingUserID(t *testing.T) {
 
 func TestCurrentUserHandler_MapsReaderErrors(t *testing.T) {
 	internalError := errors.New("database connection details")
+	unauthorized := errorResponseExpectation{
+		status:  http.StatusUnauthorized,
+		code:    "unauthorized",
+		message: "missing or invalid bearer token",
+	}
+	internal := errorResponseExpectation{
+		status:  http.StatusInternalServerError,
+		code:    errorCodeInternal,
+		message: errorMessageInternal,
+	}
+
 	tests := []struct {
-		name        string
-		readerErr   error
-		wantStatus  int
-		wantCode    string
-		wantMessage string
+		name      string
+		readerErr error
+		want      errorResponseExpectation
 	}{
-		{
-			name:        "user not found",
-			readerErr:   model.ErrUserNotFound,
-			wantStatus:  http.StatusUnauthorized,
-			wantCode:    "unauthorized",
-			wantMessage: "missing or invalid bearer token",
-		},
-		{
-			name:        "internal error",
-			readerErr:   internalError,
-			wantStatus:  http.StatusInternalServerError,
-			wantCode:    errorCodeInternal,
-			wantMessage: errorMessageInternal,
-		},
+		{name: "user not found", readerErr: model.ErrUserNotFound, want: unauthorized},
+		{name: "internal error", readerErr: internalError, want: internal},
 	}
 
 	for _, tt := range tests {
@@ -98,7 +95,7 @@ func TestCurrentUserHandler_MapsReaderErrors(t *testing.T) {
 
 			serveAuthenticatedCurrentUserHandler(t, reader, response, request)
 
-			assertErrorResponse(t, response, tt.wantStatus, tt.wantCode, tt.wantMessage)
+			assertErrorResponse(t, response, tt.want.status, tt.want.code, tt.want.message)
 			if strings.Contains(response.Body.String(), internalError.Error()) {
 				t.Error("response body contains internal error details")
 			}

@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 const (
@@ -18,9 +20,6 @@ const (
 	cacheDirectoryName   = "cache"
 	databaseFileName     = "cache.db"
 	identityDomain       = "gopherkeeper-local-cache-account-v1"
-
-	minLoginLength = 3
-	maxLoginLength = 32
 )
 
 // ErrInvalidAccountIdentity означает, что Сервер или канонический login не
@@ -64,8 +63,8 @@ func resolveLocation(
 	if err != nil {
 		return Location{}, err
 	}
-	if err := validateCanonicalLogin(canonicalLogin); err != nil {
-		return Location{}, err
+	if err := model.ValidateCanonicalLogin(canonicalLogin); err != nil {
+		return Location{}, fmt.Errorf("%w: canonical login: %w", ErrInvalidAccountIdentity, err)
 	}
 
 	resolvedBaseDirectory, err := resolveBaseDirectory(baseDirectory, userCacheDir)
@@ -122,28 +121,6 @@ func normalizeServerAddress(serverAddress string) (string, error) {
 	}
 
 	return net.JoinHostPort(host, strconv.FormatUint(port, 10)), nil
-}
-
-func validateCanonicalLogin(login string) error {
-	if len(login) < minLoginLength || len(login) > maxLoginLength {
-		return fmt.Errorf("%w: canonical login has invalid length", ErrInvalidAccountIdentity)
-	}
-	if !isLowerASCIILetterOrDigit(login[0]) {
-		return fmt.Errorf("%w: canonical login has invalid first character", ErrInvalidAccountIdentity)
-	}
-
-	for i := 1; i < len(login); i++ {
-		character := login[i]
-		if !isLowerASCIILetterOrDigit(character) && character != '.' && character != '_' && character != '-' {
-			return fmt.Errorf("%w: canonical login contains invalid characters", ErrInvalidAccountIdentity)
-		}
-	}
-
-	return nil
-}
-
-func isLowerASCIILetterOrDigit(character byte) bool {
-	return (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9')
 }
 
 func buildAccountID(serverAddress, canonicalLogin string) string {

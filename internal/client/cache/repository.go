@@ -28,7 +28,23 @@ type Repository struct {
 
 // OpenRepository открывает кеш аккаунта, создаёт metadata при первом запуске и проверяет password при повторном.
 func OpenRepository(ctx context.Context, location Location, password []byte) (*Repository, error) {
-	database, err := Open(ctx, location)
+	return openRepository(ctx, location, password, Open)
+}
+
+// OpenExistingRepository открывает только уже существующий зашифрованный кеш аккаунта.
+func OpenExistingRepository(ctx context.Context, location Location, password []byte) (*Repository, error) {
+	return openRepository(ctx, location, password, OpenExisting)
+}
+
+type databaseOpener func(context.Context, Location) (*Database, error)
+
+func openRepository(
+	ctx context.Context,
+	location Location,
+	password []byte,
+	openDatabase databaseOpener,
+) (*Repository, error) {
+	database, err := openDatabase(ctx, location)
 	if err != nil {
 		return nil, err
 	}

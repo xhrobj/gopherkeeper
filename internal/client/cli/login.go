@@ -45,7 +45,8 @@ func executeLogin(
 	streams passwordStreams,
 	login string,
 ) error {
-	if err := validateLoginArgument(login); err != nil {
+	canonicalLogin, err := canonicalizeLoginArgument(login)
+	if err != nil {
 		return err
 	}
 
@@ -54,7 +55,7 @@ func executeLogin(
 		return err
 	}
 
-	user, err := application.Login(ctx, login, password)
+	user, err := application.Login(ctx, canonicalLogin, password)
 	if err != nil {
 		return err
 	}
