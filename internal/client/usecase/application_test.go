@@ -84,6 +84,7 @@ func TestNew(t *testing.T) {
 		recordGatewayStub{},
 		func() (SessionStorage, error) { return sessionStorageStub{}, nil },
 		func(context.Context, string, string, []byte) (SyncCacheRepository, error) { return nil, nil },
+		func(context.Context, string, string, []byte) (OfflineCacheRepository, error) { return nil, nil },
 		"localhost:8080",
 	)
 	if application.users == nil {
@@ -95,8 +96,11 @@ func TestNew(t *testing.T) {
 	if application.sessions == nil {
 		t.Error("New() session storage provider = nil")
 	}
-	if application.caches == nil {
-		t.Error("New() cache repository provider = nil")
+	if application.syncCaches == nil {
+		t.Error("New() sync cache repository provider = nil")
+	}
+	if application.offlineCaches == nil {
+		t.Error("New() offline cache repository provider = nil")
 	}
 	if application.serverAddress != "localhost:8080" {
 		t.Errorf("New() server address = %q, want localhost:8080", application.serverAddress)

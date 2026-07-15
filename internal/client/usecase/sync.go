@@ -14,13 +14,6 @@ type SyncCacheRepository interface {
 	Close() error
 }
 
-// OfflineCacheRepository описывает только операции чтения существующего кеша.
-type OfflineCacheRepository interface {
-	ListMetadata(ctx context.Context) ([]model.RecordMetadata, error)
-	Get(ctx context.Context, recordID string) (model.Record, error)
-	Close() error
-}
-
 // SyncCacheRepositoryProvider лениво открывает зашифрованный кеш конкретного
 // аккаунта только после успешной повторной аутентификации пользователя.
 type SyncCacheRepositoryProvider func(

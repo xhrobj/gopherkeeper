@@ -604,7 +604,7 @@ func newSyncTestApplication(dependencies syncTestDependencies) *Application {
 			}
 			return dependencies.sessions, nil
 		},
-		caches: func(
+		syncCaches: func(
 			_ context.Context,
 			serverAddress, canonicalLogin string,
 			password []byte,
