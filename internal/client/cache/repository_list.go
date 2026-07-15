@@ -5,20 +5,12 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-// RecordState содержит открытое состояние записи, достаточное для сравнения ревизий при синхронизации.
-type RecordState struct {
-	// ID содержит UUID локальной записи.
-	ID string
-
-	// Revision содержит текущую локальную ревизию записи.
-	Revision int64
-}
-
 // ListState возвращает только открытые ID и revision без расшифрования записей.
-func (repository *Repository) ListState(ctx context.Context) (states []RecordState, err error) {
+func (repository *Repository) ListState(ctx context.Context) (states []usecase.RecordState, err error) {
 	const query = `
 SELECT id, revision
 FROM cached_records
@@ -32,9 +24,9 @@ ORDER BY id`
 		err = errors.Join(err, rows.Close())
 	}()
 
-	states = make([]RecordState, 0)
+	states = make([]usecase.RecordState, 0)
 	for rows.Next() {
-		var state RecordState
+		var state usecase.RecordState
 		if err := rows.Scan(&state.ID, &state.Revision); err != nil {
 			return nil, fmt.Errorf("scan local cache record state: %w", err)
 		}

@@ -41,6 +41,7 @@ func TestRun_RootHelpContainsBanner(t *testing.T) {
 				"login",
 				"logout",
 				"whoami",
+				"sync",
 			)
 		})
 	}

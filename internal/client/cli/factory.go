@@ -20,6 +20,7 @@ type application interface {
 	ListRecords(ctx context.Context) ([]model.RecordMetadata, error)
 	GetRecord(ctx context.Context, recordID string) (model.Record, error)
 	DeleteRecord(ctx context.Context, request usecase.DeleteRecordRequest) error
+	Sync(ctx context.Context, request usecase.SyncRequest) (usecase.SyncResult, error)
 }
 
 type userLogoutter interface {

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
@@ -45,9 +46,9 @@ func TestIntegration_RepositoryListAndReopen(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListState() error = %v", err)
 	}
-	wantStates := make([]RecordState, 0, len(records))
+	wantStates := make([]usecase.RecordState, 0, len(records))
 	for _, record := range records {
-		wantStates = append(wantStates, RecordState{
+		wantStates = append(wantStates, usecase.RecordState{
 			ID:       record.Metadata.ID,
 			Revision: record.Metadata.Revision,
 		})
@@ -93,7 +94,7 @@ func TestIntegration_RepositoryRejectsRevisionMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListState() error = %v", err)
 	}
-	wantStates := []RecordState{{
+	wantStates := []usecase.RecordState{{
 		ID:       record.Metadata.ID,
 		Revision: record.Metadata.Revision + 1,
 	}}

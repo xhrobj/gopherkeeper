@@ -32,23 +32,9 @@ type rowScanner interface {
 
 // Upsert сохраняет полную запись в зашифрованном виде, заменяя локальную строку с тем же ID.
 func (repository *Repository) Upsert(ctx context.Context, record model.Record) error {
-	encoded, err := cachecrypto.EncodeRecord(record)
+	row, err := repository.prepareEncryptedRow(record)
 	if err != nil {
 		return err
-	}
-
-	aad, err := cachecrypto.BuildRecordAAD(
-		repository.account,
-		record.Metadata.ID,
-		record.Metadata.Revision,
-	)
-	if err != nil {
-		return err
-	}
-
-	encrypted, err := repository.crypto.Encrypt(encoded, aad)
-	if err != nil {
-		return fmt.Errorf("encrypt local cache record: %w", err)
 	}
 
 	transaction, err := repository.database.db.BeginTx(ctx, nil)
@@ -59,32 +45,9 @@ func (repository *Repository) Upsert(ctx context.Context, record model.Record) e
 		_ = transaction.Rollback()
 	}()
 
-	const query = `
-INSERT INTO cached_records (
-    id,
-    revision,
-    crypto_version,
-    nonce,
-    ciphertext
-) VALUES (?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
-    revision = excluded.revision,
-    crypto_version = excluded.crypto_version,
-    nonce = excluded.nonce,
-    ciphertext = excluded.ciphertext`
-
-	if _, err := transaction.ExecContext(
-		ctx,
-		query,
-		record.Metadata.ID,
-		record.Metadata.Revision,
-		encrypted.CryptoVersion,
-		encrypted.Nonce,
-		encrypted.Ciphertext,
-	); err != nil {
-		return fmt.Errorf("upsert local cache record: %w", err)
+	if err := applyEncryptedRows(ctx, transaction, []encryptedRecordRow{row}); err != nil {
+		return err
 	}
-
 	if err := transaction.Commit(); err != nil {
 		return fmt.Errorf("commit local cache record: %w", err)
 	}

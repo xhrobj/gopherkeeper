@@ -32,11 +32,7 @@ func (a *Application) Login(ctx context.Context, login, password string) (model.
 
 	result, err := a.users.Login(ctx, login, password)
 	if err != nil {
-		if errors.Is(err, model.ErrInvalidCredentials) {
-			return model.User{}, newUserError("invalid login or password", err)
-		}
-
-		return model.User{}, fmt.Errorf("login user: %w", err)
+		return model.User{}, mapLoginGatewayError(err)
 	}
 
 	if err := sessions.Save(session.Session{
@@ -90,6 +86,14 @@ func mapSessionLoadError(err error) error {
 	default:
 		return fmt.Errorf("load online session: %w", err)
 	}
+}
+
+func mapLoginGatewayError(err error) error {
+	if errors.Is(err, model.ErrInvalidCredentials) {
+		return newUserError("invalid login or password", err)
+	}
+
+	return fmt.Errorf("login user: %w", err)
 }
 
 func mapCurrentUserError(err error) error {

@@ -20,6 +20,7 @@ func New(cfg config.Config) (*usecase.Application, error) {
 		client,
 		client,
 		fileSessionStorageProvider(cfg.SessionFile),
+		encryptedCacheRepositoryProvider(cfg.CacheDir),
 		cfg.Address,
 	), nil
 }

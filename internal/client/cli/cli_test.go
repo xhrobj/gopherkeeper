@@ -22,6 +22,7 @@ type applicationStub struct {
 	listRecords  func(context.Context) ([]model.RecordMetadata, error)
 	getRecord    func(context.Context, string) (model.Record, error)
 	deleteRecord func(context.Context, usecase.DeleteRecordRequest) error
+	sync         func(context.Context, usecase.SyncRequest) (usecase.SyncResult, error)
 }
 
 func newApplicationStub(t *testing.T) *applicationStub {
@@ -68,6 +69,11 @@ func newApplicationStub(t *testing.T) *applicationStub {
 			t.Fatal("DeleteRecord must not be called")
 			return nil
 		},
+		sync: func(context.Context, usecase.SyncRequest) (usecase.SyncResult, error) {
+			t.Helper()
+			t.Fatal("Sync must not be called")
+			return usecase.SyncResult{}, nil
+		},
 	}
 }
 
@@ -107,6 +113,13 @@ func (s *applicationStub) GetRecord(ctx context.Context, recordID string) (model
 
 func (s *applicationStub) DeleteRecord(ctx context.Context, request usecase.DeleteRecordRequest) error {
 	return s.deleteRecord(ctx, request)
+}
+
+func (s *applicationStub) Sync(
+	ctx context.Context,
+	request usecase.SyncRequest,
+) (usecase.SyncResult, error) {
+	return s.sync(ctx, request)
 }
 
 type userLogoutterStub struct {
