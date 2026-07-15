@@ -157,6 +157,7 @@ func newRootCommand(
 			newLoginCommand(input, factory, passwords),
 			newLogoutCommand(factory),
 			newWhoamiCommand(factory),
+			newSyncCommand(input, factory, passwords),
 			newRecordsCommand(input, factory, passwords),
 		},
 		Action: func(_ context.Context, command *urfavecli.Command) error {

@@ -14,6 +14,7 @@ var (
 	errSyncStateChanged = errors.New("server state changed during synchronization")
 )
 
+// Sync явно синхронизирует зашифрованный локальный кеш с актуальным состоянием Сервера.
 func (a *Application) Sync(ctx context.Context, request SyncRequest) (result SyncResult, err error) {
 	storedSessions, authentication, err := a.authenticateSync(ctx, request.Password)
 	if err != nil {
@@ -43,7 +44,7 @@ func (a *Application) Sync(ctx context.Context, request SyncRequest) (result Syn
 		}
 
 		result = SyncResult{}
-		wrapped := fmt.Errorf("close encrypted local cache: %w", closeErr)
+		wrapped := newUserError("failed to close encrypted local cache", closeErr)
 		if err == nil {
 			err = wrapped
 			return
@@ -58,7 +59,7 @@ func (a *Application) Sync(ctx context.Context, request SyncRequest) (result Syn
 
 	localRecords, err := repository.ListState(ctx)
 	if err != nil {
-		return SyncResult{}, fmt.Errorf("list local cache state: %w", err)
+		return SyncResult{}, newUserError("failed to read encrypted local cache", err)
 	}
 
 	plan, err := buildSyncPlan(serverRecords, localRecords)
@@ -76,9 +77,9 @@ func (a *Application) Sync(ctx context.Context, request SyncRequest) (result Syn
 		return SyncResult{}, err
 	}
 
-	deleteIDs := syncDeleteIDs(plan.Removed)
+	deleteIDs := syncDeleteIDs(plan.removed)
 	if err := repository.ApplyChanges(ctx, upserts, deleteIDs); err != nil {
-		return SyncResult{}, fmt.Errorf("apply local cache synchronization: %w", err)
+		return SyncResult{}, newUserError("failed to update encrypted local cache", err)
 	}
 
 	return syncResult(plan, request.RefreshStale), nil
@@ -119,17 +120,14 @@ func (a *Application) openSyncCache(
 	canonicalLogin string,
 	password string,
 ) (CacheRepository, error) {
-	passwordBytes := []byte(password)
-	defer clear(passwordBytes)
-
 	repository, err := a.caches(
 		ctx,
 		a.serverAddress,
 		canonicalLogin,
-		passwordBytes,
+		[]byte(password),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("open encrypted local cache: %w", err)
+		return nil, newUserError("failed to open encrypted local cache", err)
 	}
 
 	return repository, nil
@@ -138,13 +136,13 @@ func (a *Application) openSyncCache(
 func (a *Application) loadSyncRecords(
 	ctx context.Context,
 	accessToken string,
-	plan SyncPlan,
+	plan syncPlan,
 	refreshStale bool,
 ) ([]model.Record, error) {
-	metadata := make([]model.RecordMetadata, 0, len(plan.New)+len(plan.Stale))
-	metadata = append(metadata, plan.New...)
+	metadata := make([]model.RecordMetadata, 0, len(plan.newRecords)+len(plan.stale))
+	metadata = append(metadata, plan.newRecords...)
 	if refreshStale {
-		for _, change := range plan.Stale {
+		for _, change := range plan.stale {
 			metadata = append(metadata, change.Metadata)
 		}
 	}
@@ -200,16 +198,16 @@ func syncDeleteIDs(records []RecordState) []string {
 	return ids
 }
 
-func syncResult(plan SyncPlan, refreshStale bool) SyncResult {
+func syncResult(plan syncPlan, refreshStale bool) SyncResult {
 	result := SyncResult{
-		Added:     append([]model.RecordMetadata(nil), plan.New...),
-		Removed:   append([]RecordState(nil), plan.Removed...),
-		Unchanged: len(plan.Unchanged),
+		Added:     append([]model.RecordMetadata(nil), plan.newRecords...),
+		Removed:   append([]RecordState(nil), plan.removed...),
+		Unchanged: plan.unchanged,
 	}
 	if refreshStale {
-		result.Updated = append([]RevisionChange(nil), plan.Stale...)
+		result.Updated = append([]RevisionChange(nil), plan.stale...)
 	} else {
-		result.Stale = append([]RevisionChange(nil), plan.Stale...)
+		result.Stale = append([]RevisionChange(nil), plan.stale...)
 	}
 
 	return result

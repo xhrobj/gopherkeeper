@@ -10,54 +10,61 @@ import (
 
 var errDuplicateSyncRecordID = errors.New("duplicate record ID in synchronization state")
 
+// RecordState содержит открытое локальное состояние записи, достаточное для сравнения ревизий.
 type RecordState struct {
-	ID       string
+	// ID содержит UUID локальной записи.
+	ID string
+
+	// Revision содержит текущую локальную ревизию записи.
 	Revision int64
 }
 
+// RevisionChange описывает несовпадение server и local revision одной записи.
 type RevisionChange struct {
-	Metadata      model.RecordMetadata
+	// Metadata содержит актуальные открытые поля записи на Сервере.
+	Metadata model.RecordMetadata
+
+	// LocalRevision содержит ревизию записи в локальном кеше.
 	LocalRevision int64
 }
 
-type SyncPlan struct {
-	New       []model.RecordMetadata
-	Stale     []RevisionChange
-	Removed   []RecordState
-	Unchanged []model.RecordMetadata
+type syncPlan struct {
+	newRecords []model.RecordMetadata
+	stale      []RevisionChange
+	removed    []RecordState
+	unchanged  int
 }
 
-func buildSyncPlan(serverRecords []model.RecordMetadata, localRecords []RecordState) (SyncPlan, error) {
+func buildSyncPlan(serverRecords []model.RecordMetadata, localRecords []RecordState) (syncPlan, error) {
 	serverByID, err := indexServerRecords(serverRecords)
 	if err != nil {
-		return SyncPlan{}, err
+		return syncPlan{}, err
 	}
 	localByID, err := indexLocalRecords(localRecords)
 	if err != nil {
-		return SyncPlan{}, err
+		return syncPlan{}, err
 	}
 
-	plan := SyncPlan{
-		New:       make([]model.RecordMetadata, 0),
-		Stale:     make([]RevisionChange, 0),
-		Removed:   make([]RecordState, 0),
-		Unchanged: make([]model.RecordMetadata, 0),
+	plan := syncPlan{
+		newRecords: make([]model.RecordMetadata, 0),
+		stale:      make([]RevisionChange, 0),
+		removed:    make([]RecordState, 0),
 	}
 
 	for _, id := range sortedKeys(serverByID) {
 		metadata := serverByID[id]
 		local, exists := localByID[id]
 		if !exists {
-			plan.New = append(plan.New, metadata)
+			plan.newRecords = append(plan.newRecords, metadata)
 			continue
 		}
 
 		if metadata.Revision == local.Revision {
-			plan.Unchanged = append(plan.Unchanged, metadata)
+			plan.unchanged++
 			continue
 		}
 
-		plan.Stale = append(plan.Stale, RevisionChange{
+		plan.stale = append(plan.stale, RevisionChange{
 			Metadata:      metadata,
 			LocalRevision: local.Revision,
 		})
@@ -65,7 +72,7 @@ func buildSyncPlan(serverRecords []model.RecordMetadata, localRecords []RecordSt
 
 	for _, id := range sortedKeys(localByID) {
 		if _, exists := serverByID[id]; !exists {
-			plan.Removed = append(plan.Removed, localByID[id])
+			plan.removed = append(plan.removed, localByID[id])
 		}
 	}
 

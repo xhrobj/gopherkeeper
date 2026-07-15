@@ -29,6 +29,7 @@ ON CONFLICT(id) DO UPDATE SET
     nonce = excluded.nonce,
     ciphertext = excluded.ciphertext`
 
+// ApplyChanges атомарно сохраняет и удаляет набор записей локального кеша.
 func (repository *Repository) ApplyChanges(
 	ctx context.Context,
 	upserts []model.Record,
@@ -69,10 +70,7 @@ func (repository *Repository) ApplyChanges(
 
 func validateCacheChanges(upserts []model.Record, deleteIDs []string) error {
 	upsertIDs := make(map[string]struct{}, len(upserts))
-	for index, record := range upserts {
-		if err := record.Validate(); err != nil {
-			return fmt.Errorf("validate local cache upsert %d: %w", index, err)
-		}
+	for _, record := range upserts {
 		if _, exists := upsertIDs[record.Metadata.ID]; exists {
 			return fmt.Errorf("%w: upsert %s", errDuplicateCacheChange, record.Metadata.ID)
 		}
