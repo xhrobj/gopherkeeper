@@ -68,70 +68,11 @@ func TestApplication_Sync(t *testing.T) {
 	var savedSession session.Session
 	cacheClosed := false
 	application := newSyncTestApplication(syncTestDependencies{
-		users: userGatewayStub{
-			whoami: func(_ context.Context, accessToken string) (model.User, error) {
-				if accessToken != "old.jwt.token" {
-					t.Errorf("current user access token = %q, want old.jwt.token", accessToken)
-				}
-				return testUser(), nil
-			},
-			login: successfulSyncLogin(t),
-		},
-		records: recordGatewayStub{
-			list: func(_ context.Context, accessToken string) ([]model.RecordMetadata, error) {
-				if accessToken != "new.jwt.token" {
-					t.Errorf("list access token = %q, want new.jwt.token", accessToken)
-				}
-				return serverRecords, nil
-			},
-			get: func(_ context.Context, accessToken, recordID string) (model.Record, error) {
-				if accessToken != "new.jwt.token" {
-					t.Errorf("get access token = %q, want new.jwt.token", accessToken)
-				}
-				if recordID != syncNewRecordID {
-					t.Fatalf("GetRecord() ID = %q, want only new record %q", recordID, syncNewRecordID)
-				}
-				return newRecord, nil
-			},
-		},
-		sessions: sessionStorageStub{
-			load: func(expectedServerAddress string) (session.Session, error) {
-				if expectedServerAddress != "localhost:8080" {
-					t.Errorf("session server address = %q, want localhost:8080", expectedServerAddress)
-				}
-				return syncStoredSession(), nil
-			},
-			save: func(stored session.Session) error {
-				savedSession = stored
-				return nil
-			},
-		},
-		cache: cacheRepositoryStub{
-			listState: func(context.Context) ([]RecordState, error) {
-				return localRecords, nil
-			},
-			applyChanges: func(_ context.Context, upserts []model.Record, deleteIDs []string) error {
-				if !reflect.DeepEqual(upserts, []model.Record{newRecord}) {
-					t.Errorf("cache upserts = %#v, want new record", upserts)
-				}
-				if !reflect.DeepEqual(deleteIDs, []string{syncRemovedRecordID}) {
-					t.Errorf("cache deletes = %#v, want removed record", deleteIDs)
-				}
-				return nil
-			},
-			close: func() error {
-				cacheClosed = true
-				return nil
-			},
-		},
-		cacheProviderCheck: func(serverAddress, canonicalLogin string, password []byte) {
-			if serverAddress != "localhost:8080" || canonicalLogin != "alice" {
-				t.Errorf("cache identity = %q/%q, want localhost:8080/alice", serverAddress, canonicalLogin)
-			}
-			if string(password) != testPassword {
-				t.Error("cache provider received unexpected password")
-			}
-		},
+		users:              successfulSyncUsers(t),
+		records:            successfulSyncRecords(t, serverRecords, newRecord),
+		sessions:           successfulSyncSessionsSaving(t, &savedSession),
+		cache:              successfulSyncCache(t, localRecords, newRecord, &cacheClosed),
+		cacheProviderCheck: successfulSyncCacheProviderCheck(t),
 	})
 
 	result, err := application.Sync(context.Background(), SyncRequest{Password: testPassword})
@@ -139,30 +80,11 @@ func TestApplication_Sync(t *testing.T) {
 		t.Fatalf("Sync() error = %v", err)
 	}
 
-	wantSession := session.Session{
-		ServerAddress: "localhost:8080",
-		AccessToken:   "new.jwt.token",
-		ExpiresAt:     syncAuthentication().ExpiresAt,
-	}
-	if savedSession != wantSession {
-		t.Errorf("saved session = %+v, want %+v", savedSession, wantSession)
-	}
+	assertSuccessfulSyncSession(t, savedSession)
 	if !cacheClosed {
 		t.Error("cache repository was not closed")
 	}
-
-	wantResult := SyncResult{
-		Added:   []model.RecordMetadata{newRecord.Metadata},
-		Removed: []RecordState{{ID: syncRemovedRecordID, Revision: 4}},
-		Stale: []RevisionChange{{
-			Metadata:      staleRecord.Metadata,
-			LocalRevision: 1,
-		}},
-		Unchanged: 1,
-	}
-	if !reflect.DeepEqual(result, wantResult) {
-		t.Errorf("Sync() result = %#v, want %#v", result, wantResult)
-	}
+	assertSuccessfulSyncResult(t, result, newRecord.Metadata, staleRecord.Metadata)
 }
 
 func TestApplication_SyncRefreshesStaleRecords(t *testing.T) {
@@ -382,41 +304,52 @@ func TestApplication_SyncDetectsServerRace(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			applyCalled := false
-			application := newSyncTestApplication(syncTestDependencies{
-				users:    successfulSyncUsers(t),
-				sessions: successfulSyncSessions(),
-				records: recordGatewayStub{
-					list: func(context.Context, string) ([]model.RecordMetadata, error) {
-						return []model.RecordMetadata{expected.Metadata}, nil
-					},
-					get: tt.get,
-				},
-				cache: cacheRepositoryStub{
-					applyChanges: func(context.Context, []model.Record, []string) error {
-						applyCalled = true
-						return nil
-					},
-				},
-			})
-
-			_, err := application.Sync(context.Background(), SyncRequest{Password: testPassword})
-			if err == nil {
-				t.Fatal("Sync() error = nil, want server race")
-			}
-			if err.Error() != "server records changed during synchronization, please run sync again" {
-				t.Errorf("error = %q, want readable server race message", err)
-			}
-			if !errors.Is(err, errSyncStateChanged) {
-				t.Error("sync error does not preserve state changed marker")
-			}
-			if !errors.Is(err, tt.marker) {
-				t.Errorf("sync error does not preserve %v", tt.marker)
-			}
-			if applyCalled {
-				t.Error("cache batch was applied after server race")
-			}
+			assertSyncDetectsServerRace(t, expected, tt.get, tt.marker)
 		})
+	}
+}
+
+func assertSyncDetectsServerRace(
+	t *testing.T,
+	expected model.Record,
+	get func(context.Context, string, string) (model.Record, error),
+	marker error,
+) {
+	t.Helper()
+
+	applyCalled := false
+	application := newSyncTestApplication(syncTestDependencies{
+		users:    successfulSyncUsers(t),
+		sessions: successfulSyncSessions(),
+		records: recordGatewayStub{
+			list: func(context.Context, string) ([]model.RecordMetadata, error) {
+				return []model.RecordMetadata{expected.Metadata}, nil
+			},
+			get: get,
+		},
+		cache: cacheRepositoryStub{
+			applyChanges: func(context.Context, []model.Record, []string) error {
+				applyCalled = true
+				return nil
+			},
+		},
+	})
+
+	_, err := application.Sync(context.Background(), SyncRequest{Password: testPassword})
+	if err == nil {
+		t.Fatal("Sync() error = nil, want server race")
+	}
+	if err.Error() != "server records changed during synchronization, please run sync again" {
+		t.Errorf("error = %q, want readable server race message", err)
+	}
+	if !errors.Is(err, errSyncStateChanged) {
+		t.Error("sync error does not preserve state changed marker")
+	}
+	if !errors.Is(err, marker) {
+		t.Errorf("sync error does not preserve %v", marker)
+	}
+	if applyCalled {
+		t.Error("cache batch was applied after server race")
 	}
 }
 
@@ -685,6 +618,118 @@ func newSyncTestApplication(dependencies syncTestDependencies) *Application {
 			return dependencies.cache, nil
 		},
 		serverAddress: "localhost:8080",
+	}
+}
+
+func successfulSyncRecords(
+	t *testing.T,
+	serverRecords []model.RecordMetadata,
+	newRecord model.Record,
+) RecordGateway {
+	t.Helper()
+	return recordGatewayStub{
+		list: func(_ context.Context, accessToken string) ([]model.RecordMetadata, error) {
+			if accessToken != "new.jwt.token" {
+				t.Errorf("list access token = %q, want new.jwt.token", accessToken)
+			}
+			return serverRecords, nil
+		},
+		get: func(_ context.Context, accessToken, recordID string) (model.Record, error) {
+			if accessToken != "new.jwt.token" {
+				t.Errorf("get access token = %q, want new.jwt.token", accessToken)
+			}
+			if recordID != syncNewRecordID {
+				t.Fatalf("GetRecord() ID = %q, want only new record %q", recordID, syncNewRecordID)
+			}
+			return newRecord, nil
+		},
+	}
+}
+
+func successfulSyncSessionsSaving(t *testing.T, savedSession *session.Session) SessionStorage {
+	t.Helper()
+	return sessionStorageStub{
+		load: func(expectedServerAddress string) (session.Session, error) {
+			if expectedServerAddress != "localhost:8080" {
+				t.Errorf("session server address = %q, want localhost:8080", expectedServerAddress)
+			}
+			return syncStoredSession(), nil
+		},
+		save: func(stored session.Session) error {
+			*savedSession = stored
+			return nil
+		},
+	}
+}
+
+func successfulSyncCache(
+	t *testing.T,
+	localRecords []RecordState,
+	newRecord model.Record,
+	closed *bool,
+) CacheRepository {
+	t.Helper()
+	return cacheRepositoryStub{
+		listState: func(context.Context) ([]RecordState, error) {
+			return localRecords, nil
+		},
+		applyChanges: func(_ context.Context, upserts []model.Record, deleteIDs []string) error {
+			if !reflect.DeepEqual(upserts, []model.Record{newRecord}) {
+				t.Errorf("cache upserts = %#v, want new record", upserts)
+			}
+			if !reflect.DeepEqual(deleteIDs, []string{syncRemovedRecordID}) {
+				t.Errorf("cache deletes = %#v, want removed record", deleteIDs)
+			}
+			return nil
+		},
+		close: func() error {
+			*closed = true
+			return nil
+		},
+	}
+}
+
+func successfulSyncCacheProviderCheck(t *testing.T) func(string, string, []byte) {
+	t.Helper()
+	return func(serverAddress, canonicalLogin string, password []byte) {
+		if serverAddress != "localhost:8080" || canonicalLogin != "alice" {
+			t.Errorf("cache identity = %q/%q, want localhost:8080/alice", serverAddress, canonicalLogin)
+		}
+		if string(password) != testPassword {
+			t.Error("cache provider received unexpected password")
+		}
+	}
+}
+
+func assertSuccessfulSyncSession(t *testing.T, got session.Session) {
+	t.Helper()
+	want := session.Session{
+		ServerAddress: "localhost:8080",
+		AccessToken:   "new.jwt.token",
+		ExpiresAt:     syncAuthentication().ExpiresAt,
+	}
+	if got != want {
+		t.Errorf("saved session = %+v, want %+v", got, want)
+	}
+}
+
+func assertSuccessfulSyncResult(
+	t *testing.T,
+	got SyncResult,
+	newRecord, staleRecord model.RecordMetadata,
+) {
+	t.Helper()
+	want := SyncResult{
+		Added:   []model.RecordMetadata{newRecord},
+		Removed: []RecordState{{ID: syncRemovedRecordID, Revision: 4}},
+		Stale: []RevisionChange{{
+			Metadata:      staleRecord,
+			LocalRevision: 1,
+		}},
+		Unchanged: 1,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Sync() result = %#v, want %#v", got, want)
 	}
 }
 
