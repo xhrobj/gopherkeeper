@@ -7,12 +7,13 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-// Application выполняет клиентские online-сценарии поверх удалённых gateway
-// и provider'а локального хранилища session.
+// Application выполняет клиентские online-сценарии поверх удалённых gateway,
+// provider'ов локальной online-сессии и зашифрованного кеша.
 type Application struct {
 	users         UserGateway
 	records       RecordGateway
 	sessions      SessionStorageProvider
+	caches        CacheRepositoryProvider
 	serverAddress string
 }
 
@@ -37,12 +38,14 @@ func New(
 	users UserGateway,
 	records RecordGateway,
 	sessions SessionStorageProvider,
+	caches CacheRepositoryProvider,
 	serverAddress string,
 ) *Application {
 	return &Application{
 		users:         users,
 		records:       records,
 		sessions:      sessions,
+		caches:        caches,
 		serverAddress: serverAddress,
 	}
 }
