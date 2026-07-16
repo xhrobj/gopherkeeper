@@ -20,7 +20,46 @@
 - `client records create-credentials` / `update-credentials` — создание и изменение credentials-записей;
 - `client records create-card` / `update-card` — создание и изменение card-записей;
 - `client records create-binary` / `update-binary` — создание и изменение binary-записей;
-- `client records list`, `get`, `delete` — общие операции для всех реализованных типов записей.
+- `client records list`, `get`, `delete` — online-операции для всех реализованных типов записей;
+- `client records list/get --offline --login <login>` — явное read-only чтение ранее синхронизированного зашифрованного кеша.
+
+## Требования
+
+Для локальной разработки нужны Go 1.26, Docker с Compose, `make` и OpenSSL.
+
+## Архитектура
+
+Сервер предоставляет HTTPS API, хранит пользователей и зашифрованные записи в PostgreSQL. Клиент использует тонкие CLI-команды над application use cases, локальную online-сессию и зашифрованный SQLite-кеш. HTTP-контракт описан в [OpenAPI-спецификации](api/openapi.yaml).
+
+## Конфигурация Сервера
+
+| Параметр | Источник | Default |
+|---|---|---|
+| address | `ADDRESS`, `-a` | `localhost:8080` |
+| PostgreSQL DSN | `DATABASE_DSN`, `--database-dsn` | обязательный |
+| TLS certificate/key | `TLS_CERT_FILE` / `TLS_KEY_FILE`, `--tls-cert` / `--tls-key` | обязательные |
+| JWT secret/TTL | `JWT_SECRET`, `JWT_TTL`, `--jwt-ttl` | secret обязателен, TTL `15m` |
+| record master key/key ID | `RECORD_MASTER_KEY`, `RECORD_KEY_ID` | key обязателен, ID `primary` |
+| log level | `LOG_LEVEL` | `info` |
+
+## Сборочная информация
+
+Клиент и Сервер выводят версию, дату сборки и commit, если эти значения были подставлены при сборке через ldflags.
+
+## Ограничения данных
+
+- text — 1 МиБ UTF-8;
+- binary — 2 МиБ после Base64-декодирования;
+- metadata — 64 КиБ UTF-8;
+- HTTP request body — 4 МиБ.
+
+## Модель безопасности
+
+Трафик защищен TLS, password hash хранится через bcrypt, доступ авторизуется JWT. Payload записей шифруется на Сервере AES-256-GCM, локальный кеш — ключом из password через Argon2id и AES-256-GCM. Это не end-to-end encryption: Сервер обрабатывает plaintext в памяти; title и технические metadata записей остаются открытыми.
+
+## Известные ограничения MVP
+
+Синхронизация только явная, offline-режим только read-only, автоматического merge конфликтов и истории версий нет. Большие файлы, OTP, KMS и ротация ключей не поддерживаются.
 
 ## Локальный запуск с нуля
 
@@ -355,8 +394,7 @@ gkeep records create-card --title "Joel's card"
 ```text
 Card number:
 Cardholder (optional):
-Expiry month (optional):
-Expiry year (optional):
+Expiry (MM/YYYY, optional):
 CVV (optional):
 ```
 
@@ -569,9 +607,62 @@ gkeep sync --refresh
 
 Сервер остаётся источником актуального состояния. Все подготовленные добавления, обновления и удаления применяются к SQLite одной транзакцией. Полные записи, включая title и приватный payload, сохраняются в кеше только в зашифрованном виде; открытыми остаются ID и revision.
 
-Фоновая синхронизация отсутствует. Команды `records create-*`, `list`, `get`, `update-*` и `delete` не изменяют кеш автоматически. Чтение записей из кеша без доступного Сервера будет добавлено на следующем этапе.
+Фоновая синхронизация отсутствует. Команды `records create-*`, `list`, `get`, `update-*` и `delete` не изменяют кеш автоматически.
 
-### 24. Выйти из online-сессии
+### 24. Прочитать записи из кеша offline
+
+Offline-чтение работает только после хотя бы одной успешной явной синхронизации:
+
+```bash
+gkeep sync
+```
+
+После этого список ранее синхронизированных записей можно получить без доступного Сервера и без действующей online-сессии:
+
+```bash
+gkeep records list --offline --login alice
+```
+
+Клиент скрыто запросит password, откроет существующий кеш пары server/login и первым сообщением явно укажет источник:
+
+```text
+Source: encrypted local cache (data may be stale).
+```
+
+Получение одной записи выполняется так:
+
+```bash
+gkeep records get <record-id> --offline --login alice
+```
+
+Для binary-записи по-прежнему обязателен безопасный вывод в новый файл:
+
+```bash
+gkeep records get <record-id> \
+  --offline \
+  --login alice \
+  --output .local/tmp/restored.bin
+```
+
+Правила offline-режима:
+
+- режим выбирается только явно; обычные online-команды не переключаются на кеш при network/TLS/session error;
+- `--login` определяет account cache, а password используется только в текущем процессе для его расшифрования;
+- отсутствие предварительного `sync`, другой login или неправильный password возвращают ошибку и не создают новый кеш;
+- данные могут быть устаревшими, потому что Сервер остаётся источником актуального состояния;
+- `records create-*`, `update-*` и `delete` не поддерживают `--offline` и не создают pending/outbox state;
+- background-, startup- и автоматическая post-write синхронизация отсутствуют.
+
+Для проверки сценария двух устройств используются два конфига с одинаковыми `address` и `ca_cert_file`, но разными `session_file` и `cache_dir`, например `configs/client-a.json` и `configs/client-b.json`:
+
+1. Оба Клиента входят под Alice и выполняют `sync`.
+2. После остановки Сервера Client B читает запись командой `records get --offline`.
+3. После восстановления Сервера Client A обновляет revision `1` до `2`.
+4. Попытка Client B обновить ту же revision `1` возвращает `record revision conflict`.
+5. Обычный `sync` Client B показывает запись как `Stale`, но не заменяет её молча.
+6. `gkeep sync --refresh` загружает актуальную server copy, после чего offline get возвращает новую revision.
+
+### 25. Выйти из online-сессии
 
 ```bash
 gkeep logout
