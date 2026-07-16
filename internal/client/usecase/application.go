@@ -7,13 +7,14 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-// Application выполняет клиентские online-сценарии поверх удалённых gateway,
-// provider'ов локальной online-сессии и зашифрованного кеша.
+// Application выполняет клиентские online- и offline-сценарии поверх удалённых
+// gateway, provider'ов локальной online-сессии и зашифрованного кеша.
 type Application struct {
 	users         UserGateway
 	records       RecordGateway
 	sessions      SessionStorageProvider
-	caches        CacheRepositoryProvider
+	syncCaches    SyncCacheRepositoryProvider
+	offlineCaches OfflineCacheRepositoryProvider
 	serverAddress string
 }
 
@@ -38,14 +39,28 @@ func New(
 	users UserGateway,
 	records RecordGateway,
 	sessions SessionStorageProvider,
-	caches CacheRepositoryProvider,
+	syncCaches SyncCacheRepositoryProvider,
+	offlineCaches OfflineCacheRepositoryProvider,
 	serverAddress string,
 ) *Application {
 	return &Application{
 		users:         users,
 		records:       records,
 		sessions:      sessions,
-		caches:        caches,
+		syncCaches:    syncCaches,
+		offlineCaches: offlineCaches,
+		serverAddress: serverAddress,
+	}
+}
+
+// NewOffline создаёт application-приложение только для чтения существующего
+// зашифрованного локального кеша без сетевых и session-зависимостей.
+func NewOffline(
+	offlineCaches OfflineCacheRepositoryProvider,
+	serverAddress string,
+) *Application {
+	return &Application{
+		offlineCaches: offlineCaches,
 		serverAddress: serverAddress,
 	}
 }

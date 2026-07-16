@@ -43,6 +43,22 @@ ORDER BY id`
 	return states, nil
 }
 
+// ListMetadata возвращает metadata всех локальных записей после расшифрования
+// и строгой проверки полного формата каждой записи.
+func (repository *Repository) ListMetadata(ctx context.Context) ([]model.RecordMetadata, error) {
+	records, err := repository.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	metadata := make([]model.RecordMetadata, len(records))
+	for index := range records {
+		metadata[index] = records[index].Metadata
+	}
+
+	return metadata, nil
+}
+
 // List возвращает все локальные записи после расшифрования и строгой проверки формата.
 func (repository *Repository) List(ctx context.Context) (records []model.Record, err error) {
 	const query = `

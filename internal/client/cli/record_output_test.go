@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"context"
 	"strings"
 	"testing"
 	"time"
@@ -10,7 +9,7 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-func TestExecuteGetRecord_DisplaysPayload(t *testing.T) {
+func TestWriteRecord_DisplaysPayload(t *testing.T) {
 	expiryMonth := 3
 	expiryYear := 2038
 	recordedAt := time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
@@ -67,23 +66,21 @@ func TestExecuteGetRecord_DisplaysPayload(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			getter := recordGetterFunc(func(context.Context, string) (model.Record, error) {
-				return model.Record{
-					Metadata: model.RecordMetadata{
-						ID:        testRecordID,
-						Type:      tt.payload.RecordType(),
-						Title:     tt.title,
-						Revision:  1,
-						CreatedAt: recordedAt,
-						UpdatedAt: recordedAt,
-					},
-					Payload: tt.payload,
-				}, nil
-			})
+			record := model.Record{
+				Metadata: model.RecordMetadata{
+					ID:        testRecordID,
+					Type:      tt.payload.RecordType(),
+					Title:     tt.title,
+					Revision:  1,
+					CreatedAt: recordedAt,
+					UpdatedAt: recordedAt,
+				},
+				Payload: tt.payload,
+			}
 			var output bytes.Buffer
 
-			if err := executeGetRecord(context.Background(), getter, &output, testRecordID, ""); err != nil {
-				t.Fatalf("executeGetRecord() error = %v", err)
+			if err := writeRecord(&output, record, ""); err != nil {
+				t.Fatalf("writeRecord() error = %v", err)
 			}
 			for _, want := range tt.wants {
 				if !strings.Contains(output.String(), want) {
@@ -91,5 +88,49 @@ func TestExecuteGetRecord_DisplaysPayload(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestWriteRecordList(t *testing.T) {
+	updatedAt := time.Date(2026, time.July, 15, 12, 0, 0, 0, time.UTC)
+	records := []model.RecordMetadata{
+		{
+			ID:        testRecordID,
+			Type:      model.RecordTypeText,
+			Title:     "Note",
+			Revision:  2,
+			UpdatedAt: updatedAt,
+		},
+	}
+
+	var output bytes.Buffer
+	if err := writeRecordList(&output, records); err != nil {
+		t.Fatalf("writeRecordList() error = %v", err)
+	}
+
+	for _, want := range []string{
+		"TYPE",
+		"TITLE",
+		"REVISION",
+		"UPDATED AT",
+		testRecordID,
+		"text",
+		"Note",
+		"2",
+		"2026-07-15T12:00:00Z",
+	} {
+		if !strings.Contains(output.String(), want) {
+			t.Errorf("output = %q, want %q", output.String(), want)
+		}
+	}
+}
+
+func TestWriteRecordList_Empty(t *testing.T) {
+	var output bytes.Buffer
+	if err := writeRecordList(&output, nil); err != nil {
+		t.Fatalf("writeRecordList() error = %v", err)
+	}
+	if output.String() != "No records found.\n" {
+		t.Errorf("output = %q, want empty-list message", output.String())
 	}
 }

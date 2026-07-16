@@ -704,33 +704,25 @@ func TestDeleteRecordHandler_DeletesRecord(t *testing.T) {
 }
 
 func TestDeleteRecordHandler_RejectsInvalidIfMatch(t *testing.T) {
+	preconditionRequired := errorResponseExpectation{
+		status:  http.StatusPreconditionRequired,
+		code:    errorCodePreconditionRequired,
+		message: errorMessagePreconditionRequired,
+	}
+	invalidRequest := errorResponseExpectation{
+		status:  http.StatusBadRequest,
+		code:    errorCodeInvalidRequest,
+		message: errorMessageInvalidRecordRequest,
+	}
+
 	tests := []struct {
-		name        string
-		ifMatch     string
-		wantStatus  int
-		wantCode    string
-		wantMessage string
+		name    string
+		ifMatch string
+		want    errorResponseExpectation
 	}{
-		{
-			name:        "missing If-Match",
-			wantStatus:  http.StatusPreconditionRequired,
-			wantCode:    errorCodePreconditionRequired,
-			wantMessage: errorMessagePreconditionRequired,
-		},
-		{
-			name:        "unquoted If-Match",
-			ifMatch:     "1",
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRecordRequest,
-		},
-		{
-			name:        "zero If-Match revision",
-			ifMatch:     `"0"`,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRecordRequest,
-		},
+		{name: "missing If-Match", want: preconditionRequired},
+		{name: "unquoted If-Match", ifMatch: "1", want: invalidRequest},
+		{name: "zero If-Match revision", ifMatch: `"0"`, want: invalidRequest},
 	}
 
 	for _, tt := range tests {
@@ -749,7 +741,7 @@ func TestDeleteRecordHandler_RejectsInvalidIfMatch(t *testing.T) {
 
 			serveAuthenticatedRecordHandler(t, deleteRecordHandler(records), response, request)
 
-			assertErrorResponse(t, response, tt.wantStatus, tt.wantCode, tt.wantMessage)
+			assertErrorResponse(t, response, tt.want.status, tt.want.code, tt.want.message)
 		})
 	}
 }
@@ -837,104 +829,60 @@ func TestRecordHandlers_MapServiceError(t *testing.T) {
 
 func TestWriteRecordError(t *testing.T) {
 	internalError := errors.New("database connection details")
+	payloadTooLargeError := fmt.Errorf("create record: %w", model.ErrPayloadTooLarge)
+	recordNotFoundError := fmt.Errorf("get record: %w", model.ErrRecordNotFound)
+	revisionConflictError := fmt.Errorf("update record: %w", model.ErrRecordRevisionConflict)
+	preconditionRequiredError := fmt.Errorf("update record: %w", model.ErrRecordPreconditionRequired)
+
+	payloadTooLarge := errorResponseExpectation{
+		status:  http.StatusRequestEntityTooLarge,
+		code:    errorCodePayloadTooLarge,
+		message: errorMessagePayloadTooLarge,
+	}
+	recordNotFound := errorResponseExpectation{
+		status:  http.StatusNotFound,
+		code:    errorCodeRecordNotFound,
+		message: errorMessageRecordNotFound,
+	}
+	revisionConflict := errorResponseExpectation{
+		status:  http.StatusConflict,
+		code:    errorCodeRevisionConflict,
+		message: errorMessageRevisionConflict,
+	}
+	preconditionRequired := errorResponseExpectation{
+		status:  http.StatusPreconditionRequired,
+		code:    errorCodePreconditionRequired,
+		message: errorMessagePreconditionRequired,
+	}
+	invalidRequest := errorResponseExpectation{
+		status:  http.StatusBadRequest,
+		code:    errorCodeInvalidRequest,
+		message: errorMessageInvalidRecordRequest,
+	}
+	internal := errorResponseExpectation{
+		status:  http.StatusInternalServerError,
+		code:    errorCodeInternal,
+		message: errorMessageInternal,
+	}
+
 	tests := []struct {
-		name        string
-		err         error
-		wantStatus  int
-		wantCode    string
-		wantMessage string
+		name string
+		err  error
+		want errorResponseExpectation
 	}{
-		{
-			name:        "payload too large",
-			err:         fmt.Errorf("create record: %w", model.ErrPayloadTooLarge),
-			wantStatus:  http.StatusRequestEntityTooLarge,
-			wantCode:    errorCodePayloadTooLarge,
-			wantMessage: errorMessagePayloadTooLarge,
-		},
-		{
-			name:        "record not found",
-			err:         fmt.Errorf("get record: %w", model.ErrRecordNotFound),
-			wantStatus:  http.StatusNotFound,
-			wantCode:    errorCodeRecordNotFound,
-			wantMessage: errorMessageRecordNotFound,
-		},
-		{
-			name:        "revision conflict",
-			err:         fmt.Errorf("update record: %w", model.ErrRecordRevisionConflict),
-			wantStatus:  http.StatusConflict,
-			wantCode:    errorCodeRevisionConflict,
-			wantMessage: errorMessageRevisionConflict,
-		},
-		{
-			name:        "precondition required",
-			err:         fmt.Errorf("update record: %w", model.ErrRecordPreconditionRequired),
-			wantStatus:  http.StatusPreconditionRequired,
-			wantCode:    errorCodePreconditionRequired,
-			wantMessage: errorMessagePreconditionRequired,
-		},
-		{
-			name:        "invalid record ID",
-			err:         model.ErrInvalidRecordID,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRecordRequest,
-		},
-		{
-			name:        "invalid record revision",
-			err:         model.ErrInvalidRecordRevision,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRecordRequest,
-		},
-		{
-			name:        "invalid record title",
-			err:         model.ErrInvalidRecordTitle,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRecordRequest,
-		},
-		{
-			name:        "invalid text payload",
-			err:         model.ErrInvalidTextPayload,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRecordRequest,
-		},
-		{
-			name:        "invalid credentials payload",
-			err:         model.ErrInvalidCredentialsPayload,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRecordRequest,
-		},
-		{
-			name:        "invalid card payload",
-			err:         model.ErrInvalidCardPayload,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRecordRequest,
-		},
-		{
-			name:        "invalid binary payload",
-			err:         model.ErrInvalidBinaryPayload,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRecordRequest,
-		},
-		{
-			name:        "unsupported record type",
-			err:         model.ErrRecordTypeUnsupported,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidRecordRequest,
-		},
-		{
-			name:        "internal error",
-			err:         internalError,
-			wantStatus:  http.StatusInternalServerError,
-			wantCode:    errorCodeInternal,
-			wantMessage: errorMessageInternal,
-		},
+		{name: "payload too large", err: payloadTooLargeError, want: payloadTooLarge},
+		{name: "record not found", err: recordNotFoundError, want: recordNotFound},
+		{name: "revision conflict", err: revisionConflictError, want: revisionConflict},
+		{name: "precondition required", err: preconditionRequiredError, want: preconditionRequired},
+		{name: "invalid record ID", err: model.ErrInvalidRecordID, want: invalidRequest},
+		{name: "invalid record revision", err: model.ErrInvalidRecordRevision, want: invalidRequest},
+		{name: "invalid record title", err: model.ErrInvalidRecordTitle, want: invalidRequest},
+		{name: "invalid text payload", err: model.ErrInvalidTextPayload, want: invalidRequest},
+		{name: "invalid credentials payload", err: model.ErrInvalidCredentialsPayload, want: invalidRequest},
+		{name: "invalid card payload", err: model.ErrInvalidCardPayload, want: invalidRequest},
+		{name: "invalid binary payload", err: model.ErrInvalidBinaryPayload, want: invalidRequest},
+		{name: "unsupported record type", err: model.ErrRecordTypeUnsupported, want: invalidRequest},
+		{name: "internal error", err: internalError, want: internal},
 	}
 
 	for _, tt := range tests {
@@ -943,7 +891,7 @@ func TestWriteRecordError(t *testing.T) {
 
 			writeRecordError(response, tt.err)
 
-			assertErrorResponse(t, response, tt.wantStatus, tt.wantCode, tt.wantMessage)
+			assertErrorResponse(t, response, tt.want.status, tt.want.code, tt.want.message)
 			if strings.Contains(response.Body.String(), internalError.Error()) {
 				t.Error("response body contains internal error details")
 			}

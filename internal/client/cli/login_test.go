@@ -23,8 +23,8 @@ func TestExecuteLogin(t *testing.T) {
 	err := executeLogin(
 		context.Background(),
 		userLoggerFunc(func(_ context.Context, login, password string) (model.User, error) {
-			if login != " Alice " {
-				t.Errorf("login = %q, want %q", login, " Alice ")
+			if login != "alice" {
+				t.Errorf("login = %q, want alice", login)
 			}
 			if password != testRegistrationPassword {
 				t.Error("login application received unexpected password")

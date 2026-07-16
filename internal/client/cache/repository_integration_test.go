@@ -95,3 +95,33 @@ func TestIntegration_OpenRepository_RejectsMissingMetadataInExistingCache(t *tes
 		t.Fatalf("cache metadata rows = %d, want 0", metadataRows)
 	}
 }
+
+func TestIntegration_OpenExistingRepository(t *testing.T) {
+	ctx := context.Background()
+	location := testLocation(t)
+	password := []byte("correct-horse-battery-staple")
+
+	if _, err := OpenExistingRepository(ctx, location, password); !errors.Is(err, ErrLocalCacheNotFound) {
+		t.Fatalf("OpenExistingRepository() missing cache error = %v, want ErrLocalCacheNotFound", err)
+	}
+
+	repository, err := OpenRepository(ctx, location, password)
+	if err != nil {
+		t.Fatalf("OpenRepository() error = %v", err)
+	}
+	if err := repository.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	repository, err = OpenExistingRepository(ctx, location, password)
+	if err != nil {
+		t.Fatalf("OpenExistingRepository() error = %v", err)
+	}
+	if err := repository.Close(); err != nil {
+		t.Fatalf("Close() existing error = %v", err)
+	}
+
+	if _, err := OpenExistingRepository(ctx, location, []byte("wrong-password")); !errors.Is(err, ErrOpenEncryptedCache) {
+		t.Fatalf("OpenExistingRepository() wrong password error = %v, want ErrOpenEncryptedCache", err)
+	}
+}

@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	// Регистрирует SQLite-драйвер для database/sql.
 	_ "modernc.org/sqlite"
@@ -22,6 +24,9 @@ var (
 	// ErrUnsafeCachePath означает, что путь SQLite-файла является symlink
 	// либо имеет неожиданный тип файла.
 	ErrUnsafeCachePath = errors.New("unsafe local cache path")
+
+	// ErrLocalCacheNotFound означает, что локальный кеш аккаунта ещё не создан.
+	ErrLocalCacheNotFound = errors.New("local cache not found")
 )
 
 // Database представляет открытый SQLite-файл локального кеша.
@@ -34,21 +39,40 @@ type Database struct {
 // Open создаёт account directory, открывает SQLite-файл и настраивает одно
 // logical connection с ограниченным busy timeout.
 func Open(ctx context.Context, location Location) (*Database, error) {
+	return openDatabase(ctx, location, true)
+}
+
+// OpenExisting открывает только уже существующий SQLite-кеш и ничего не создаёт.
+func OpenExisting(ctx context.Context, location Location) (*Database, error) {
+	return openDatabase(ctx, location, false)
+}
+
+func openDatabase(ctx context.Context, location Location, create bool) (*Database, error) {
 	resolved, err := validateAndResolveLocation(location)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := ensurePrivateDirectory(resolved.Directory); err != nil {
-		return nil, err
+	created := false
+	if create {
+		if err := ensurePrivateDirectory(resolved.Directory); err != nil {
+			return nil, err
+		}
+
+		created, err = ensurePrivateRegularFile(resolved.DatabaseFile)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		if err := verifyExistingPrivateDirectory(resolved.Directory); err != nil {
+			return nil, err
+		}
+		if err := verifyExistingPrivateRegularFile(resolved.DatabaseFile); err != nil {
+			return nil, err
+		}
 	}
 
-	created, err := ensurePrivateRegularFile(resolved.DatabaseFile)
-	if err != nil {
-		return nil, err
-	}
-
-	db, err := sql.Open("sqlite", resolved.DatabaseFile)
+	db, err := sql.Open("sqlite", sqliteDataSourceName(resolved.DatabaseFile, create))
 	if err != nil {
 		cleanupNewDatabaseFile(created, resolved.DatabaseFile)
 		return nil, fmt.Errorf("open local cache database: %w", err)
@@ -64,6 +88,10 @@ func Open(ctx context.Context, location Location) (*Database, error) {
 	}
 
 	if err := db.PingContext(ctx); err != nil {
+		if !create && databaseFileMissing(resolved.DatabaseFile) {
+			return closeOnError(ErrLocalCacheNotFound)
+		}
+
 		return closeOnError(fmt.Errorf("ping local cache database: %w", err))
 	}
 
@@ -71,7 +99,11 @@ func Open(ctx context.Context, location Location) (*Database, error) {
 		return closeOnError(fmt.Errorf("configure local cache busy timeout: %w", err))
 	}
 
-	if err := initializeSchema(ctx, db); err != nil {
+	if create {
+		if err := initializeSchema(ctx, db); err != nil {
+			return closeOnError(err)
+		}
+	} else if err := verifyExistingSchema(ctx, db); err != nil {
 		return closeOnError(err)
 	}
 
@@ -80,6 +112,30 @@ func Open(ctx context.Context, location Location) (*Database, error) {
 	}
 
 	return &Database{db: db, location: resolved, created: created}, nil
+}
+
+func sqliteDataSourceName(path string, create bool) string {
+	if create {
+		return path
+	}
+
+	uriPath := filepath.ToSlash(path)
+	if filepath.VolumeName(path) != "" && !strings.HasPrefix(uriPath, "/") {
+		uriPath = "/" + uriPath
+	}
+
+	databaseURL := &url.URL{
+		Scheme:   "file",
+		Path:     uriPath,
+		RawQuery: "mode=rw",
+	}
+
+	return databaseURL.String()
+}
+
+func databaseFileMissing(path string) bool {
+	_, err := os.Lstat(path)
+	return errors.Is(err, os.ErrNotExist)
 }
 
 // Close закрывает SQLite-кеш.
@@ -145,6 +201,24 @@ func ensurePrivateDirectory(path string) error {
 	return nil
 }
 
+func verifyExistingPrivateDirectory(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return ErrLocalCacheNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("inspect local cache account directory: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("%w: account path %q is not a regular directory", ErrUnsafeCachePath, path)
+	}
+	if err := os.Chmod(path, 0o700); err != nil {
+		return fmt.Errorf("set local cache directory permissions: %w", err)
+	}
+
+	return nil
+}
+
 func ensurePrivateRegularFile(path string) (bool, error) {
 	info, err := os.Lstat(path)
 	if err == nil {
@@ -175,6 +249,24 @@ func ensurePrivateRegularFile(path string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func verifyExistingPrivateRegularFile(path string) error {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return ErrLocalCacheNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("inspect local cache database: %w", err)
+	}
+	if err := validateRegularFile(path, info); err != nil {
+		return err
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("set local cache database permissions: %w", err)
+	}
+
+	return nil
 }
 
 func verifyPrivateRegularFile(path string) error {

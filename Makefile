@@ -25,7 +25,7 @@ ENV_FILE ?= .env
 export LOG_LEVEL
 
 # данные о сборке подставляются в бинарники Клиента и Сервера через ldflags
-BUILD_VERSION ?= v0.8.0
+BUILD_VERSION ?= v0.9.0
 BUILD_DATE ?= $(shell date +%Y-%m-%d)
 BUILD_COMMIT ?= $(shell git rev-parse --short HEAD)
 
@@ -56,6 +56,7 @@ TLS_SERVER_KEY ?= $(TLS_CERT_DIR)/server-key.pem
 export JWT_SECRET
 export JWT_TTL
 export RECORD_MASTER_KEY
+export RECORD_KEY_ID
 
 # команда Docker Compose с выбранным env-файлом
 # !!!: для целей db-*, run-server, test-integration, coverage, test-all и ci

@@ -104,3 +104,77 @@ func testLocation(t *testing.T) Location {
 	}
 	return location
 }
+
+func TestOpenExisting(t *testing.T) {
+	ctx := context.Background()
+	location := testLocation(t)
+
+	if _, err := OpenExisting(ctx, location); !errors.Is(err, ErrLocalCacheNotFound) {
+		t.Fatalf("OpenExisting() missing cache error = %v, want ErrLocalCacheNotFound", err)
+	}
+	if _, err := os.Stat(location.Directory); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("cache directory stat error = %v, want os.ErrNotExist", err)
+	}
+
+	database, err := Open(ctx, location)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	database, err = OpenExisting(ctx, location)
+	if err != nil {
+		t.Fatalf("OpenExisting() error = %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("Close() existing error = %v", err)
+	}
+}
+
+func TestOpenExisting_RejectsMissingDatabaseWithoutCreatingIt(t *testing.T) {
+	location := testLocation(t)
+	if err := os.MkdirAll(location.Directory, 0o700); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	if _, err := OpenExisting(context.Background(), location); !errors.Is(err, ErrLocalCacheNotFound) {
+		t.Fatalf("OpenExisting() error = %v, want ErrLocalCacheNotFound", err)
+	}
+	if _, err := os.Stat(location.DatabaseFile); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("database file stat error = %v, want os.ErrNotExist", err)
+	}
+}
+
+func TestSQLiteDataSourceName_ExistingModeRejectsMissingDatabase(t *testing.T) {
+	location := testLocation(t)
+	if err := os.MkdirAll(location.Directory, 0o700); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(location.DatabaseFile, nil, 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	dataSourceName := sqliteDataSourceName(location.DatabaseFile, false)
+	if err := os.Remove(location.DatabaseFile); err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+
+	database, err := sql.Open("sqlite", dataSourceName)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := database.Close(); err != nil {
+			t.Errorf("database.Close() error = %v", err)
+		}
+	})
+
+	if err := database.PingContext(context.Background()); err == nil {
+		t.Fatal("PingContext() error = nil, want missing database error")
+	}
+	if _, err := os.Stat(location.DatabaseFile); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("database file stat error = %v, want os.ErrNotExist", err)
+	}
+}

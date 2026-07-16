@@ -183,14 +183,9 @@ func readCardPayload(
 		return model.CardPayload{}, fmt.Errorf("read cardholder: %w", err)
 	}
 
-	expiryMonth, err := readOptionalCardInteger(reader, input, promptOutput, "Expiry month (optional): ")
+	expiryMonth, expiryYear, err := readOptionalCardExpiry(reader, input, promptOutput)
 	if err != nil {
-		return model.CardPayload{}, fmt.Errorf("read expiry month: %w", err)
-	}
-
-	expiryYear, err := readOptionalCardInteger(reader, input, promptOutput, "Expiry year (optional): ")
-	if err != nil {
-		return model.CardPayload{}, fmt.Errorf("read expiry year: %w", err)
+		return model.CardPayload{}, fmt.Errorf("read card expiry: %w", err)
 	}
 
 	cvv, err := reader.ReadHidden(input, promptOutput, "CVV (optional): ")
@@ -218,25 +213,58 @@ func readCardPayload(
 	return payload, nil
 }
 
-func readOptionalCardInteger(
+func readOptionalCardExpiry(
 	reader passwordReader,
 	input io.Reader,
 	promptOutput io.Writer,
-	prompt string,
-) (*int, error) {
-	value, err := readPromptedLine(reader, input, promptOutput, prompt)
-	if err != nil {
-		return nil, err
+) (*int, *int, error) {
+	for {
+		value, err := readPromptedLine(reader, input, promptOutput, "Expiry (MM/YYYY, optional): ")
+		if err != nil {
+			return nil, nil, err
+		}
+
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return nil, nil, nil
+		}
+
+		month, year, ok := parseCardExpiry(value)
+		if ok {
+			return &month, &year, nil
+		}
+
+		if _, err := fmt.Fprintln(promptOutput, "Invalid expiry. Use MM/YYYY or leave it empty."); err != nil {
+			return nil, nil, fmt.Errorf("write expiry validation message: %w", err)
+		}
 	}
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil, nil
+}
+
+func parseCardExpiry(value string) (int, int, bool) {
+	if len(value) != len("MM/YYYY") || value[2] != '/' ||
+		!containsOnlyASCIIDigits(value[:2]) || !containsOnlyASCIIDigits(value[3:]) {
+		return 0, 0, false
 	}
 
-	parsed, err := strconv.Atoi(value)
-	if err != nil {
-		return nil, fmt.Errorf("parse %q as integer: %w", value, err)
+	month, err := strconv.Atoi(value[:2])
+	if err != nil || month < 1 || month > 12 {
+		return 0, 0, false
 	}
 
-	return &parsed, nil
+	year, err := strconv.Atoi(value[3:])
+	if err != nil || year < 1 || year > 9999 {
+		return 0, 0, false
+	}
+
+	return month, year, true
+}
+
+func containsOnlyASCIIDigits(value string) bool {
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+
+	return true
 }

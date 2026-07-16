@@ -103,35 +103,26 @@ func TestLoginHandler_AuthenticatesUser(t *testing.T) {
 
 func TestLoginHandler_MapsServiceErrors(t *testing.T) {
 	internalError := errors.New("database connection details")
+	wrappedInvalidCredentials := fmt.Errorf("authenticate: %w", service.ErrInvalidCredentials)
+	invalidCredentials := errorResponseExpectation{
+		status:  http.StatusUnauthorized,
+		code:    errorCodeInvalidCredentials,
+		message: errorMessageInvalidCredentials,
+	}
+	internal := errorResponseExpectation{
+		status:  http.StatusInternalServerError,
+		code:    errorCodeInternal,
+		message: errorMessageInternal,
+	}
 
 	tests := []struct {
-		name        string
-		serviceErr  error
-		wantStatus  int
-		wantCode    string
-		wantMessage string
+		name       string
+		serviceErr error
+		want       errorResponseExpectation
 	}{
-		{
-			name:        "invalid credentials",
-			serviceErr:  service.ErrInvalidCredentials,
-			wantStatus:  http.StatusUnauthorized,
-			wantCode:    errorCodeInvalidCredentials,
-			wantMessage: errorMessageInvalidCredentials,
-		},
-		{
-			name:        "wrapped invalid credentials",
-			serviceErr:  fmt.Errorf("authenticate: %w", service.ErrInvalidCredentials),
-			wantStatus:  http.StatusUnauthorized,
-			wantCode:    errorCodeInvalidCredentials,
-			wantMessage: errorMessageInvalidCredentials,
-		},
-		{
-			name:        "internal error",
-			serviceErr:  internalError,
-			wantStatus:  http.StatusInternalServerError,
-			wantCode:    errorCodeInternal,
-			wantMessage: errorMessageInternal,
-		},
+		{name: "invalid credentials", serviceErr: service.ErrInvalidCredentials, want: invalidCredentials},
+		{name: "wrapped invalid credentials", serviceErr: wrappedInvalidCredentials, want: invalidCredentials},
+		{name: "internal error", serviceErr: internalError, want: internal},
 	}
 
 	for _, tt := range tests {
@@ -149,13 +140,7 @@ func TestLoginHandler_MapsServiceErrors(t *testing.T) {
 
 			loginHandler(authenticator).ServeHTTP(response, request)
 
-			assertErrorResponse(
-				t,
-				response,
-				tt.wantStatus,
-				tt.wantCode,
-				tt.wantMessage,
-			)
+			assertErrorResponse(t, response, tt.want.status, tt.want.code, tt.want.message)
 			if strings.Contains(response.Body.String(), internalError.Error()) {
 				t.Error("response body contains internal error details")
 			}

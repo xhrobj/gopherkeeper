@@ -9,7 +9,7 @@ func TestPrint(t *testing.T) {
 	var buf bytes.Buffer
 
 	if err := Print(&buf, Info{
-		Version: "v1.1.2",
+		Version: "v0.1.2",
 		Date:    "2026-06-29",
 		Commit:  "deadbeef",
 	}); err != nil {
@@ -17,7 +17,7 @@ func TestPrint(t *testing.T) {
 	}
 
 	got := buf.String()
-	want := "Build version: v1.1.2\n" +
+	want := "Build version: v0.1.2\n" +
 		"Build date: 2026-06-29\n" +
 		"Build commit: deadbeef\n"
 

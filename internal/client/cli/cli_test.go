@@ -14,15 +14,17 @@ import (
 )
 
 type applicationStub struct {
-	register     func(context.Context, string, string) (model.User, error)
-	login        func(context.Context, string, string) (model.User, error)
-	whoami       func(context.Context) (model.User, error)
-	createRecord func(context.Context, usecase.CreateRecordRequest) (model.Record, error)
-	updateRecord func(context.Context, usecase.UpdateRecordRequest) (model.Record, error)
-	listRecords  func(context.Context) ([]model.RecordMetadata, error)
-	getRecord    func(context.Context, string) (model.Record, error)
-	deleteRecord func(context.Context, usecase.DeleteRecordRequest) error
-	sync         func(context.Context, usecase.SyncRequest) (usecase.SyncResult, error)
+	register          func(context.Context, string, string) (model.User, error)
+	login             func(context.Context, string, string) (model.User, error)
+	whoami            func(context.Context) (model.User, error)
+	createRecord      func(context.Context, usecase.CreateRecordRequest) (model.Record, error)
+	updateRecord      func(context.Context, usecase.UpdateRecordRequest) (model.Record, error)
+	listRecords       func(context.Context) ([]model.RecordMetadata, error)
+	getRecord         func(context.Context, string) (model.Record, error)
+	listCachedRecords func(context.Context, usecase.OfflineReadRequest) (usecase.OfflineListResult, error)
+	getCachedRecord   func(context.Context, usecase.OfflineReadRequest, string) (usecase.OfflineGetResult, error)
+	deleteRecord      func(context.Context, usecase.DeleteRecordRequest) error
+	sync              func(context.Context, usecase.SyncRequest) (usecase.SyncResult, error)
 }
 
 func newApplicationStub(t *testing.T) *applicationStub {
@@ -63,6 +65,20 @@ func newApplicationStub(t *testing.T) *applicationStub {
 			t.Helper()
 			t.Fatal("GetRecord must not be called")
 			return model.Record{}, nil
+		},
+		listCachedRecords: func(context.Context, usecase.OfflineReadRequest) (usecase.OfflineListResult, error) {
+			t.Helper()
+			t.Fatal("ListCachedRecords must not be called")
+			return usecase.OfflineListResult{}, nil
+		},
+		getCachedRecord: func(
+			context.Context,
+			usecase.OfflineReadRequest,
+			string,
+		) (usecase.OfflineGetResult, error) {
+			t.Helper()
+			t.Fatal("GetCachedRecord must not be called")
+			return usecase.OfflineGetResult{}, nil
 		},
 		deleteRecord: func(context.Context, usecase.DeleteRecordRequest) error {
 			t.Helper()
@@ -111,6 +127,21 @@ func (s *applicationStub) GetRecord(ctx context.Context, recordID string) (model
 	return s.getRecord(ctx, recordID)
 }
 
+func (s *applicationStub) ListCachedRecords(
+	ctx context.Context,
+	request usecase.OfflineReadRequest,
+) (usecase.OfflineListResult, error) {
+	return s.listCachedRecords(ctx, request)
+}
+
+func (s *applicationStub) GetCachedRecord(
+	ctx context.Context,
+	request usecase.OfflineReadRequest,
+	recordID string,
+) (usecase.OfflineGetResult, error) {
+	return s.getCachedRecord(ctx, request, recordID)
+}
+
 func (s *applicationStub) DeleteRecord(ctx context.Context, request usecase.DeleteRecordRequest) error {
 	return s.deleteRecord(ctx, request)
 }
@@ -139,9 +170,10 @@ func (s healthCheckerStub) Health(ctx context.Context) (string, error) {
 }
 
 type clientFactoryStub struct {
-	newApplication       func(config.Config) (application, error)
-	newLogoutApplication func(config.Config) (userLogoutter, error)
-	newHealthClient      func(config.Config) (healthChecker, error)
+	newApplication        func(config.Config) (application, error)
+	newOfflineApplication func(config.Config) (application, error)
+	newLogoutApplication  func(config.Config) (userLogoutter, error)
+	newHealthClient       func(config.Config) (healthChecker, error)
 }
 
 func newClientFactoryStub(t *testing.T) *clientFactoryStub {
@@ -151,6 +183,11 @@ func newClientFactoryStub(t *testing.T) *clientFactoryStub {
 		newApplication: func(config.Config) (application, error) {
 			t.Helper()
 			t.Fatal("application factory must not be called")
+			return nil, nil
+		},
+		newOfflineApplication: func(config.Config) (application, error) {
+			t.Helper()
+			t.Fatal("offline application factory must not be called")
 			return nil, nil
 		},
 		newLogoutApplication: func(config.Config) (userLogoutter, error) {
@@ -168,6 +205,10 @@ func newClientFactoryStub(t *testing.T) *clientFactoryStub {
 
 func (s *clientFactoryStub) NewApplication(cfg config.Config) (application, error) {
 	return s.newApplication(cfg)
+}
+
+func (s *clientFactoryStub) NewOfflineApplication(cfg config.Config) (application, error) {
+	return s.newOfflineApplication(cfg)
 }
 
 func (s *clientFactoryStub) NewLogoutApplication(cfg config.Config) (userLogoutter, error) {

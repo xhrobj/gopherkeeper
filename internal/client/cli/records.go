@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"text/tabwriter"
 
 	urfavecli "github.com/urfave/cli/v3"
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
@@ -37,17 +36,46 @@ func newRecordsCommand(
 			newUpdateCredentialsRecordCommand(input, factory, passwords),
 			newUpdateCardRecordCommand(input, factory, passwords),
 			newUpdateBinaryRecordCommand(factory),
-			newListRecordsCommand(factory),
-			newGetRecordCommand(factory),
+			newListRecordsCommand(input, factory, passwords),
+			newGetRecordCommand(input, factory, passwords),
 			newDeleteRecordCommand(factory),
 		},
 	}
 }
-func newListRecordsCommand(factory clientFactory) *urfavecli.Command {
+func newListRecordsCommand(
+	input io.Reader,
+	factory clientFactory,
+	passwords passwordReader,
+) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "list",
 		Usage: "list private record metadata",
+		Flags: offlineReadFlags(),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
+			mode, err := recordReadModeFromCommand(command)
+			if err != nil {
+				return err
+			}
+
+			if mode.offline {
+				application, err := offlineApplicationFromCommand(command, factory)
+				if err != nil {
+					return err
+				}
+
+				return executeOfflineListRecords(
+					ctx,
+					application,
+					passwords,
+					passwordStreams{
+						input:        input,
+						output:       command.Root().Writer,
+						promptOutput: command.Root().ErrWriter,
+					},
+					mode.login,
+				)
+			}
+
 			application, err := applicationFromCommand(command, factory)
 			if err != nil {
 				return err
@@ -57,21 +85,50 @@ func newListRecordsCommand(factory clientFactory) *urfavecli.Command {
 		},
 	}
 }
-func newGetRecordCommand(factory clientFactory) *urfavecli.Command {
+
+func newGetRecordCommand(
+	input io.Reader,
+	factory clientFactory,
+	passwords passwordReader,
+) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:      "get",
 		Usage:     "get a private record",
 		ArgsUsage: recordIDArgsUsage,
-		Flags: []urfavecli.Flag{
-			&urfavecli.StringFlag{
-				Name:  outputFlag,
-				Usage: "path for saving a binary record",
-			},
-		},
+		Flags: append(offlineReadFlags(), &urfavecli.StringFlag{
+			Name:  outputFlag,
+			Usage: "path for saving a binary record",
+		}),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			recordID := command.Args().First()
 			if recordID == "" {
-				return errors.New("record id is required")
+				return errors.New("record id is required; run `gkeep records list` to find a record ID")
+			}
+
+			mode, err := recordReadModeFromCommand(command)
+			if err != nil {
+				return err
+			}
+
+			if mode.offline {
+				application, err := offlineApplicationFromCommand(command, factory)
+				if err != nil {
+					return err
+				}
+
+				return executeOfflineGetRecord(
+					ctx,
+					application,
+					passwords,
+					passwordStreams{
+						input:        input,
+						output:       command.Root().Writer,
+						promptOutput: command.Root().ErrWriter,
+					},
+					mode.login,
+					recordID,
+					command.String(outputFlag),
+				)
 			}
 
 			application, err := applicationFromCommand(command, factory)
@@ -89,6 +146,7 @@ func newGetRecordCommand(factory clientFactory) *urfavecli.Command {
 		},
 	}
 }
+
 func newDeleteRecordCommand(factory clientFactory) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:      "delete",
@@ -149,36 +207,7 @@ func executeListRecords(ctx context.Context, application application, output io.
 		return err
 	}
 
-	if len(records) == 0 {
-		if _, err := fmt.Fprintln(output, "No records found."); err != nil {
-			return fmt.Errorf("write empty record list: %w", err)
-		}
-
-		return nil
-	}
-
-	writer := tabwriter.NewWriter(output, 0, 0, 2, ' ', 0)
-	if _, err := fmt.Fprintln(writer, "ID\tTYPE\tTITLE\tREVISION\tUPDATED AT"); err != nil {
-		return fmt.Errorf("write record list header: %w", err)
-	}
-	for _, record := range records {
-		if _, err := fmt.Fprintf(
-			writer,
-			"%s\t%s\t%s\t%d\t%s\n",
-			record.ID,
-			record.Type,
-			record.Title,
-			record.Revision,
-			formatRecordTime(record.UpdatedAt),
-		); err != nil {
-			return fmt.Errorf("write record list item: %w", err)
-		}
-	}
-	if err := writer.Flush(); err != nil {
-		return fmt.Errorf("flush record list: %w", err)
-	}
-
-	return nil
+	return writeRecordList(output, records)
 }
 func executeGetRecord(
 	ctx context.Context,
@@ -191,14 +220,7 @@ func executeGetRecord(
 		return err
 	}
 
-	if record.Metadata.Type == model.RecordTypeBinary {
-		return writeBinaryRecord(output, record, outputPath)
-	}
-	if outputPath != "" {
-		return errors.New("--output can only be used with binary records")
-	}
-
-	return writeNonBinaryRecord(output, record)
+	return writeRecord(output, record, outputPath)
 }
 
 func writeBinaryRecord(output io.Writer, record model.Record, outputPath string) error {
