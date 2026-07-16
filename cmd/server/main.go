@@ -1,3 +1,4 @@
+// Package main запускает HTTPS-сервер GophKeeper.
 package main
 
 import (

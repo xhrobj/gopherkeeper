@@ -15,6 +15,7 @@ type responseWriter struct {
 	wroteHeader bool
 }
 
+// WriteHeader сохраняет и отправляет HTTP status code один раз.
 func (w *responseWriter) WriteHeader(status int) {
 	if w.wroteHeader {
 		return
@@ -25,6 +26,7 @@ func (w *responseWriter) WriteHeader(status int) {
 	w.ResponseWriter.WriteHeader(status)
 }
 
+// Write отправляет body и учитывает размер ответа.
 func (w *responseWriter) Write(body []byte) (int, error) {
 	if !w.wroteHeader {
 		w.WriteHeader(http.StatusOK)

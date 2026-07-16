@@ -64,12 +64,14 @@ type offlineCacheRepository struct {
 	repository *cache.Repository
 }
 
+// ListMetadata возвращает metadata записей из локального кеша.
 func (repository *offlineCacheRepository) ListMetadata(
 	ctx context.Context,
 ) ([]model.RecordMetadata, error) {
 	return repository.repository.ListMetadata(ctx)
 }
 
+// Get возвращает запись из локального кеша по идентификатору.
 func (repository *offlineCacheRepository) Get(
 	ctx context.Context,
 	recordID string,
@@ -85,6 +87,7 @@ func (repository *offlineCacheRepository) Get(
 	return record, nil
 }
 
+// Close закрывает локальный cache repository.
 func (repository *offlineCacheRepository) Close() error {
 	return repository.repository.Close()
 }

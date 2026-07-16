@@ -46,18 +46,22 @@ type clientFactory interface {
 
 type defaultClientFactory struct{}
 
+// NewApplication создаёт application для online-сценариев Клиента.
 func (defaultClientFactory) NewApplication(cfg config.Config) (application, error) {
 	return app.New(cfg)
 }
 
+// NewOfflineApplication создаёт application для offline read-only сценариев.
 func (defaultClientFactory) NewOfflineApplication(cfg config.Config) (application, error) {
 	return app.NewOffline(cfg), nil
 }
 
+// NewLogoutApplication создаёт application для локального выхода из online-сессии.
 func (defaultClientFactory) NewLogoutApplication(cfg config.Config) (userLogoutter, error) {
 	return app.NewLogout(cfg)
 }
 
+// NewHealthClient создаёт Клиент для проверки доступности Сервера.
 func (defaultClientFactory) NewHealthClient(cfg config.Config) (healthChecker, error) {
 	return httpclient.New(cfg.Address, cfg.CACertFile)
 }

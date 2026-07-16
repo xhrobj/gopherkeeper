@@ -19,6 +19,7 @@ type passwordReader interface {
 
 type terminalPasswordReader struct{}
 
+// ReadHidden читает скрытое значение из терминала.
 func (terminalPasswordReader) ReadHidden(
 	input io.Reader,
 	output io.Writer,
@@ -45,6 +46,7 @@ func (terminalPasswordReader) ReadHidden(
 	return string(password), nil
 }
 
+// ReadLine читает одну отображаемую строку из терминала.
 func (terminalPasswordReader) ReadLine(
 	input io.Reader,
 	output io.Writer,
@@ -59,6 +61,7 @@ func (terminalPasswordReader) ReadLine(
 
 type streamPasswordReader struct{}
 
+// ReadHidden читает скрытое значение из входного потока без prompt.
 func (streamPasswordReader) ReadHidden(
 	input io.Reader,
 	_ io.Writer,
@@ -67,6 +70,7 @@ func (streamPasswordReader) ReadHidden(
 	return readInputLine(input)
 }
 
+// ReadLine читает одну строку из входного потока без prompt.
 func (streamPasswordReader) ReadLine(
 	input io.Reader,
 	_ io.Writer,

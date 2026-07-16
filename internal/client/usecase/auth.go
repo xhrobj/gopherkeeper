@@ -119,10 +119,12 @@ func newUserError(message string, cause error) error {
 	}
 }
 
+// Error возвращает безопасное сообщение для пользователя.
 func (e *userError) Error() string {
 	return e.message
 }
 
+// Unwrap возвращает исходную ошибку.
 func (e *userError) Unwrap() error {
 	return e.cause
 }

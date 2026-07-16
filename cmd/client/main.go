@@ -1,3 +1,4 @@
+// Package main запускает CLI-клиент GophKeeper.
 package main
 
 import (
