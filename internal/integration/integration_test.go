@@ -150,6 +150,109 @@ func startHTTPSServer(
 	return listener.Addr().String(), stop
 }
 
+type restartableHTTPSServer struct {
+	t              *testing.T
+	handlerFactory func() http.Handler
+	certFile       string
+	keyFile        string
+	address        string
+	server         *http.Server
+	serveErr       chan error
+	running        bool
+}
+
+func newRestartableHTTPSServer(
+	t *testing.T,
+	handlerFactory func() http.Handler,
+	certFile string,
+	keyFile string,
+) *restartableHTTPSServer {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen on free port: %v", err)
+	}
+
+	fixture := &restartableHTTPSServer{
+		t:              t,
+		handlerFactory: handlerFactory,
+		certFile:       certFile,
+		keyFile:        keyFile,
+		address:        listener.Addr().String(),
+	}
+	fixture.start(listener)
+	t.Cleanup(fixture.Stop)
+
+	return fixture
+}
+
+func (fixture *restartableHTTPSServer) Address() string {
+	return fixture.address
+}
+
+func (fixture *restartableHTTPSServer) Start() {
+	fixture.t.Helper()
+
+	if fixture.running {
+		fixture.t.Fatal("start HTTPS server: server is already running")
+	}
+
+	listener, err := net.Listen("tcp", fixture.address)
+	if err != nil {
+		fixture.t.Fatalf("listen on HTTPS server address %s: %v", fixture.address, err)
+	}
+
+	fixture.start(listener)
+}
+
+func (fixture *restartableHTTPSServer) Stop() {
+	fixture.t.Helper()
+
+	if !fixture.running {
+		return
+	}
+
+	server := fixture.server
+	serveErr := fixture.serveErr
+	fixture.server = nil
+	fixture.serveErr = nil
+	fixture.running = false
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), integrationTestTimeout)
+	defer cancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		fixture.t.Errorf("shutdown HTTPS server: %v", err)
+		if closeErr := server.Close(); closeErr != nil {
+			fixture.t.Errorf("close HTTPS server after shutdown failure: %v", closeErr)
+		}
+	}
+
+	select {
+	case err := <-serveErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			fixture.t.Errorf("serve HTTPS: %v", err)
+		}
+	case <-shutdownCtx.Done():
+		fixture.t.Errorf("wait for HTTPS server shutdown: %v", shutdownCtx.Err())
+	}
+}
+
+func (fixture *restartableHTTPSServer) start(listener net.Listener) {
+	server := httpserver.NewServer(fixture.address, fixture.handlerFactory())
+	server.ErrorLog = log.New(io.Discard, "", 0)
+
+	serveErr := make(chan error, 1)
+	fixture.server = server
+	fixture.serveErr = serveErr
+	fixture.running = true
+
+	go func() {
+		serveErr <- server.ServeTLS(listener, fixture.certFile, fixture.keyFile)
+	}()
+}
+
 func generateTLSFiles(t *testing.T) (string, string, string) {
 	t.Helper()
 
