@@ -36,17 +36,46 @@ func newRecordsCommand(
 			newUpdateCredentialsRecordCommand(input, factory, passwords),
 			newUpdateCardRecordCommand(input, factory, passwords),
 			newUpdateBinaryRecordCommand(factory),
-			newListRecordsCommand(factory),
-			newGetRecordCommand(factory),
+			newListRecordsCommand(input, factory, passwords),
+			newGetRecordCommand(input, factory, passwords),
 			newDeleteRecordCommand(factory),
 		},
 	}
 }
-func newListRecordsCommand(factory clientFactory) *urfavecli.Command {
+func newListRecordsCommand(
+	input io.Reader,
+	factory clientFactory,
+	passwords passwordReader,
+) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "list",
 		Usage: "list private record metadata",
+		Flags: offlineReadFlags(),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
+			mode, err := recordReadModeFromCommand(command)
+			if err != nil {
+				return err
+			}
+
+			if mode.offline {
+				application, err := offlineApplicationFromCommand(command, factory)
+				if err != nil {
+					return err
+				}
+
+				return executeOfflineListRecords(
+					ctx,
+					application,
+					passwords,
+					passwordStreams{
+						input:        input,
+						output:       command.Root().Writer,
+						promptOutput: command.Root().ErrWriter,
+					},
+					mode.login,
+				)
+			}
+
 			application, err := applicationFromCommand(command, factory)
 			if err != nil {
 				return err
@@ -56,21 +85,50 @@ func newListRecordsCommand(factory clientFactory) *urfavecli.Command {
 		},
 	}
 }
-func newGetRecordCommand(factory clientFactory) *urfavecli.Command {
+
+func newGetRecordCommand(
+	input io.Reader,
+	factory clientFactory,
+	passwords passwordReader,
+) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:      "get",
 		Usage:     "get a private record",
 		ArgsUsage: recordIDArgsUsage,
-		Flags: []urfavecli.Flag{
-			&urfavecli.StringFlag{
-				Name:  outputFlag,
-				Usage: "path for saving a binary record",
-			},
-		},
+		Flags: append(offlineReadFlags(), &urfavecli.StringFlag{
+			Name:  outputFlag,
+			Usage: "path for saving a binary record",
+		}),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			recordID := command.Args().First()
 			if recordID == "" {
 				return errors.New("record id is required")
+			}
+
+			mode, err := recordReadModeFromCommand(command)
+			if err != nil {
+				return err
+			}
+
+			if mode.offline {
+				application, err := offlineApplicationFromCommand(command, factory)
+				if err != nil {
+					return err
+				}
+
+				return executeOfflineGetRecord(
+					ctx,
+					application,
+					passwords,
+					passwordStreams{
+						input:        input,
+						output:       command.Root().Writer,
+						promptOutput: command.Root().ErrWriter,
+					},
+					mode.login,
+					recordID,
+					command.String(outputFlag),
+				)
 			}
 
 			application, err := applicationFromCommand(command, factory)
@@ -88,6 +146,7 @@ func newGetRecordCommand(factory clientFactory) *urfavecli.Command {
 		},
 	}
 }
+
 func newDeleteRecordCommand(factory clientFactory) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:      "delete",

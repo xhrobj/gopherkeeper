@@ -52,3 +52,15 @@ func New(
 		serverAddress: serverAddress,
 	}
 }
+
+// NewOffline создаёт application-приложение только для чтения существующего
+// зашифрованного локального кеша без сетевых и session-зависимостей.
+func NewOffline(
+	offlineCaches OfflineCacheRepositoryProvider,
+	serverAddress string,
+) *Application {
+	return &Application{
+		offlineCaches: offlineCaches,
+		serverAddress: serverAddress,
+	}
+}

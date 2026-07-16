@@ -19,6 +19,12 @@ type application interface {
 	UpdateRecord(ctx context.Context, request usecase.UpdateRecordRequest) (model.Record, error)
 	ListRecords(ctx context.Context) ([]model.RecordMetadata, error)
 	GetRecord(ctx context.Context, recordID string) (model.Record, error)
+	ListCachedRecords(ctx context.Context, request usecase.OfflineReadRequest) (usecase.OfflineListResult, error)
+	GetCachedRecord(
+		ctx context.Context,
+		request usecase.OfflineReadRequest,
+		recordID string,
+	) (usecase.OfflineGetResult, error)
 	DeleteRecord(ctx context.Context, request usecase.DeleteRecordRequest) error
 	Sync(ctx context.Context, request usecase.SyncRequest) (usecase.SyncResult, error)
 }
@@ -33,6 +39,7 @@ type healthChecker interface {
 
 type clientFactory interface {
 	NewApplication(cfg config.Config) (application, error)
+	NewOfflineApplication(cfg config.Config) (application, error)
 	NewLogoutApplication(cfg config.Config) (userLogoutter, error)
 	NewHealthClient(cfg config.Config) (healthChecker, error)
 }
@@ -41,6 +48,10 @@ type defaultClientFactory struct{}
 
 func (defaultClientFactory) NewApplication(cfg config.Config) (application, error) {
 	return app.New(cfg)
+}
+
+func (defaultClientFactory) NewOfflineApplication(cfg config.Config) (application, error) {
+	return app.NewOffline(cfg), nil
 }
 
 func (defaultClientFactory) NewLogoutApplication(cfg config.Config) (userLogoutter, error) {
@@ -58,4 +69,13 @@ func applicationFromCommand(command *urfavecli.Command, factory clientFactory) (
 	}
 
 	return factory.NewApplication(cfg)
+}
+
+func offlineApplicationFromCommand(command *urfavecli.Command, factory clientFactory) (application, error) {
+	cfg, err := configFromCommand(command)
+	if err != nil {
+		return nil, err
+	}
+
+	return factory.NewOfflineApplication(cfg)
 }

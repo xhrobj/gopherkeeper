@@ -26,6 +26,15 @@ func New(cfg config.Config) (*usecase.Application, error) {
 	), nil
 }
 
+// NewOffline создаёт клиентское application-приложение только для чтения
+// существующего зашифрованного локального кеша.
+func NewOffline(cfg config.Config) *usecase.Application {
+	return usecase.NewOffline(
+		encryptedOfflineCacheRepositoryProvider(cfg.CacheDir),
+		cfg.Address,
+	)
+}
+
 // NewLogout создаёт application-сценарий локального выхода.
 func NewLogout(cfg config.Config) (*usecase.LogoutApplication, error) {
 	storage, err := session.NewFileStorage(cfg.SessionFile)
