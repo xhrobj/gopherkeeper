@@ -3,7 +3,7 @@ openapi: 3.0.3
 info:
   title: GophKeeper API
   description: API взаимодействия CLI-клиента и Сервера GophKeeper.
-  version: 0.8.0
+  version: 0.9.0
 
 servers:
   - url: https://localhost:8080
@@ -871,12 +871,7 @@ components:
           minimum: 1
           example: 42
         login:
-          type: string
-          description: Канонический login пользователя.
-          minLength: 3
-          maxLength: 32
-          pattern: '^[a-z0-9][a-z0-9._-]{2,31}$'
-          example: alice
+          $ref: '#/components/schemas/CanonicalLogin'
         created_at:
           type: string
           format: date-time
@@ -885,12 +880,20 @@ components:
     LoginField:
       type: string
       description: >-
-        Login пользователя. Сервер удаляет пробельные символы по краям и переводит ASCII-буквы A-Z в нижний
-        регистр. После канонизации значение должно содержать от 3 до 32 ASCII-символов: букв, цифр, точки,
-        подчёркивания и дефиса. Первый символ должен быть буквой или цифрой.
+        Login пользователя во входном запросе. Сервер сначала удаляет пробельные символы по краям и переводит
+        ASCII-буквы A-Z в нижний регистр. Ограничения длины и допустимых символов применяются к полученному
+        каноническому значению, описанному схемой CanonicalLogin.
+      example: '  Alice  '
+
+    CanonicalLogin:
+      type: string
+      description: >-
+        Канонический login пользователя после удаления пробельных символов по краям и преобразования ASCII-букв
+        A-Z в нижний регистр. Содержит от 3 до 32 ASCII-символов: буквы, цифры, точку, подчёркивание или дефис;
+        первый символ — буква или цифра.
       minLength: 3
       maxLength: 32
-      pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{2,31}$'
+      pattern: '^[a-z0-9][a-z0-9._-]{2,31}$'
       example: alice
 
     PasswordField:
@@ -924,6 +927,14 @@ components:
         управляющие Unicode-символы, включая tab, CR/LF и ESC.
       example: Alice private note
 
+    MetadataField:
+      type: string
+      description: >-
+        Необязательная приватная метаинформация. Хранится внутри encrypted payload. Размер UTF-8 представления
+        не должен превышать 65536 bytes.
+      x-max-bytes: 65536
+      example: private metadata
+
     TextPayload:
       type: object
       additionalProperties: false
@@ -932,15 +943,14 @@ components:
       properties:
         text:
           type: string
-          description: Приватный текст записи. Хранится на Сервере только внутри encrypted payload.
+          description: >-
+            Приватный текст записи. Хранится на Сервере только внутри encrypted payload. Размер UTF-8
+            представления не должен превышать 1048576 bytes.
           minLength: 1
-          maxLength: 1048576
+          x-max-bytes: 1048576
           example: secret note
         metadata:
-          type: string
-          description: Необязательная приватная метаинформация. Хранится внутри encrypted payload.
-          maxLength: 65536
-          example: private metadata
+          $ref: '#/components/schemas/MetadataField'
 
     CredentialsPayload:
       type: object
@@ -967,10 +977,7 @@ components:
             сохраняется без нормализации.
           example: https://github.com/login
         metadata:
-          type: string
-          description: Необязательная приватная метаинформация. Хранится внутри encrypted payload.
-          maxLength: 65536
-          example: private metadata
+          $ref: '#/components/schemas/MetadataField'
 
     CardPayload:
       type: object
@@ -1012,10 +1019,7 @@ components:
           description: Необязательный приватный проверочный код карты. Хранится строкой.
           example: '014'
         metadata:
-          type: string
-          description: Необязательная приватная метаинформация. Хранится внутри encrypted payload.
-          maxLength: 65536
-          example: test card
+          $ref: '#/components/schemas/MetadataField'
 
     BinaryPayload:
       type: object
@@ -1044,10 +1048,7 @@ components:
             Необязательный приватный media type. Значение хранится как UTF-8 строка и не проверяется как MIME.
           example: application/octet-stream
         metadata:
-          type: string
-          description: Необязательная приватная метаинформация. Хранится внутри encrypted payload.
-          maxLength: 65536
-          example: private backup
+          $ref: '#/components/schemas/MetadataField'
 
     CreateRecordRequest:
       oneOf:
