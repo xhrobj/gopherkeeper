@@ -44,12 +44,26 @@ type OfflineReadRequest struct {
 	Password string
 }
 
-// OfflineListResult содержит metadata записей существующего локального кеша.
+// OfflineSource описывает источник данных offline-чтения.
+type OfflineSource string
+
+const (
+	// OfflineSourceLocalCache означает зашифрованный локальный кеш.
+	OfflineSourceLocalCache OfflineSource = "local_cache"
+)
+
+// OfflineListResult содержит metadata записей существующего локального кеша
+// и семантику источника данных.
 type OfflineListResult struct {
-	Records []model.RecordMetadata
+	Records    []model.RecordMetadata
+	Source     OfflineSource
+	MayBeStale bool
 }
 
-// OfflineGetResult содержит полную расшифрованную запись локального кеша.
+// OfflineGetResult содержит полную расшифрованную запись локального кеша
+// и семантику источника данных.
 type OfflineGetResult struct {
-	Record model.Record
+	Record     model.Record
+	Source     OfflineSource
+	MayBeStale bool
 }

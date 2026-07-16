@@ -247,20 +247,15 @@ func runUpdateCardRecordCommand(
 }
 
 func cardInput(payload model.CardPayload) string {
-	expiryMonth := ""
-	if payload.ExpiryMonth != nil {
-		expiryMonth = fmt.Sprintf("%d", *payload.ExpiryMonth)
-	}
-	expiryYear := ""
-	if payload.ExpiryYear != nil {
-		expiryYear = fmt.Sprintf("%d", *payload.ExpiryYear)
+	expiry := ""
+	if payload.ExpiryMonth != nil && payload.ExpiryYear != nil {
+		expiry = fmt.Sprintf("%02d/%04d", *payload.ExpiryMonth, *payload.ExpiryYear)
 	}
 
 	return strings.Join([]string{
 		payload.Number,
 		payload.Cardholder,
-		expiryMonth,
-		expiryYear,
+		expiry,
 		payload.CVV,
 	}, "\n") + "\n"
 }

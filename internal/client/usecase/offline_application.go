@@ -29,7 +29,11 @@ func (a *Application) ListCachedRecords(
 		return OfflineListResult{}, newUserError("failed to read encrypted local cache", err)
 	}
 
-	return OfflineListResult{Records: records}, nil
+	return OfflineListResult{
+		Records:    records,
+		Source:     OfflineSourceLocalCache,
+		MayBeStale: true,
+	}, nil
 }
 
 // GetCachedRecord возвращает полную запись из существующего зашифрованного
@@ -63,7 +67,11 @@ func (a *Application) GetCachedRecord(
 		return OfflineGetResult{}, newUserError("failed to read encrypted local cache", err)
 	}
 
-	return OfflineGetResult{Record: record}, nil
+	return OfflineGetResult{
+		Record:     record,
+		Source:     OfflineSourceLocalCache,
+		MayBeStale: true,
+	}, nil
 }
 
 func (a *Application) openOfflineCache(

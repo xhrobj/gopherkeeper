@@ -10,14 +10,11 @@ import (
 
 	urfavecli "github.com/urfave/cli/v3"
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
-	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 const (
 	offlineFlag = "offline"
 	loginFlag   = "login"
-
-	offlineSourceMessage = "Source: encrypted local cache (data may be stale)."
 )
 
 var (
@@ -89,7 +86,7 @@ func executeOfflineListRecords(
 		return err
 	}
 
-	return writeOfflineRecordList(streams.output, result.Records)
+	return writeOfflineRecordList(streams.output, result)
 }
 
 func executeOfflineGetRecord(
@@ -115,33 +112,48 @@ func executeOfflineGetRecord(
 		return err
 	}
 
-	return writeOfflineRecord(streams.output, result.Record, outputPath)
+	return writeOfflineRecord(streams.output, result, outputPath)
 }
 
-func writeOfflineRecordList(output io.Writer, records []model.RecordMetadata) error {
+func writeOfflineRecordList(output io.Writer, result usecase.OfflineListResult) error {
 	var body bytes.Buffer
-	if len(records) == 0 {
+	if len(result.Records) == 0 {
 		if _, err := fmt.Fprintln(&body, "No cached records found."); err != nil {
 			return fmt.Errorf("prepare empty cached record list: %w", err)
 		}
-	} else if err := writeRecordList(&body, records); err != nil {
+	} else if err := writeRecordList(&body, result.Records); err != nil {
 		return err
 	}
 
-	return writeOfflineResult(output, &body)
+	return writeOfflineResult(output, result.Source, result.MayBeStale, &body)
 }
 
-func writeOfflineRecord(output io.Writer, record model.Record, outputPath string) error {
+func writeOfflineRecord(output io.Writer, result usecase.OfflineGetResult, outputPath string) error {
 	var body bytes.Buffer
-	if err := writeRecord(&body, record, outputPath); err != nil {
+	if err := writeRecord(&body, result.Record, outputPath); err != nil {
 		return err
 	}
 
-	return writeOfflineResult(output, &body)
+	return writeOfflineResult(output, result.Source, result.MayBeStale, &body)
 }
 
-func writeOfflineResult(output io.Writer, body io.Reader) error {
-	if _, err := fmt.Fprintln(output, offlineSourceMessage); err != nil {
+func writeOfflineResult(
+	output io.Writer,
+	source usecase.OfflineSource,
+	mayBeStale bool,
+	body io.Reader,
+) error {
+	sourceLabel := string(source)
+	if source == usecase.OfflineSourceLocalCache {
+		sourceLabel = "encrypted local cache"
+	}
+
+	message := fmt.Sprintf("Source: %s.", sourceLabel)
+	if mayBeStale {
+		message = fmt.Sprintf("Source: %s (data may be stale).", sourceLabel)
+	}
+
+	if _, err := fmt.Fprintln(output, message); err != nil {
 		return fmt.Errorf("write offline source: %w", err)
 	}
 	if _, err := io.Copy(output, body); err != nil {

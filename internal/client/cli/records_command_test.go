@@ -85,6 +85,23 @@ func TestRecordsUpdateTextCommand_RequiresRecordID(t *testing.T) {
 	}
 }
 
+func TestRecordsGetCommand_RequiresRecordIDWithListHint(t *testing.T) {
+	isolateClientConfig(t)
+
+	err := runTestCommand(
+		t,
+		[]string{"gkeep", "records", "get"},
+		nil,
+		io.Discard,
+		io.Discard,
+		nil,
+	)
+	want := "record id is required; run `gkeep records list` to find a record ID"
+	if err == nil || err.Error() != want {
+		t.Fatalf("run get command error = %v, want %q", err, want)
+	}
+}
+
 func TestRecordsDeleteCommand(t *testing.T) {
 	isolateClientConfig(t)
 

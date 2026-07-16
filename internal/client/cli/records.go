@@ -102,7 +102,7 @@ func newGetRecordCommand(
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			recordID := command.Args().First()
 			if recordID == "" {
-				return errors.New("record id is required")
+				return errors.New("record id is required; run `gkeep records list` to find a record ID")
 			}
 
 			mode, err := recordReadModeFromCommand(command)

@@ -85,6 +85,12 @@ func TestApplication_ListCachedRecords(t *testing.T) {
 	if !reflect.DeepEqual(result.Records, want) {
 		t.Errorf("ListCachedRecords() records = %#v, want %#v", result.Records, want)
 	}
+	if result.Source != OfflineSourceLocalCache {
+		t.Errorf("ListCachedRecords() source = %q, want %q", result.Source, OfflineSourceLocalCache)
+	}
+	if !result.MayBeStale {
+		t.Error("ListCachedRecords() MayBeStale = false, want true")
+	}
 	if !closed {
 		t.Error("offline cache repository was not closed")
 	}
@@ -134,6 +140,12 @@ func TestApplication_GetCachedRecord(t *testing.T) {
 	}
 	if !reflect.DeepEqual(result.Record, want) {
 		t.Errorf("GetCachedRecord() record = %#v, want %#v", result.Record, want)
+	}
+	if result.Source != OfflineSourceLocalCache {
+		t.Errorf("GetCachedRecord() source = %q, want %q", result.Source, OfflineSourceLocalCache)
+	}
+	if !result.MayBeStale {
+		t.Error("GetCachedRecord() MayBeStale = false, want true")
 	}
 	if !closed {
 		t.Error("offline cache repository was not closed")
