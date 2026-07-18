@@ -78,6 +78,38 @@ func Resolve(configFile string, overrides Overrides) (Config, error) {
 	return cfg, nil
 }
 
+// Save записывает конфигурацию Клиента в JSON-файл.
+func Save(path string, cfg Config) error {
+	if strings.TrimSpace(path) == "" {
+		return errors.New("client config file path is required")
+	}
+	if strings.TrimSpace(cfg.Address) == "" {
+		return errors.New("server address is required")
+	}
+
+	data, err := json.MarshalIndent(struct {
+		Address     string `json:"address"`
+		CACertFile  string `json:"ca_cert_file"`
+		SessionFile string `json:"session_file"`
+		CacheDir    string `json:"cache_dir"`
+	}{
+		Address:     cfg.Address,
+		CACertFile:  cfg.CACertFile,
+		SessionFile: cfg.SessionFile,
+		CacheDir:    cfg.CacheDir,
+	}, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode client config file: %w", err)
+	}
+	data = append(data, '\n')
+
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("write client config file: %w", err)
+	}
+
+	return nil
+}
+
 func applyFile(cfg *Config, path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {

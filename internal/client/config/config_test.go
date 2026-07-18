@@ -161,3 +161,42 @@ func writeConfigFile(t *testing.T, content string) string {
 func stringPointer(value string) *string {
 	return &value
 }
+
+func TestSaveWritesClientConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "client.json")
+	want := Config{
+		Address:     "vault.example:9443",
+		CACertFile:  "certs/ca.pem",
+		SessionFile: "session/session.json",
+		CacheDir:    "cache",
+	}
+
+	if err := Save(path, want); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	got, err := Resolve(path, Overrides{})
+	if err != nil {
+		t.Fatalf("Resolve() saved config error = %v", err)
+	}
+	if got != want {
+		t.Fatalf("saved config = %#v, want %#v", got, want)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read saved config: %v", err)
+	}
+	if !strings.HasSuffix(string(data), "\n") {
+		t.Fatal("saved config does not end with newline")
+	}
+}
+
+func TestSaveRejectsMissingPathAndAddress(t *testing.T) {
+	if err := Save("", Config{Address: "localhost:8080"}); err == nil {
+		t.Fatal("Save() path error = nil")
+	}
+	if err := Save(filepath.Join(t.TempDir(), "client.json"), Config{}); err == nil {
+		t.Fatal("Save() address error = nil")
+	}
+}

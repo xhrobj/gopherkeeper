@@ -22,8 +22,6 @@ const banner = `
 
 `
 
-const notAvailable = "¯\\_(ツ)_/¯"
-
 type runOptions struct {
 	input       io.Reader
 	output      io.Writer
@@ -31,6 +29,7 @@ type runOptions struct {
 	info        buildinfo.Info
 	factory     clientFactory
 	passwords   passwordReader
+	tui         tuiRunner
 }
 
 // Run запускает командный интерфейс Клиента.
@@ -48,6 +47,7 @@ func Run(
 		info:        info,
 		factory:     defaultClientFactory{},
 		passwords:   terminalPasswordReader{},
+		tui:         defaultTUIRunner{},
 	})
 }
 
@@ -67,6 +67,7 @@ func RunWithInput(
 		info:        info,
 		factory:     defaultClientFactory{},
 		passwords:   streamPasswordReader{},
+		tui:         defaultTUIRunner{},
 	})
 }
 
@@ -86,6 +87,7 @@ func run(ctx context.Context, args []string, options runOptions) error {
 		options.info,
 		options.factory,
 		options.passwords,
+		options.tui,
 	)
 
 	return command.Run(ctx, args)
@@ -98,16 +100,15 @@ func newRootCommand(
 	info buildinfo.Info,
 	factory clientFactory,
 	passwords passwordReader,
+	tui tuiRunner,
 ) *urfavecli.Command {
 	defaults := config.Default()
-	version := info.Version
-	if version == "" {
-		version = notAvailable
-	}
+	version := buildinfo.Value(info.Version)
 
 	return &urfavecli.Command{
 		Metadata: map[string]any{
-			clientConfigMetadataKey: defaults,
+			clientConfigMetadataKey:     defaults,
+			clientConfigFileMetadataKey: "",
 		},
 		Usage:                         "securely store and access private data",
 		Version:                       version,
@@ -143,15 +144,17 @@ func newRootCommand(
 			},
 		},
 		Before: func(ctx context.Context, command *urfavecli.Command) (context.Context, error) {
-			cfg, err := resolveClientConfig(command)
+			cfg, configFile, err := resolveClientConfigWithFile(command)
 			if err != nil {
 				return ctx, err
 			}
 
 			command.Root().Metadata[clientConfigMetadataKey] = cfg
+			command.Root().Metadata[clientConfigFileMetadataKey] = configFile
 			return ctx, nil
 		},
 		Commands: []*urfavecli.Command{
+			newTUICommand(input, output, info, tui),
 			newHealthCommand(factory),
 			newRegisterCommand(input, factory, passwords),
 			newLoginCommand(input, factory, passwords),

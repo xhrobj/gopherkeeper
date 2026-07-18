@@ -15,6 +15,7 @@
 - `client register` — регистрация пользователя;
 - `client login` — вход пользователя и сохранение локальной online-сессии;
 - `client whoami` — проверка текущего пользователя по сохранённой online-сессии;
+- `client tui` — запуск интерактивного терминального интерфейса;
 - `client sync` / `sync --refresh` — явная синхронизация зашифрованного локального кеша с Сервером;
 - `client records create-text` / `update-text` — создание и изменение text-записей;
 - `client records create-credentials` / `update-credentials` — создание и изменение credentials-записей;
@@ -265,6 +266,23 @@ gkeep health
 ```
 
 Эти переменные действуют только в текущей shell-сессии. Если открыть новый терминал, команды нужно выполнить повторно.
+
+### Запустить TUI
+
+Интерактивный терминальный интерфейс запускается поверх той же конфигурации и тех же application-сценариев, что и
+отдельные CLI-команды:
+
+```bash
+gkeep tui
+```
+
+Без предварительно заданной переменной `CONFIG` путь к JSON-конфигу можно передать явно:
+
+```bash
+gkeep --config configs/client.json tui
+```
+
+В текущем TUI доступны Server Status, Config, Register, Login, Current User, Logout.
 
 ### 8. Проверить доступность Сервера
 

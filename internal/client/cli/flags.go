@@ -15,10 +15,11 @@ const (
 	sessionFileFlag = "session-file"
 	cacheDirFlag    = "cache-dir"
 
-	clientConfigMetadataKey = "client-config"
+	clientConfigMetadataKey     = "client-config"
+	clientConfigFileMetadataKey = "client-config-file"
 )
 
-func resolveClientConfig(command *urfavecli.Command) (config.Config, error) {
+func resolveClientConfigWithFile(command *urfavecli.Command) (config.Config, string, error) {
 	configFile := nonEmptyEnvironmentValue("CONFIG")
 	overrides := config.Overrides{
 		Address:     nonEmptyEnvironmentValue("ADDRESS"),
@@ -48,7 +49,12 @@ func resolveClientConfig(command *urfavecli.Command) (config.Config, error) {
 		configFilePath = *configFile
 	}
 
-	return config.Resolve(configFilePath, overrides)
+	cfg, err := config.Resolve(configFilePath, overrides)
+	if err != nil {
+		return config.Config{}, "", err
+	}
+
+	return cfg, configFilePath, nil
 }
 
 func explicitStringFlag(command *urfavecli.Command, name string) *string {
@@ -81,4 +87,18 @@ func configFromCommand(command *urfavecli.Command) (config.Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func configFileFromCommand(command *urfavecli.Command) (string, error) {
+	value, ok := command.Root().Metadata[clientConfigFileMetadataKey]
+	if !ok {
+		return "", nil
+	}
+
+	path, ok := value.(string)
+	if !ok {
+		return "", errors.New("client config file has unexpected type")
+	}
+
+	return path, nil
 }

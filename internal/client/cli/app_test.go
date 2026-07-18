@@ -36,6 +36,7 @@ func TestRun_RootHelpContainsBanner(t *testing.T) {
 				output.String(),
 				banner,
 				"COMMANDS:",
+				"tui",
 				"health",
 				"register",
 				"login",

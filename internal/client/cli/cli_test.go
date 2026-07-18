@@ -165,6 +165,21 @@ type healthCheckerStub struct {
 	health func(context.Context) (string, error)
 }
 
+type tuiRunnerStub struct {
+	run func(context.Context, config.Config, string, buildinfo.Info, io.Reader, io.Writer) error
+}
+
+func (s tuiRunnerStub) Run(
+	ctx context.Context,
+	cfg config.Config,
+	configFile string,
+	info buildinfo.Info,
+	input io.Reader,
+	output io.Writer,
+) error {
+	return s.run(ctx, cfg, configFile, info, input, output)
+}
+
 func (s healthCheckerStub) Health(ctx context.Context) (string, error) {
 	return s.health(ctx)
 }
@@ -263,6 +278,18 @@ func runTestCommand(
 		info:        testBuildInfo,
 		factory:     factory,
 		passwords:   streamPasswordReader{},
+		tui: tuiRunnerStub{run: func(
+			context.Context,
+			config.Config,
+			string,
+			buildinfo.Info,
+			io.Reader,
+			io.Writer,
+		) error {
+			t.Helper()
+			t.Fatal("TUI runner must not be called")
+			return nil
+		}},
 	})
 }
 
