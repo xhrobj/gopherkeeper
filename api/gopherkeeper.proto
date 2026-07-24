@@ -1,0 +1,166 @@
+syntax = "proto3";
+
+package gopherkeeper.v1;
+
+option go_package = "github.com/xhrobj/gopherkeeper/internal/proto;gopherkeeperpb";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+// AuthService предоставляет операции регистрации, входа и получения текущего пользователя.
+service AuthService {
+  // Register регистрирует нового пользователя.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // Login аутентифицирует пользователя и возвращает токен доступа.
+  rpc Login(LoginRequest) returns (LoginResponse);
+
+  // CurrentUser возвращает данные пользователя, связанного с текущей сессией.
+  rpc CurrentUser(CurrentUserRequest) returns (CurrentUserResponse);
+}
+
+// RecordService предоставляет операции создания, чтения, изменения и удаления записей.
+service RecordService {
+  // CreateRecord создаёт новую запись.
+  rpc CreateRecord(CreateRecordRequest) returns (Record);
+
+  // ListRecords возвращает метаданные записей текущего пользователя.
+  rpc ListRecords(ListRecordsRequest) returns (ListRecordsResponse);
+
+  // GetRecord возвращает запись вместе с её расшифрованной полезной нагрузкой.
+  rpc GetRecord(GetRecordRequest) returns (Record);
+
+  // UpdateRecord изменяет запись при совпадении ожидаемой ревизии.
+  rpc UpdateRecord(UpdateRecordRequest) returns (Record);
+
+  // DeleteRecord удаляет запись при совпадении ожидаемой ревизии.
+  rpc DeleteRecord(DeleteRecordRequest) returns (DeleteRecordResponse);
+}
+
+message User {
+  int64 id = 1;
+  string login = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+message RegisterRequest {
+  string login = 1;
+  string password = 2;
+}
+
+message RegisterResponse {
+  User user = 1;
+}
+
+message LoginRequest {
+  string login = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  User user = 1;
+  string access_token = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message CurrentUserRequest {}
+
+message CurrentUserResponse {
+  User user = 1;
+}
+
+enum RecordType {
+  RECORD_TYPE_UNSPECIFIED = 0;
+  RECORD_TYPE_CREDENTIALS = 1;
+  RECORD_TYPE_CARD = 2;
+  RECORD_TYPE_TEXT = 3;
+  RECORD_TYPE_BINARY = 4;
+}
+
+message RecordMetadata {
+  string id = 1;
+  RecordType type = 2;
+  string title = 3;
+  int64 revision = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+message CredentialsPayload {
+  string login = 1;
+  string password = 2;
+  string url = 3;
+  string metadata = 4;
+}
+
+message CardPayload {
+  string number = 1;
+  string cardholder = 2;
+  google.protobuf.Int32Value expiry_month = 3;
+  google.protobuf.Int32Value expiry_year = 4;
+  string cvv = 5;
+  string metadata = 6;
+}
+
+message TextPayload {
+  string text = 1;
+  string metadata = 2;
+}
+
+message BinaryPayload {
+  string filename = 1;
+
+  // data объявлено optional, чтобы отличать отсутствующее поле от переданного пустого файла.
+  optional bytes data = 2;
+
+  string metadata = 3;
+}
+
+// RecordPayload содержит полезную нагрузку ровно одного типа записи.
+message RecordPayload {
+  oneof value {
+    CredentialsPayload credentials = 1;
+    CardPayload card = 2;
+    TextPayload text = 3;
+    BinaryPayload binary = 4;
+  }
+}
+
+message Record {
+  RecordMetadata metadata = 1;
+  RecordPayload payload = 2;
+}
+
+message CreateRecordRequest {
+  string title = 1;
+  RecordPayload payload = 2;
+}
+
+message ListRecordsRequest {}
+
+message ListRecordsResponse {
+  repeated RecordMetadata records = 1;
+}
+
+message GetRecordRequest {
+  string id = 1;
+}
+
+message UpdateRecordRequest {
+  string id = 1;
+
+  // expected_revision содержит ревизию записи, которую клиент намерен изменить.
+  int64 expected_revision = 2;
+
+  string title = 3;
+  RecordPayload payload = 4;
+}
+
+message DeleteRecordRequest {
+  string id = 1;
+
+  // expected_revision содержит ревизию записи, которую клиент намерен удалить.
+  int64 expected_revision = 2;
+}
+
+message DeleteRecordResponse {}

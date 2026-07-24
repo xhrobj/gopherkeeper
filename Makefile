@@ -1,6 +1,6 @@
 .PHONY: \
 	show-coverage \
-	gen-tls-certs gen-jwt-secret gen-record-master-key \
+	gen-proto gen-tls-certs gen-jwt-secret gen-record-master-key \
 	check-client-config \
 	build build-server build-client build-client-cross \
 	db-up db-down db-connect db-erase \
@@ -20,6 +20,10 @@
 ENV_FILE ?= .env
 
 -include $(ENV_FILE)
+
+# параметры генерации protobuf-кода
+GO_MODULE := github.com/xhrobj/gopherkeeper
+PROTO_FILE := api/gopherkeeper.proto
 
 # передать уровень логирования для Сервера и Клиента (читается из env-файла)
 export LOG_LEVEL
@@ -84,6 +88,17 @@ CLIENT_CONFIG ?= configs/client.json
 # обновить профиль покрытия и вывести общий процент
 show-coverage: coverage
 	go tool cover -func=coverage.out | tail -n 1
+
+# сгенерировать Go-код protobuf-сообщений и gRPC-сервиса
+gen-proto:
+	protoc \
+		--proto_path=. \
+		--go_out=. \
+		--go_opt=module=$(GO_MODULE) \
+		--go_opt=default_api_level=API_OPAQUE \
+		--go-grpc_out=. \
+		--go-grpc_opt=module=$(GO_MODULE) \
+		$(PROTO_FILE)
 
 # сгенерировать (при необходимости) локальный CA и TLS-сертификат Сервера
 gen-tls-certs:
@@ -230,6 +245,8 @@ coverage: db-up
 		-covermode=atomic \
 		-coverprofile=coverage.out \
 		./...
+	grep -v '/internal/proto/' coverage.out > coverage.tmp
+	mv coverage.tmp coverage.out
 
 # выполнить стандартный статический анализ Go-кода
 vet:
