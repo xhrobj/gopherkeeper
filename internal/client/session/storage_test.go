@@ -12,7 +12,7 @@ import (
 )
 
 func TestFileStorage_SaveAndLoad(t *testing.T) {
-	storage := newTestStorage(t, "session.json")
+	storage := newTestStorage(t, "")
 	want := testSession()
 
 	if err := storage.Save(want); err != nil {
@@ -36,7 +36,7 @@ func TestFileStorage_SaveAndLoad(t *testing.T) {
 }
 
 func TestFileStorage_SaveCreatesPrivateFile(t *testing.T) {
-	storage := newTestStorage(t, filepath.Join("gopherkeeper", "session.json"))
+	storage := newTestStorage(t, "gopherkeeper")
 
 	if err := storage.Save(testSession()); err != nil {
 		t.Fatalf("Save() error = %v", err)
@@ -47,7 +47,7 @@ func TestFileStorage_SaveCreatesPrivateFile(t *testing.T) {
 }
 
 func TestFileStorage_DeleteRemovesSessionFile(t *testing.T) {
-	storage := newTestStorage(t, "session.json")
+	storage := newTestStorage(t, "")
 
 	if err := storage.Save(testSession()); err != nil {
 		t.Fatalf("Save() error = %v", err)
@@ -63,7 +63,7 @@ func TestFileStorage_DeleteRemovesSessionFile(t *testing.T) {
 }
 
 func TestFileStorage_DeleteIgnoresMissingSessionFile(t *testing.T) {
-	storage := newTestStorage(t, "missing-session.json")
+	storage := newTestStorage(t, "")
 
 	if err := storage.Delete(); err != nil {
 		t.Fatalf("Delete() error = %v", err)
@@ -71,7 +71,7 @@ func TestFileStorage_DeleteIgnoresMissingSessionFile(t *testing.T) {
 }
 
 func TestFileStorage_LoadReturnsNotFound(t *testing.T) {
-	storage := newTestStorage(t, "missing-session.json")
+	storage := newTestStorage(t, "")
 
 	_, err := storage.Load("localhost:8080")
 	if !errors.Is(err, ErrNotFound) {
@@ -80,7 +80,7 @@ func TestFileStorage_LoadReturnsNotFound(t *testing.T) {
 }
 
 func TestFileStorage_LoadRejectsExpiredSession(t *testing.T) {
-	storage := newTestStorage(t, "session.json")
+	storage := newTestStorage(t, "")
 	session := testSession()
 	session.ExpiresAt = testNow()
 
@@ -95,7 +95,7 @@ func TestFileStorage_LoadRejectsExpiredSession(t *testing.T) {
 }
 
 func TestFileStorage_LoadRejectsServerMismatch(t *testing.T) {
-	storage := newTestStorage(t, "session.json")
+	storage := newTestStorage(t, "")
 	session := testSession()
 
 	if err := storage.Save(session); err != nil {
@@ -131,7 +131,7 @@ func TestFileStorage_LoadRejectsInvalidJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			storage := newTestStorage(t, "session.json")
+			storage := newTestStorage(t, "")
 			if err := os.WriteFile(storage.path, []byte(tt.body), 0o600); err != nil {
 				t.Fatalf("write session file: %v", err)
 			}
@@ -175,7 +175,7 @@ func TestFileStorage_SaveRejectsInvalidSession(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			storage := newTestStorage(t, "session.json")
+			storage := newTestStorage(t, "")
 			session := testSession()
 			tt.mutate(&session)
 
@@ -187,6 +187,19 @@ func TestFileStorage_SaveRejectsInvalidSession(t *testing.T) {
 				t.Error("Save() error contains access token")
 			}
 		})
+	}
+}
+
+func TestNewFileStorage_AppendsFixedFilename(t *testing.T) {
+	directory := t.TempDir()
+	storage, err := NewFileStorage(directory)
+	if err != nil {
+		t.Fatalf("NewFileStorage() error = %v", err)
+	}
+
+	want := filepath.Join(directory, "session.json")
+	if storage.path != want {
+		t.Errorf("storage path = %q, want %q", storage.path, want)
 	}
 }
 
@@ -209,10 +222,11 @@ func TestNewFileStorage_UsesDefaultPath(t *testing.T) {
 func newTestStorage(t *testing.T, name string) *FileStorage {
 	t.Helper()
 
-	storage, err := newFileStorage(
-		filepath.Join(t.TempDir(), name),
-		testNow,
-	)
+	directory := t.TempDir()
+	if name != "" {
+		directory = filepath.Join(directory, name)
+	}
+	storage, err := newFileStorage(directory, testNow)
 	if err != nil {
 		t.Fatalf("newFileStorage() error = %v", err)
 	}

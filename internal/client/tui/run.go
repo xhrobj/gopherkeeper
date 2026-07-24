@@ -27,7 +27,10 @@ func Run(ctx context.Context, options Options) error {
 		return errors.New("TUI backend factory is required")
 	}
 
-	model := newModel(ctx, options.Config, options.ConfigFile, options.Info, options.BackendFactory)
+	model, err := newModel(ctx, options.Config, options.ConfigFile, options.Info, options.BackendFactory)
+	if err != nil {
+		return err
+	}
 
 	program := tea.NewProgram(
 		model,

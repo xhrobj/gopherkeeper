@@ -249,10 +249,9 @@ func TestApplication_GetRecord(t *testing.T) {
 
 func TestApplication_UpdateRecord(t *testing.T) {
 	payload := &model.BinaryPayload{
-		Filename:    "backup-v2.bin",
-		Data:        []byte{0xff, 0x02, 0x01, 0x00},
-		ContentType: "application/octet-stream",
-		Metadata:    "updated private backup",
+		Filename: "backup-v2.bin",
+		Data:     []byte{0xff, 0x02, 0x01, 0x00},
+		Metadata: "updated private backup",
 	}
 	application := newTestApplicationWithRecords(
 		userGatewayStub{},

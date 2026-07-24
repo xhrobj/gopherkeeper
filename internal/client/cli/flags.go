@@ -9,11 +9,11 @@ import (
 )
 
 const (
-	configFlag      = "config"
-	addressFlag     = "address"
-	caCertFlag      = "ca-cert"
-	sessionFileFlag = "session-file"
-	cacheDirFlag    = "cache-dir"
+	configFlag     = "config"
+	addressFlag    = "address"
+	caCertFlag     = "ca-cert"
+	sessionDirFlag = "session-dir"
+	cacheDirFlag   = "cache-dir"
 
 	clientConfigMetadataKey     = "client-config"
 	clientConfigFileMetadataKey = "client-config-file"
@@ -22,10 +22,10 @@ const (
 func resolveClientConfigWithFile(command *urfavecli.Command) (config.Config, string, error) {
 	configFile := nonEmptyEnvironmentValue("CONFIG")
 	overrides := config.Overrides{
-		Address:     nonEmptyEnvironmentValue("ADDRESS"),
-		CACertFile:  nonEmptyEnvironmentValue("CA_CERT_FILE"),
-		SessionFile: nonEmptyEnvironmentValue("SESSION_FILE"),
-		CacheDir:    nonEmptyEnvironmentValue("CACHE_DIR"),
+		Address:    nonEmptyEnvironmentValue("ADDRESS"),
+		CACertFile: nonEmptyEnvironmentValue("CA_CERT_FILE"),
+		SessionDir: nonEmptyEnvironmentValue("SESSION_DIR"),
+		CacheDir:   nonEmptyEnvironmentValue("CACHE_DIR"),
 	}
 
 	if value := explicitStringFlag(command, configFlag); value != nil {
@@ -37,8 +37,8 @@ func resolveClientConfigWithFile(command *urfavecli.Command) (config.Config, str
 	if value := explicitStringFlag(command, caCertFlag); value != nil {
 		overrides.CACertFile = value
 	}
-	if value := explicitStringFlag(command, sessionFileFlag); value != nil {
-		overrides.SessionFile = value
+	if value := explicitStringFlag(command, sessionDirFlag); value != nil {
+		overrides.SessionDir = value
 	}
 	if value := explicitStringFlag(command, cacheDirFlag); value != nil {
 		overrides.CacheDir = value

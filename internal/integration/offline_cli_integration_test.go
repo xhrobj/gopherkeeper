@@ -67,7 +67,7 @@ func TestIntegration_CLIOfflineReadFlow(t *testing.T) {
 	if _, err := os.Stat(cfg.CACertFile); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("CA file stat error = %v, want os.ErrNotExist", err)
 	}
-	if _, err := os.Stat(cfg.SessionFile); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(cfg.SessionDir, "session.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("session file stat error = %v, want os.ErrNotExist", err)
 	}
 }
@@ -207,10 +207,10 @@ func offlineCLIConfig(t *testing.T) config.Config {
 
 	directory := t.TempDir()
 	return config.Config{
-		Address:     "127.0.0.1:1",
-		CACertFile:  filepath.Join(directory, "missing-ca.pem"),
-		SessionFile: filepath.Join(directory, "missing-session.json"),
-		CacheDir:    filepath.Join(directory, "cache"),
+		Address:    "127.0.0.1:1",
+		CACertFile: filepath.Join(directory, "missing-ca.pem"),
+		SessionDir: filepath.Join(directory, "missing-session"),
+		CacheDir:   filepath.Join(directory, "cache"),
 	}
 }
 
@@ -276,10 +276,9 @@ func offlineCLIRecords() []model.Record {
 				UpdatedAt: updatedAt,
 			},
 			Payload: &model.BinaryPayload{
-				Filename:    "cached.bin",
-				Data:        []byte("offline-binary-secret\x00\xff"),
-				ContentType: "application/octet-stream",
-				Metadata:    "cached binary metadata",
+				Filename: "cached.bin",
+				Data:     []byte("offline-binary-secret\x00\xff"),
+				Metadata: "cached binary metadata",
 			},
 		},
 	}
@@ -295,7 +294,7 @@ func runOfflineListCommand(
 		"gkeep",
 		"--address", cfg.Address,
 		"--ca-cert", cfg.CACertFile,
-		"--session-file", cfg.SessionFile,
+		"--session-dir", cfg.SessionDir,
 		"--cache-dir", cfg.CacheDir,
 		"records", "list", "--offline", "--login", login,
 	}, password+"\n")
@@ -313,7 +312,7 @@ func runOfflineGetCommand(
 		"gkeep",
 		"--address", cfg.Address,
 		"--ca-cert", cfg.CACertFile,
-		"--session-file", cfg.SessionFile,
+		"--session-dir", cfg.SessionDir,
 		"--cache-dir", cfg.CacheDir,
 		"records", "get", recordID,
 		"--offline", "--login", login,
@@ -378,7 +377,6 @@ func assertOfflineBinaryRecord(
 		"Type: binary",
 		"Filename: cached.bin",
 		"Saved to: "+outputPath,
-		"Content type: application/octet-stream",
 		"Metadata:\ncached binary metadata",
 	)
 

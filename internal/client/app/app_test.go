@@ -14,8 +14,8 @@ import (
 
 func TestNew(t *testing.T) {
 	application, err := New(config.Config{
-		Address:     "localhost:8080",
-		SessionFile: t.TempDir() + "/session.json",
+		Address:    "localhost:8080",
+		SessionDir: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -29,10 +29,10 @@ func TestNewOffline_DoesNotLoadNetworkOrSessionDependencies(t *testing.T) {
 	cacheDirectory := filepath.Join(t.TempDir(), "encrypted-cache")
 
 	application := NewOffline(config.Config{
-		Address:     "localhost:8080",
-		CACertFile:  filepath.Join(t.TempDir(), "missing-ca.pem"),
-		SessionFile: filepath.Join(t.TempDir(), "missing-session.json"),
-		CacheDir:    cacheDirectory,
+		Address:    "localhost:8080",
+		CACertFile: filepath.Join(t.TempDir(), "missing-ca.pem"),
+		SessionDir: filepath.Join(t.TempDir(), "missing-session"),
+		CacheDir:   cacheDirectory,
 	})
 	if application == nil {
 		t.Fatal("NewOffline() application = nil")
@@ -45,7 +45,7 @@ func TestNewOffline_DoesNotLoadNetworkOrSessionDependencies(t *testing.T) {
 
 func TestNewLogout(t *testing.T) {
 	application, err := NewLogout(config.Config{
-		SessionFile: t.TempDir() + "/session.json",
+		SessionDir: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("NewLogout() error = %v", err)
@@ -59,9 +59,9 @@ func TestNew_DoesNotOpenEncryptedCache(t *testing.T) {
 	cacheDirectory := filepath.Join(t.TempDir(), "encrypted-cache")
 
 	application, err := New(config.Config{
-		Address:     "localhost:8080",
-		SessionFile: filepath.Join(t.TempDir(), "session.json"),
-		CacheDir:    cacheDirectory,
+		Address:    "localhost:8080",
+		SessionDir: t.TempDir(),
+		CacheDir:   cacheDirectory,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)

@@ -3,10 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -20,14 +17,35 @@ const (
 	// BinaryPayloadMaxSize содержит максимальный размер binary payload в исходных байтах.
 	BinaryPayloadMaxSize = 2 * mebibyte
 
-	// MetadataMaxSize содержит максимальный размер приватной метаинформации в байтах UTF-8.
-	MetadataMaxSize = 64 * 1024
+	// MetadataMaxSize содержит максимальную длину приватной метаинформации в Unicode-символах.
+	MetadataMaxSize = 255
 
 	// HTTPRequestBodyMaxSize содержит максимальный размер HTTP request body в байтах.
 	HTTPRequestBodyMaxSize int64 = 4 * mebibyte
 
-	// RecordTitleMaxSize содержит максимальный размер открытого названия записи в байтах UTF-8.
-	RecordTitleMaxSize = 256
+	// RecordTitleMaxSize содержит максимальную длину открытого названия записи в Unicode-символах.
+	RecordTitleMaxSize = 255
+
+	// CredentialsFieldMaxSize содержит максимальную длину строкового поля credentials в Unicode-символах.
+	CredentialsFieldMaxSize = 255
+
+	// CardNumberMinSize содержит минимальную длину номера карты в ASCII-цифрах.
+	CardNumberMinSize = 12
+
+	// CardNumberMaxSize содержит максимальную длину номера карты в ASCII-цифрах.
+	CardNumberMaxSize = 20
+
+	// CardholderMaxSize содержит максимальную длину имени владельца карты в Unicode-символах.
+	CardholderMaxSize = 25
+
+	// CardCVVSize содержит допустимую длину CVV в ASCII-цифрах.
+	CardCVVSize = 3
+
+	// CardExpiryYearMax содержит максимальное двухзначное значение года срока действия карты.
+	CardExpiryYearMax = 99
+
+	// BinaryFilenameMaxSize содержит максимальную длину имени binary-файла в Unicode-символах.
+	BinaryFilenameMaxSize = 255
 
 	// RecordInitialRevision содержит начальную ревизию новой записи.
 	RecordInitialRevision int64 = 1
@@ -208,13 +226,8 @@ func (record EncryptedRecord) Metadata() RecordMetadata {
 
 // ValidateRecordTitle проверяет открытое название приватной записи.
 func ValidateRecordTitle(title string) error {
-	if strings.TrimSpace(title) == "" || !utf8.ValidString(title) || len(title) > RecordTitleMaxSize {
+	if !validateRequiredSingleLine(title, RecordTitleMaxSize) {
 		return ErrInvalidRecordTitle
-	}
-	for _, symbol := range title {
-		if unicode.IsControl(symbol) {
-			return ErrInvalidRecordTitle
-		}
 	}
 
 	return nil

@@ -9,15 +9,11 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-const (
-	binaryFileFlag  = "binary-file"
-	contentTypeFlag = "content-type"
-)
+const binaryFileFlag = "binary-file"
 
 type binaryRecordCreateCommandRequest struct {
 	title        string
 	binaryFile   string
-	contentType  string
 	metadataFile string
 }
 
@@ -26,7 +22,6 @@ type binaryRecordUpdateCommandRequest struct {
 	expectedRevision int64
 	title            string
 	binaryFile       string
-	contentType      string
 	metadataFile     string
 }
 
@@ -48,7 +43,6 @@ func newCreateBinaryRecordCommand(factory clientFactory) *urfavecli.Command {
 				binaryRecordCreateCommandRequest{
 					title:        command.String(titleFlag),
 					binaryFile:   command.String(binaryFileFlag),
-					contentType:  command.String(contentTypeFlag),
 					metadataFile: command.String(metadataFileFlag),
 				},
 			)
@@ -82,7 +76,6 @@ func newUpdateBinaryRecordCommand(factory clientFactory) *urfavecli.Command {
 					expectedRevision: command.Int64(revisionFlag),
 					title:            command.String(titleFlag),
 					binaryFile:       command.String(binaryFileFlag),
-					contentType:      command.String(contentTypeFlag),
 					metadataFile:     command.String(metadataFileFlag),
 				},
 			)
@@ -91,7 +84,7 @@ func newUpdateBinaryRecordCommand(factory clientFactory) *urfavecli.Command {
 }
 
 func binaryRecordFlags(withRevision bool) []urfavecli.Flag {
-	flags := make([]urfavecli.Flag, 0, 5)
+	flags := make([]urfavecli.Flag, 0, 4)
 	if withRevision {
 		flags = append(flags, &urfavecli.Int64Flag{
 			Name:     revisionFlag,
@@ -113,10 +106,6 @@ func binaryRecordFlags(withRevision bool) []urfavecli.Flag {
 			Required: true,
 		},
 		&urfavecli.StringFlag{
-			Name:  contentTypeFlag,
-			Usage: "optional content type stored with the binary payload",
-		},
-		&urfavecli.StringFlag{
 			Name:  metadataFileFlag,
 			Usage: "path to optional file with private metadata",
 		},
@@ -129,7 +118,7 @@ func executeCreateBinaryRecord(
 	output io.Writer,
 	request binaryRecordCreateCommandRequest,
 ) error {
-	payload, err := readBinaryPayload(request.binaryFile, request.contentType, request.metadataFile)
+	payload, err := readBinaryPayload(request.binaryFile, request.metadataFile)
 	if err != nil {
 		return err
 	}
@@ -143,7 +132,7 @@ func executeUpdateBinaryRecord(
 	output io.Writer,
 	request binaryRecordUpdateCommandRequest,
 ) error {
-	payload, err := readBinaryPayload(request.binaryFile, request.contentType, request.metadataFile)
+	payload, err := readBinaryPayload(request.binaryFile, request.metadataFile)
 	if err != nil {
 		return err
 	}
@@ -156,7 +145,7 @@ func executeUpdateBinaryRecord(
 	})
 }
 
-func readBinaryPayload(binaryFile, contentType, metadataFile string) (model.BinaryPayload, error) {
+func readBinaryPayload(binaryFile, metadataFile string) (model.BinaryPayload, error) {
 	filename, data, err := readBinaryFile(binaryFile)
 	if err != nil {
 		return model.BinaryPayload{}, err
@@ -168,10 +157,9 @@ func readBinaryPayload(binaryFile, contentType, metadataFile string) (model.Bina
 	}
 
 	payload := model.BinaryPayload{
-		Filename:    filename,
-		Data:        data,
-		ContentType: contentType,
-		Metadata:    metadata,
+		Filename: filename,
+		Data:     data,
+		Metadata: metadata,
 	}
 	if err := payload.Validate(); err != nil {
 		return model.BinaryPayload{}, err

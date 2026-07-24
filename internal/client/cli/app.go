@@ -133,9 +133,9 @@ func newRootCommand(
 				Value: defaults.CACertFile,
 			},
 			&urfavecli.StringFlag{
-				Name:  sessionFileFlag,
-				Usage: "path to online session file",
-				Value: defaults.SessionFile,
+				Name:  sessionDirFlag,
+				Usage: "directory for online session file session.json",
+				Value: defaults.SessionDir,
 			},
 			&urfavecli.StringFlag{
 				Name:  cacheDirFlag,

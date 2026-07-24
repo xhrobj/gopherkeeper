@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"unicode/utf8"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
@@ -26,7 +27,21 @@ func readOptionalTextFile(path string) (string, error) {
 		return "", nil
 	}
 
-	return readLimitedTextFile(path, "metadata file", model.MetadataMaxSize)
+	content, err := readLimitedTextFile(
+		path,
+		"metadata file",
+		int64(model.MetadataMaxSize*utf8.UTFMax),
+	)
+	if err != nil {
+		return "", err
+	}
+	if !utf8.ValidString(content) {
+		return "", errors.New("metadata file must contain valid UTF-8")
+	}
+	if utf8.RuneCountInString(content) > model.MetadataMaxSize {
+		return "", fmt.Errorf("metadata file is too large: %w", model.ErrPayloadTooLarge)
+	}
+	return content, nil
 }
 
 func readLimitedTextFile(path string, description string, maxSize int64) (string, error) {

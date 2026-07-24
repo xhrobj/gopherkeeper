@@ -143,10 +143,9 @@ func repositoryTestRecords() []model.Record {
 				UpdatedAt: createdAt.Add(time.Minute),
 			},
 			Payload: &model.BinaryPayload{
-				Filename:    "private.bin",
-				Data:        []byte{0x00, 0x01, 0x02, 0xff},
-				ContentType: "application/octet-stream",
-				Metadata:    "binary metadata",
+				Filename: "private.bin",
+				Data:     []byte{0x00, 0x01, 0x02, 0xff},
+				Metadata: "binary metadata",
 			},
 		},
 	}

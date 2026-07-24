@@ -10,6 +10,18 @@ func (m model) activateDialogButton() (tea.Model, tea.Cmd) {
 		return m.activateRegister()
 	case dialogCurrentUser:
 		m.dialog = dialogNone
+	case dialogRecordView:
+		if m.activeButton == 0 && recordViewIsBinary(m.recordFeature.view.record) {
+			m.openBinarySave()
+		} else if m.activeButton == 0 && recordViewHasSensitiveFields(m.recordFeature.view.record) {
+			m.recordFeature.view.revealed = !m.recordFeature.view.revealed
+		} else {
+			m.closeRecordView()
+		}
+	case dialogBinarySave:
+		return m.activateBinarySave()
+	case dialogRecordDelete:
+		return m.activateRecordDelete()
 	case dialogAbout:
 		if m.activeButton == 0 {
 			return m, openURLCommand(m.openURL, aboutURL)
@@ -23,12 +35,9 @@ func (m model) activateDialogButton() (tea.Model, tea.Cmd) {
 		m.activeButton = 0
 	case dialogServerStatus:
 		if m.activeButton == 0 {
-			if m.statusState == serverStatusChecking {
-				return m, nil
-			}
 			return m.startServerStatusCheck()
 		}
-		m.cancelStatusRequest()
+		m.operations.cancel(operationServerStatus)
 		m.dialog = dialogNone
 		m.activeButton = 0
 	}
@@ -37,7 +46,7 @@ func (m model) activateDialogButton() (tea.Model, tea.Cmd) {
 }
 
 func (m model) updateMenu(key string) (tea.Model, tea.Cmd) {
-	definitions := menuDefinitions(m.dialog, m.auth.authenticated())
+	definitions := m.currentMenuDefinitions()
 
 	if value := []rune(key); len(value) == 1 {
 		if m.dropdownOpen {
@@ -57,15 +66,15 @@ func (m model) updateMenu(key string) (tea.Model, tea.Cmd) {
 	case "left":
 		m.activeMenu = nextEnabledMenuIndex(definitions, m.activeMenu, -1)
 		m.dropdownOpen = true
-		m.selectedItem = selectedItemForMenu(definitions[m.activeMenu], currentDialogAction(m.dialog))
+		m.selectedItem = selectedItemForMenu(definitions[m.activeMenu], m.currentAction())
 	case "right":
 		m.activeMenu = nextEnabledMenuIndex(definitions, m.activeMenu, 1)
 		m.dropdownOpen = true
-		m.selectedItem = selectedItemForMenu(definitions[m.activeMenu], currentDialogAction(m.dialog))
+		m.selectedItem = selectedItemForMenu(definitions[m.activeMenu], m.currentAction())
 	case "down":
 		if !m.dropdownOpen {
 			m.dropdownOpen = true
-			m.selectedItem = selectedItemForMenu(definitions[m.activeMenu], currentDialogAction(m.dialog))
+			m.selectedItem = selectedItemForMenu(definitions[m.activeMenu], m.currentAction())
 		} else {
 			m.selectedItem = nextEnabledIndex(definitions[m.activeMenu], m.selectedItem, 1)
 		}
@@ -76,7 +85,7 @@ func (m model) updateMenu(key string) (tea.Model, tea.Cmd) {
 	case "enter":
 		if !m.dropdownOpen {
 			m.dropdownOpen = true
-			m.selectedItem = selectedItemForMenu(definitions[m.activeMenu], currentDialogAction(m.dialog))
+			m.selectedItem = selectedItemForMenu(definitions[m.activeMenu], m.currentAction())
 			break
 		}
 		items := selectableItems(definitions[m.activeMenu])
@@ -90,7 +99,7 @@ func (m model) updateMenu(key string) (tea.Model, tea.Cmd) {
 }
 
 func (m model) openMenu(index int) (tea.Model, tea.Cmd) {
-	definitions := menuDefinitions(m.dialog, m.auth.authenticated())
+	definitions := m.currentMenuDefinitions()
 
 	if index < 0 || index >= len(definitions) || definitions[index].disabled {
 		return m, nil
@@ -99,13 +108,13 @@ func (m model) openMenu(index int) (tea.Model, tea.Cmd) {
 	m.activeMenu = index
 	m.menuFocused = true
 	m.dropdownOpen = true
-	m.selectedItem = selectedItemForMenu(definitions[index], currentDialogAction(m.dialog))
+	m.selectedItem = selectedItemForMenu(definitions[index], m.currentAction())
 
 	return m, nil
 }
 
 func (m *model) openCurrentMenu(definitions []menuDefinition) {
-	current := currentDialogAction(m.dialog)
+	current := m.currentAction()
 
 	if menuIndex, itemIndex, ok := menuSelectionByAction(definitions, current); ok {
 		m.activeMenu = menuIndex
@@ -122,7 +131,15 @@ func (m *model) openCurrentMenu(definitions []menuDefinition) {
 func (m model) activate(action actionID) (tea.Model, tea.Cmd) {
 	m.closeMenu()
 
-	if action == currentDialogAction(m.dialog) {
+	if action == m.currentAction() && action != actionBrowseRecords {
+		return m, nil
+	}
+	viewTarget, hasViewTarget := m.recordViewTarget()
+	if action == actionViewRecord && !hasViewTarget {
+		return m, nil
+	}
+	deleteTarget, hasDeleteTarget := m.recordDeleteTarget()
+	if action == actionDeleteRecord && !hasDeleteTarget {
 		return m, nil
 	}
 	m.prepareDialogChange(action)
@@ -134,19 +151,41 @@ func (m model) activate(action actionID) (tea.Model, tea.Cmd) {
 	case actionLogin:
 		m.cancelSessionCheckForManualAuth()
 		m.dialog = dialogLogin
-		m.loginForm = newLoginForm()
+		m.authentication.loginForm = newLoginForm()
 	case actionRegister:
 		m.cancelSessionCheckForManualAuth()
 		m.dialog = dialogRegister
-		m.registerForm = newRegisterForm()
+		m.authentication.registerForm = newRegisterForm()
 	case actionCurrentUser:
-		if m.auth.authenticated() {
+		if m.authentication.session.authenticated() {
 			m.dialog = dialogCurrentUser
 			m.activeButton = 0
+			return m, m.beginCurrentUserCheck(currentUserCheckManual)
 		}
 	case actionLogout:
-		if m.auth.authenticated() {
+		if m.authentication.session.authenticated() {
 			return m.startLogout()
+		}
+	case actionBrowseRecords:
+		if m.authentication.session.authenticated() && m.recordsAvailable() {
+			m.dialog = dialogNone
+			return m, m.beginOnlineRecordList()
+		}
+	case actionNewRecord:
+		if m.authentication.session.authenticated() && m.recordCreateAvailable() {
+			return m, m.openRecordTypePicker()
+		}
+	case actionViewRecord:
+		if hasViewTarget && m.authentication.session.authenticated() && m.recordsAvailable() {
+			return m, m.beginRecordView(viewTarget)
+		}
+	case actionEditRecord:
+		if m.authentication.session.authenticated() && m.recordEditAvailable() {
+			return m, m.openRecordEdit()
+		}
+	case actionDeleteRecord:
+		if hasDeleteTarget && m.authentication.session.authenticated() && m.recordDeleteAvailable() {
+			m.openRecordDelete(deleteTarget)
 		}
 	case actionControls:
 		m.dialog = dialogControls
@@ -155,13 +194,17 @@ func (m model) activate(action actionID) (tea.Model, tea.Cmd) {
 		m.activeButton = 1
 	case actionServerStatus:
 		m.dialog = dialogServerStatus
-		m.activeButton = 1
+		m.activeButton = 0
 		return m.startServerStatusCheck()
 	case actionConfig:
 		m.dialog = dialogConfig
 		m.configForm = newConfigForm(m.config)
 	case actionCloseWindow:
-		m.closeActiveDialog()
+		if m.dialog != dialogNone {
+			m.closeActiveDialog()
+		} else {
+			m.closeRecordWorkspace()
+		}
 	}
 
 	return m, nil
@@ -174,7 +217,24 @@ func (m *model) closeActiveDialog() {
 	case dialogRegister:
 		m.clearRegisterForm()
 	case dialogServerStatus:
-		m.cancelStatusRequest()
+		m.operations.cancel(operationServerStatus)
+	case dialogPathPicker:
+		m.closePathPicker()
+		return
+	case dialogRecordView:
+		m.leaveRecordView()
+	case dialogBinarySave:
+		m.closeBinarySave()
+		return
+	case dialogRecordType, dialogRecordCreate:
+		m.closeRecordCreate()
+		return
+	case dialogRecordEdit:
+		m.closeRecordEdit()
+		return
+	case dialogRecordDelete:
+		m.closeRecordDelete()
+		return
 	}
 	m.dialog = dialogNone
 	m.activeButton = 0
@@ -192,14 +252,44 @@ func (m *model) prepareDialogChange(action actionID) {
 		m.clearRegisterForm()
 	}
 	if m.dialog == dialogServerStatus && action != actionServerStatus {
-		m.cancelStatusRequest()
+		m.operations.cancel(operationServerStatus)
+	}
+	binarySavePathPicker := m.dialog == dialogPathPicker &&
+		m.pathPicker.target == pathPickerBinarySaveDirectory
+	binaryCreatePathPicker := m.dialog == dialogPathPicker &&
+		m.pathPicker.target == pathPickerBinaryCreateFile
+	binaryEditPathPicker := m.dialog == dialogPathPicker &&
+		m.pathPicker.target == pathPickerBinaryEditFile
+	pathPickerAction := actionConfig
+	switch {
+	case binarySavePathPicker:
+		pathPickerAction = actionBrowseRecords
+	case binaryCreatePathPicker:
+		pathPickerAction = actionNewRecord
+	case binaryEditPathPicker:
+		pathPickerAction = actionEditRecord
+	}
+	if m.dialog == dialogPathPicker && action != pathPickerAction {
+		m.pathPicker = pathPicker{}
+	}
+	if (m.dialog == dialogRecordView || m.dialog == dialogBinarySave || binarySavePathPicker) && action != actionEditRecord {
+		m.leaveRecordView()
+	}
+	if (m.dialog == dialogRecordType || m.dialog == dialogRecordCreate || binaryCreatePathPicker) && action != actionNewRecord {
+		m.closeRecordCreate()
+	}
+	if (m.dialog == dialogRecordEdit || binaryEditPathPicker) && action != actionEditRecord {
+		m.closeRecordEdit()
+	}
+	if m.dialog == dialogRecordDelete && action != actionDeleteRecord {
+		m.closeRecordDelete()
 	}
 }
 
 func (m *model) cancelSessionCheckForManualAuth() {
-	m.cancelAuthRequest()
-	if m.auth.state == authUnknown {
-		m.auth = authSession{state: authGuest}
+	m.operations.cancel(operationCurrentUser)
+	if m.authentication.session.state == authUnknown {
+		m.authentication.session = authSession{state: authGuest}
 	}
 }
 
@@ -241,8 +331,16 @@ func currentDialogAction(dialog dialogID) actionID {
 		return actionAbout
 	case dialogServerStatus:
 		return actionServerStatus
-	case dialogConfig:
+	case dialogConfig, dialogPathPicker:
 		return actionConfig
+	case dialogRecordView, dialogBinarySave:
+		return actionBrowseRecords
+	case dialogRecordType, dialogRecordCreate:
+		return actionNewRecord
+	case dialogRecordEdit:
+		return actionEditRecord
+	case dialogRecordDelete:
+		return actionDeleteRecord
 	default:
 		return actionNone
 	}
@@ -255,6 +353,7 @@ func menuSelectionByAction(
 	if action == actionNone {
 		return 0, 0, false
 	}
+
 	for menuIndex, definition := range definitions {
 		selectable := -1
 		for _, item := range definition.items {
@@ -267,11 +366,13 @@ func menuSelectionByAction(
 			}
 		}
 	}
+
 	return 0, 0, false
 }
 
 func selectedItemForMenu(definition menuDefinition, action actionID) int {
 	selectable := -1
+
 	for _, item := range definition.items {
 		if item.separator {
 			continue
@@ -281,5 +382,6 @@ func selectedItemForMenu(definition menuDefinition, action actionID) int {
 			return selectable
 		}
 	}
+
 	return firstEnabledIndex(definition)
 }

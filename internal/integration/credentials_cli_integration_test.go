@@ -30,7 +30,7 @@ func TestIntegration_CLICredentialsRecordRoundTrip(t *testing.T) {
 		config.ctx,
 		config.address,
 		config.caCertFile,
-		config.sessionFile,
+		config.sessionDir,
 		"Alice GitHub",
 		initial,
 	)
@@ -49,7 +49,7 @@ func TestIntegration_CLICredentialsRecordRoundTrip(t *testing.T) {
 		config.ctx,
 		config.address,
 		config.caCertFile,
-		config.sessionFile,
+		config.sessionDir,
 		recordID,
 		initial,
 	)
@@ -81,7 +81,7 @@ func createCredentialsRecord(
 	ctx context.Context,
 	address string,
 	caCertFile string,
-	sessionFile string,
+	sessionDir string,
 	title string,
 	payload model.CredentialsPayload,
 ) string {
@@ -92,7 +92,7 @@ func createCredentialsRecord(
 		ctx,
 		address,
 		caCertFile,
-		sessionFile,
+		sessionDir,
 		title,
 		payload,
 	)
@@ -152,13 +152,13 @@ func assertCredentialsList(
 	ctx context.Context,
 	address string,
 	caCertFile string,
-	sessionFile string,
+	sessionDir string,
 	recordID string,
 	payload model.CredentialsPayload,
 ) {
 	t.Helper()
 
-	stdout, stderr, err := runListRecordsCommand(ctx, address, caCertFile, sessionFile)
+	stdout, stderr, err := runListRecordsCommand(ctx, address, caCertFile, sessionDir)
 	if err != nil {
 		t.Fatalf("list credentials records: %v", err)
 	}
@@ -186,7 +186,7 @@ func assertCredentialsRecord(
 		config.ctx,
 		config.address,
 		config.caCertFile,
-		config.sessionFile,
+		config.sessionDir,
 		recordID,
 	)
 	if err != nil {
@@ -219,7 +219,7 @@ func runCreateCredentialsRecordCommand(
 	ctx context.Context,
 	address string,
 	caCertFile string,
-	sessionFile string,
+	sessionDir string,
 	title string,
 	payload model.CredentialsPayload,
 ) (string, string, error) {
@@ -229,7 +229,7 @@ func runCreateCredentialsRecordCommand(
 		"gkeep",
 		"--address", address,
 		"--ca-cert", caCertFile,
-		"--session-file", sessionFile,
+		"--session-dir", sessionDir,
 		"records", "create-credentials",
 		"--title", title,
 	}
@@ -255,7 +255,7 @@ func runUpdateCredentialsRecordCommand(
 		"gkeep",
 		"--address", config.address,
 		"--ca-cert", config.caCertFile,
-		"--session-file", config.sessionFile,
+		"--session-dir", config.sessionDir,
 		"records", "update-credentials", recordID,
 		"--revision", fmt.Sprintf("%d", revision),
 		"--title", title,
@@ -272,13 +272,13 @@ func runListRecordsCommand(
 	ctx context.Context,
 	address string,
 	caCertFile string,
-	sessionFile string,
+	sessionDir string,
 ) (string, string, error) {
 	return runClientCommand(ctx, []string{
 		"gkeep",
 		"--address", address,
 		"--ca-cert", caCertFile,
-		"--session-file", sessionFile,
+		"--session-dir", sessionDir,
 		"records", "list",
 	})
 }

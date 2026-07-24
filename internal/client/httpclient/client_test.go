@@ -4,12 +4,16 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
+	"syscall"
 	"testing"
+
+	"github.com/xhrobj/gopherkeeper/internal/client/failure"
 )
 
 func TestClient_HealthWithAdditionalCA(t *testing.T) {
@@ -66,8 +70,14 @@ func TestClient_HealthReturnsUnavailableErrorOnConnectionRefused(t *testing.T) {
 		t.Fatal("Health() error = nil, want server unavailable error")
 	}
 
-	if err.Error() != "server unavailable: connection refused" {
-		t.Errorf("Health() error = %q, want server unavailable", err)
+	if got := failure.KindOf(err); got != failure.Unavailable {
+		t.Errorf("failure.KindOf(Health() error) = %d, want %d", got, failure.Unavailable)
+	}
+	if got := failure.Message(err); got != "Connection refused" {
+		t.Errorf("failure.Message(Health() error) = %q, want %q", got, "Connection refused")
+	}
+	if !errors.Is(err, syscall.ECONNREFUSED) {
+		t.Errorf("Health() error does not preserve ECONNREFUSED: %v", err)
 	}
 }
 

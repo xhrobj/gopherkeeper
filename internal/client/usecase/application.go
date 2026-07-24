@@ -10,12 +10,18 @@ import (
 // Application выполняет клиентские online- и offline-сценарии поверх удалённых
 // gateway, provider'ов локальной online-сессии и зашифрованного кеша.
 type Application struct {
+	health        HealthGateway
 	users         UserGateway
 	records       RecordGateway
 	sessions      SessionStorageProvider
 	syncCaches    SyncCacheRepositoryProvider
 	offlineCaches OfflineCacheRepositoryProvider
 	serverAddress string
+}
+
+// HealthGateway описывает удалённую проверку доступности Сервера.
+type HealthGateway interface {
+	Health(ctx context.Context) (string, error)
 }
 
 // UserGateway описывает удалённые операции с пользователями, необходимые application-слою.
@@ -29,6 +35,7 @@ type UserGateway interface {
 type SessionStorage interface {
 	Save(stored session.Session) error
 	Load(expectedServerAddress string) (session.Session, error)
+	Delete() error
 }
 
 // SessionStorageProvider лениво создаёт локальное хранилище online-сессии.
@@ -36,6 +43,7 @@ type SessionStorageProvider func() (SessionStorage, error)
 
 // New создаёт application-приложение из готовых зависимостей.
 func New(
+	health HealthGateway,
 	users UserGateway,
 	records RecordGateway,
 	sessions SessionStorageProvider,
@@ -44,6 +52,7 @@ func New(
 	serverAddress string,
 ) *Application {
 	return &Application{
+		health:        health,
 		users:         users,
 		records:       records,
 		sessions:      sessions,

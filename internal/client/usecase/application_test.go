@@ -11,6 +11,17 @@ import (
 
 const testPassword = "correct-horse-battery-staple"
 
+type healthGatewayStub struct {
+	health func(context.Context) (string, error)
+}
+
+func (stub healthGatewayStub) Health(ctx context.Context) (string, error) {
+	if stub.health == nil {
+		return "", nil
+	}
+	return stub.health(ctx)
+}
+
 type userGatewayStub struct {
 	register func(context.Context, string, string) (model.User, error)
 	login    func(context.Context, string, string) (model.Authentication, error)
@@ -30,8 +41,9 @@ func (s userGatewayStub) CurrentUser(ctx context.Context, accessToken string) (m
 }
 
 type sessionStorageStub struct {
-	save func(session.Session) error
-	load func(string) (session.Session, error)
+	save   func(session.Session) error
+	load   func(string) (session.Session, error)
+	delete func() error
 }
 
 func (s sessionStorageStub) Save(stored session.Session) error {
@@ -40,6 +52,13 @@ func (s sessionStorageStub) Save(stored session.Session) error {
 
 func (s sessionStorageStub) Load(expectedServerAddress string) (session.Session, error) {
 	return s.load(expectedServerAddress)
+}
+
+func (s sessionStorageStub) Delete() error {
+	if s.delete == nil {
+		return nil
+	}
+	return s.delete()
 }
 
 func newTestApplication(users UserGateway, sessions SessionStorage, serverAddress string) *Application {
@@ -80,6 +99,7 @@ func testUser() model.User {
 
 func TestNew(t *testing.T) {
 	application := New(
+		healthGatewayStub{},
 		userGatewayStub{},
 		recordGatewayStub{},
 		func() (SessionStorage, error) { return sessionStorageStub{}, nil },
@@ -87,6 +107,9 @@ func TestNew(t *testing.T) {
 		func(context.Context, string, string, []byte) (OfflineCacheRepository, error) { return nil, nil },
 		"localhost:8080",
 	)
+	if application.health == nil {
+		t.Error("New() health gateway = nil")
+	}
 	if application.users == nil {
 		t.Error("New() user gateway = nil")
 	}

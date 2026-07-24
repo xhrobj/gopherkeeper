@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/xhrobj/gopherkeeper/internal/client/failure"
 	"github.com/xhrobj/gopherkeeper/internal/client/session"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
@@ -122,6 +123,29 @@ func newUserError(message string, cause error) error {
 // Error возвращает безопасное сообщение для пользователя.
 func (e *userError) Error() string {
 	return e.message
+}
+
+// UserMessage возвращает безопасное сообщение без transport-префиксов.
+func (e *userError) UserMessage() string {
+	return e.message
+}
+
+// FailureKind возвращает категорию ошибки для пользовательского интерфейса.
+func (e *userError) FailureKind() failure.Kind {
+	switch {
+	case errors.Is(e.cause, ErrNotLoggedIn), errors.Is(e.cause, model.ErrInvalidCredentials), errors.Is(e.cause, model.ErrUnauthorized):
+		return failure.Unauthorized
+	case errors.Is(e.cause, model.ErrLoginAlreadyExists), errors.Is(e.cause, model.ErrRecordRevisionConflict):
+		return failure.Conflict
+	case errors.Is(e.cause, model.ErrRecordNotFound):
+		return failure.NotFound
+	case errors.Is(e.cause, model.ErrPayloadTooLarge):
+		return failure.TooLarge
+	case errors.Is(e.cause, model.ErrInvalidRecordData), errors.Is(e.cause, model.ErrRecordPreconditionRequired):
+		return failure.Validation
+	default:
+		return failure.KindOf(e.cause)
+	}
 }
 
 // Unwrap возвращает исходную ошибку.

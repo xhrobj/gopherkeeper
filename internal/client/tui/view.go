@@ -8,6 +8,14 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 )
 
+func renderMenuHint(t theme, blocked bool) string {
+	if blocked {
+		return t.menuHintBlocked.Render("F10 = Menu")
+	}
+
+	return t.menuHint.Render("F10 = Menu")
+}
+
 func (m model) View() tea.View {
 	content := m.render()
 	view := tea.NewView(content)
@@ -23,7 +31,8 @@ func (m model) render() string {
 		return m.renderTooSmall()
 	}
 
-	definitions := menuDefinitions(m.dialog, m.auth.authenticated())
+	definitions := m.currentMenuDefinitions()
+	blocked := m.interactionBlocked()
 	background := m.theme.desktop.Width(m.width).Height(m.height).Render("")
 	layers := []*lipgloss.Layer{
 		lipgloss.NewLayer(background).X(0).Y(0).Z(0),
@@ -33,9 +42,19 @@ func (m model) render() string {
 			m.width,
 			m.activeMenu,
 			m.menuFocused || m.dropdownOpen,
+			blocked,
 		)).X(0).Y(0).Z(10),
-		lipgloss.NewLayer(m.theme.menuHint.Render("F10 = Menu")).
+		lipgloss.NewLayer(renderMenuHint(m.theme, blocked)).
 			X(max(0, m.width-len("F10 = Menu")-1)).Y(0).Z(11),
+	}
+
+	if window, ok := m.workspacePlacement(); ok {
+		layers = append(
+			layers,
+			lipgloss.NewLayer(renderShadow(m.theme, window.width, window.height)).
+				X(window.x+2).Y(window.y+1).Z(14),
+			lipgloss.NewLayer(window.content).X(window.x).Y(window.y).Z(15),
+		)
 	}
 
 	if window, ok := m.dialogPlacement(); ok {
@@ -52,16 +71,15 @@ func (m model) render() string {
 			m.theme,
 			definitions[m.activeMenu],
 			m.selectedItem,
-			currentDialogAction(m.dialog),
+			m.currentAction(),
 		)
-		dropdownWidth := lipgloss.Width(dropdown)
-		dropdownHeight := lipgloss.Height(dropdown)
-		dropdownX := min(menuOffset(m.activeMenu), max(0, m.width-dropdownWidth))
+		dropdownLayout := buildDropdownMenuLayout(m.width, m.activeMenu, definitions[m.activeMenu])
+		bounds := dropdownLayout.bounds
 
 		layers = append(
 			layers,
-			lipgloss.NewLayer(renderShadow(m.theme, dropdownWidth, dropdownHeight)).X(dropdownX+1).Y(2).Z(29),
-			lipgloss.NewLayer(dropdown).X(dropdownX).Y(1).Z(30),
+			lipgloss.NewLayer(renderShadow(m.theme, bounds.width, bounds.height)).X(bounds.x+1).Y(bounds.y+1).Z(29),
+			lipgloss.NewLayer(dropdown).X(bounds.x).Y(bounds.y).Z(30),
 		)
 	}
 
@@ -74,10 +92,22 @@ func (m model) render() string {
 		)
 	}
 
+	if overlay, ok := m.networkBusyPlacement(); ok {
+		layers = append(
+			layers,
+			lipgloss.NewLayer(renderShadow(m.theme, overlay.width, overlay.height)).
+				X(overlay.x+2).Y(overlay.y+1).Z(49),
+			lipgloss.NewLayer(overlay.content).X(overlay.x).Y(overlay.y).Z(50),
+		)
+	}
+
 	return lipgloss.NewCompositor(layers...).Render()
 }
 
 func (m model) renderDialog() string {
+	blocked := m.interactionBlocked()
+	spinnerFrame := m.spinnerFrameValue()
+
 	switch m.dialog {
 	case dialogNone:
 		return ""
@@ -91,10 +121,16 @@ func (m model) renderDialog() string {
 			m.activeButton,
 		)
 	case dialogControls:
-		width := clamp(m.width-18, 44, 58)
+		width := clamp(m.width-18, 50, 58)
 		return renderControlsWindow(m.theme, width)
 	case dialogConfig:
 		return renderConfigWindow(m.theme, configWindowWidth(m.width), m.configForm, m.configFile)
+	case dialogPathPicker:
+		return renderPathPickerWindow(
+			m.theme,
+			pathPickerWindowWidth(m.width),
+			m.pathPicker,
+		)
 	case dialogServerStatus:
 		return renderServerStatusWindow(
 			m.theme,
@@ -104,16 +140,70 @@ func (m model) renderDialog() string {
 			m.statusValue,
 			m.statusFailure,
 			m.activeButton,
+			m.operations.pending(operationServerStatus),
+			blocked,
+			spinnerFrame,
 		)
 	case dialogLogin:
 		width := clamp(m.width-18, 44, 58)
-		return renderLoginWindow(m.theme, width, m.loginForm, m.loginRequest.pending)
+		return renderLoginWindow(m.theme, width, m.authentication.loginForm, m.operations.pending(operationLogin), blocked, spinnerFrame)
 	case dialogRegister:
 		width := clamp(m.width-18, 48, 62)
-		return renderRegisterWindow(m.theme, width, m.registerForm, m.registerRequest.pending)
+		return renderRegisterWindow(m.theme, width, m.authentication.registerForm, m.operations.pending(operationRegister), blocked, spinnerFrame)
 	case dialogCurrentUser:
 		width := clamp(m.width-24, 44, 58)
-		return renderCurrentUserWindow(m.theme, width, m.auth.login)
+		return renderCurrentUserWindow(m.theme, width, m.authentication.session.login, m.operations.pending(operationCurrentUser), blocked, spinnerFrame)
+	case dialogRecordView:
+		return renderRecordViewWindow(
+			m.theme,
+			recordViewWindowWidth(m.width),
+			recordViewWindowHeightForState(m.theme, m.width, m.height, m.recordFeature.view),
+			m.recordFeature.view,
+			m.activeButton,
+			m.operations.pending(operationViewRecord),
+			blocked,
+			spinnerFrame,
+		)
+	case dialogBinarySave:
+		return renderBinarySaveWindow(m.theme, binarySaveWindowWidth(m.width), m.recordFeature.binarySaveForm, m.operations.pending(operationBinarySave))
+	case dialogRecordType:
+		return renderRecordTypePickerWindow(m.theme, m.recordFeature.typePicker)
+	case dialogRecordCreate:
+		return renderRecordCreateWindow(
+			m.theme,
+			recordCreateWindowWidth(m.width),
+			m.recordFeature.createForm,
+			m.operations.pending(operationCreateRecord),
+			blocked,
+			spinnerFrame,
+		)
+	case dialogRecordEdit:
+		if m.recordFeature.edit.status == recordEditLoading {
+			return renderRecordEditLoadingWindow(
+				m.theme,
+				recordCreateWindowWidth(m.width),
+				m.recordFeature.edit.form,
+				spinnerFrame,
+			)
+		}
+		return renderRecordEditWindow(
+			m.theme,
+			recordCreateWindowWidth(m.width),
+			m.recordFeature.edit.form,
+			m.operations.pending(operationEditRecord),
+			blocked,
+			spinnerFrame,
+		)
+	case dialogRecordDelete:
+		return renderRecordDeleteWindow(
+			m.theme,
+			recordDeleteWindowWidth(m.width),
+			m.recordFeature.deletion,
+			m.operations.pending(operationDeleteRecord),
+			blocked,
+			spinnerFrame,
+			m.activeButton,
+		)
 	default:
 		return ""
 	}

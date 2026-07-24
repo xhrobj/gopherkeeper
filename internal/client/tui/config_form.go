@@ -12,15 +12,32 @@ type configFocus int
 const (
 	configAddress configFocus = iota
 	configCACertFile
-	configSessionFile
+	configSessionDir
 	configCacheDir
+	configCACertBrowse
+	configSessionBrowse
+	configCacheBrowse
 	configSave
 	configCancel
 	configFocusCount
 )
 
+var configFocusOrder = [...]configFocus{
+	configAddress,
+	configCACertFile,
+	configCACertBrowse,
+	configSessionDir,
+	configSessionBrowse,
+	configCacheDir,
+	configCacheBrowse,
+	configSave,
+	configCancel,
+}
+
 const (
 	configLabelWidth    = 14
+	configBrowseGap     = 1
+	configBrowseLabel   = "<...>"
 	configButtonGap     = 3
 	configFirstFieldRow = 2
 	configFieldRowStep  = 2
@@ -39,7 +56,7 @@ func newConfigForm(cfg config.Config) configForm {
 		fields: [4]textField{
 			newUnicodeTextField(cfg.Address),
 			newUnicodeTextField(cfg.CACertFile),
-			newUnicodeTextField(cfg.SessionFile),
+			newUnicodeTextField(cfg.SessionDir),
 			newUnicodeTextField(cfg.CacheDir),
 		},
 		focus: configCancel,
@@ -48,23 +65,40 @@ func newConfigForm(cfg config.Config) configForm {
 
 func (form configForm) config() config.Config {
 	return config.Config{
-		Address:     form.fields[configAddress].value,
-		CACertFile:  form.fields[configCACertFile].value,
-		SessionFile: form.fields[configSessionFile].value,
-		CacheDir:    form.fields[configCacheDir].value,
+		Address:    form.fields[configAddress].value,
+		CACertFile: form.fields[configCACertFile].value,
+		SessionDir: form.fields[configSessionDir].value,
+		CacheDir:   form.fields[configCacheDir].value,
 	}
 }
 
+func (form configForm) canSave() bool {
+	return strings.TrimSpace(form.fields[configAddress].value) != ""
+}
+
 func (form *configForm) move(step int) {
-	count := int(configFocusCount)
-	form.focus = configFocus((int(form.focus) + step + count) % count)
-	if field := form.activeField(); field != nil {
-		field.cursor = min(field.cursor, len([]rune(field.value)))
+	current := 0
+	for index, focus := range configFocusOrder {
+		if focus == form.focus {
+			current = index
+			break
+		}
+	}
+
+	count := len(configFocusOrder)
+	for range count {
+		current = (current + step + count) % count
+		candidate := configFocusOrder[current]
+		if candidate == configSave && !form.canSave() {
+			continue
+		}
+		form.setFocus(candidate)
+		return
 	}
 }
 
 func (form *configForm) setFocus(focus configFocus) {
-	if focus < 0 || focus >= configFocusCount {
+	if focus < 0 || focus >= configFocusCount || focus == configSave && !form.canSave() {
 		return
 	}
 
@@ -75,10 +109,28 @@ func (form *configForm) setFocus(focus configFocus) {
 }
 
 func (form *configForm) activeField() *textField {
-	if form.focus > configCacheDir {
+	index, ok := configFieldIndex(form.focus)
+	if !ok {
 		return nil
 	}
-	return &form.fields[int(form.focus)]
+
+	return &form.fields[index]
+}
+
+func configFieldIndex(focus configFocus) (int, bool) {
+	if focus < configAddress || focus > configCacheDir {
+		return 0, false
+	}
+
+	return int(focus), true
+}
+
+func configFieldFocus(index int) configFocus {
+	if index < int(configAddress) || index > int(configCacheDir) {
+		return configAddress
+	}
+
+	return configFocus(index)
 }
 
 func (form *configForm) moveCursor(step int) {
@@ -111,6 +163,7 @@ func (form *configForm) insertKey(key string) bool {
 		return false
 	}
 	form.errorMessage = ""
+
 	return true
 }
 
@@ -130,22 +183,105 @@ func configWindowWidth(screenWidth int) int {
 	return clamp(screenWidth-12, 58, 82)
 }
 
-func renderConfigWindow(t theme, width int, form configForm, configFile string) string {
-	contentWidth := max(1, width-4)
+func configInputWidths(t theme, contentWidth int) (int, int) {
 	inputWidth := max(18, contentWidth-configLabelWidth-2)
+	browseWidth := lipgloss.Width(t.button.Render(configBrowseLabel))
+	pathInputWidth := max(10, inputWidth-configBrowseGap-browseWidth)
+
+	return inputWidth, pathInputWidth
+}
+
+type configWindowLayout struct {
+	contentWidth   int
+	inputWidth     int
+	pathInputWidth int
+	fieldBounds    []layoutBounds
+	browseBounds   []layoutBounds
+}
+
+func newConfigWindowLayout(t theme, windowWidth int) configWindowLayout {
+	contentWidth := max(1, windowWidth-4)
+	inputWidth, pathInputWidth := configInputWidths(t, contentWidth)
+	inputX := 2 + configLabelWidth + 2
+	widths := []int{inputWidth, pathInputWidth, pathInputWidth, pathInputWidth}
+	fields := make([]layoutBounds, len(widths))
+
+	for index, width := range widths {
+		fields[index] = layoutBounds{
+			x:      inputX,
+			y:      configFirstFieldRow + index*configFieldRowStep,
+			width:  width,
+			height: 1,
+		}
+	}
+
+	browseWidth := lipgloss.Width(t.button.Render(configBrowseLabel))
+	browseX := inputX + pathInputWidth + configBrowseGap
+	browse := make([]layoutBounds, 3)
+
+	for index := range browse {
+		browse[index] = layoutBounds{
+			x:      browseX,
+			y:      configFirstFieldRow + (index+1)*configFieldRowStep,
+			width:  browseWidth,
+			height: 1,
+		}
+	}
+
+	return configWindowLayout{
+		contentWidth:   contentWidth,
+		inputWidth:     inputWidth,
+		pathInputWidth: pathInputWidth,
+		fieldBounds:    fields,
+		browseBounds:   browse,
+	}
+}
+
+func renderConfigWindow(t theme, width int, form configForm, configFile string) string {
+	layout := newConfigWindowLayout(t, width)
+	contentWidth := layout.contentWidth
+	inputWidth := layout.inputWidth
+	pathInputWidth := layout.pathInputWidth
 
 	rows := []string{
-		renderConfigField(t, "Address", true, t.configRequiredYellow, form.fields[configAddress], inputWidth, form.focus == configAddress),
+		renderConfigField(t, "Address", true, t.configRequiredYellow, form.fields[0], inputWidth, form.focus == configAddress),
 		t.windowBody.Width(contentWidth).Render(""),
-		renderConfigField(t, "CA cert file", true, t.configRequiredYellow, form.fields[configCACertFile], inputWidth, form.focus == configCACertFile),
+		renderConfigPathField(
+			t,
+			"CA cert file",
+			true,
+			t.configRequiredYellow,
+			form.fields[1],
+			pathInputWidth,
+			form.focus == configCACertFile,
+			form.focus == configCACertBrowse,
+		),
 		t.windowBody.Width(contentWidth).Render(""),
-		renderConfigField(t, "Session file", false, lipgloss.Style{}, form.fields[configSessionFile], inputWidth, form.focus == configSessionFile),
+		renderConfigPathField(
+			t,
+			"Session dir",
+			false,
+			lipgloss.Style{},
+			form.fields[2],
+			pathInputWidth,
+			form.focus == configSessionDir,
+			form.focus == configSessionBrowse,
+		),
 		t.windowBody.Width(contentWidth).Render(""),
-		renderConfigField(t, "Cache dir", false, lipgloss.Style{}, form.fields[configCacheDir], inputWidth, form.focus == configCacheDir),
+		renderConfigPathField(
+			t,
+			"Cache dir",
+			false,
+			lipgloss.Style{},
+			form.fields[3],
+			pathInputWidth,
+			form.focus == configCacheDir,
+			form.focus == configCacheBrowse,
+		),
 		t.windowBody.Width(contentWidth).Render(""),
 		renderConfigFileField(t, configFile, inputWidth),
 		renderConfigStatus(t, contentWidth, form.errorMessage),
-		renderConfigButtons(t, contentWidth, form.focus),
+		renderConfigButtons(t, contentWidth, form.focus, form.canSave()),
 	}
 
 	title := t.windowTitle.Width(width).Render("Config")
@@ -170,6 +306,26 @@ func renderConfigField(
 	gap := t.windowBody.Width(2).Render("")
 
 	return labelPart + gap + renderTextField(t, field, inputWidth, active)
+}
+
+func renderConfigPathField(
+	t theme,
+	label string,
+	required bool,
+	requiredStyle lipgloss.Style,
+	field textField,
+	inputWidth int,
+	fieldActive bool,
+	browseActive bool,
+) string {
+	browse := t.button.Render(configBrowseLabel)
+	if browseActive {
+		browse = t.buttonActive.Render(configBrowseLabel)
+	}
+
+	return renderConfigField(t, label, required, requiredStyle, field, inputWidth, fieldActive) +
+		t.windowBody.Width(configBrowseGap).Render("") +
+		browse
 }
 
 func renderConfigLabel(t theme, label string, required bool, requiredStyle lipgloss.Style) string {
@@ -226,25 +382,24 @@ func renderConfigStatus(t theme, width int, message string) string {
 	return t.controlsKey.Width(width).AlignHorizontal(lipgloss.Center).Render(message)
 }
 
-func renderConfigButtons(t theme, width int, focus configFocus) string {
-	save := t.button.Render("< Save >")
-	cancel := t.button.Render("< Cancel >")
-
-	if focus == configSave {
-		save = t.buttonActive.Render("< Save >")
+func configButtonsLayout(t theme, width int, focus configFocus, canSave bool) buttonRowLayout {
+	saveStyle := t.button
+	cancelStyle := t.button
+	if !canSave {
+		saveStyle = t.buttonDisabled
+	} else if focus == configSave {
+		saveStyle = t.buttonActive
 	}
-
 	if focus == configCancel {
-		cancel = t.buttonActive.Render("< Cancel >")
+		cancelStyle = t.buttonActive
 	}
 
-	buttonsWidth := lipgloss.Width(save) + configButtonGap + lipgloss.Width(cancel)
-	left := max(0, (width-buttonsWidth)/2)
-	right := max(0, width-buttonsWidth-left)
+	return centeredButtonRowLayout(t.windowBody, width, configButtonGap, []styledButton{
+		{label: "< Save >", style: saveStyle},
+		{label: "< Cancel >", style: cancelStyle},
+	})
+}
 
-	return t.windowBody.Width(left).Render("") +
-		save +
-		t.windowBody.Width(configButtonGap).Render("") +
-		cancel +
-		t.windowBody.Width(right).Render("")
+func renderConfigButtons(t theme, width int, focus configFocus, canSave bool) string {
+	return configButtonsLayout(t, width, focus, canSave).content
 }

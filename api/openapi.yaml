@@ -3,7 +3,7 @@ openapi: 3.0.3
 info:
   title: GophKeeper API
   description: API взаимодействия CLI-клиента и Сервера GophKeeper.
-  version: 0.9.0
+  version: 0.9.1
 
 servers:
   - url: https://localhost:8080
@@ -277,10 +277,10 @@ paths:
                   type: card
                   title: "Joel's card"
                   payload:
-                    number: '2013 0614 2020 0619'
+                    number: '2013061420200619'
                     cardholder: Joel Miller
                     expiry_month: 3
-                    expiry_year: 2038
+                    expiry_year: 38
                     cvv: '014'
                     metadata: test card
               binaryRecord:
@@ -291,7 +291,6 @@ paths:
                   payload:
                     filename: backup.bin
                     data: AAEC/w==
-                    content_type: application/octet-stream
                     metadata: private backup
       responses:
         '201':
@@ -490,10 +489,10 @@ paths:
                   type: card
                   title: "Joel's card updated"
                   payload:
-                    number: '2013 0614 2020 0619'
+                    number: '2013061420200619'
                     cardholder: Joel Miller
                     expiry_month: 3
-                    expiry_year: 2038
+                    expiry_year: 38
                     cvv: '014'
                     metadata: test card updated
               binaryRecord:
@@ -504,7 +503,6 @@ paths:
                   payload:
                     filename: backup-v2.bin
                     data: /wIBAA==
-                    content_type: application/octet-stream
                     metadata: updated private backup
       responses:
         '200':
@@ -703,7 +701,7 @@ components:
 
     PayloadTooLarge:
       description: >-
-        Превышен лимит: request body — 4 MiB, text — 1 MiB, metadata — 64 KiB или decoded binary data — 2 MiB.
+        Превышен лимит: request body — 4 MiB, text — 1 MiB или decoded binary data — 2 MiB.
       content:
         application/json:
           schema:
@@ -778,10 +776,10 @@ components:
         created_at: '2026-07-11T12:00:00Z'
         updated_at: '2026-07-11T12:00:00Z'
         payload:
-          number: '2013 0614 2020 0619'
+          number: '2013061420200619'
           cardholder: Joel Miller
           expiry_month: 3
-          expiry_year: 2038
+          expiry_year: 38
           cvv: '014'
           metadata: test card
 
@@ -797,7 +795,6 @@ components:
         payload:
           filename: backup.bin
           data: AAEC/w==
-          content_type: application/octet-stream
           metadata: private backup
 
   schemas:
@@ -922,17 +919,18 @@ components:
     RecordTitle:
       type: string
       minLength: 1
+      maxLength: 255
       description: >-
-        Открытое название записи. Runtime ограничивает значение 256 UTF-8 bytes и запрещает
-        управляющие Unicode-символы, включая tab, CR/LF и ESC.
+        Открытое однострочное название записи длиной не более 255 Unicode-символов.
+        Управляющие Unicode-символы запрещены.
       example: Alice private note
 
     MetadataField:
       type: string
+      maxLength: 255
       description: >-
-        Необязательная приватная метаинформация. Хранится внутри encrypted payload. Размер UTF-8 представления
-        не должен превышать 65536 bytes.
-      x-max-bytes: 65536
+        Необязательная приватная метаинформация длиной не более 255 Unicode-символов.
+        Хранится внутри encrypted payload. Разрешены tab, CR и LF; остальные управляющие символы запрещены.
       example: private metadata
 
     TextPayload:
@@ -962,19 +960,26 @@ components:
         login:
           type: string
           minLength: 1
-          description: Обязательный приватный login. Значение сохраняется без нормализации и обрезания.
+          maxLength: 255
+          description: >-
+            Обязательный приватный однострочный login длиной не более 255 Unicode-символов.
+            Значение сохраняется без нормализации и обрезания.
           example: alice
         password:
           type: string
           format: password
           minLength: 1
-          description: Обязательный приватный password. Значение сохраняется без нормализации и обрезания.
+          maxLength: 255
+          description: >-
+            Обязательный приватный однострочный password длиной не более 255 Unicode-символов.
+            Значение сохраняется без нормализации и обрезания.
           example: correct-horse-battery-staple
         url:
           type: string
+          maxLength: 255
           description: >-
-            Необязательная приватная строка, связанная с ресурсом. Формат URI не проверяется, значение
-            сохраняется без нормализации.
+            Необязательная приватная однострочная строка длиной не более 255 Unicode-символов.
+            Формат URI не проверяется, значение сохраняется без нормализации.
           example: https://github.com/login
         metadata:
           $ref: '#/components/schemas/MetadataField'
@@ -987,14 +992,17 @@ components:
       properties:
         number:
           type: string
-          minLength: 1
+          minLength: 12
+          maxLength: 20
+          pattern: '^[0-9]{12,20}$'
           description: >-
-            Обязательный приватный номер карты. Хранится строкой и сохраняется без нормализации, проверки
-            платёжной системы или алгоритма Luhn.
-          example: '2013 0614 2020 0619'
+            Обязательный приватный номер карты из 12–20 ASCII-цифр без пробелов и дефисов.
+            Проверка платёжной системы и алгоритма Luhn не выполняется.
+          example: '2013061420200619'
         cardholder:
           type: string
-          description: Необязательное приватное имя владельца карты.
+          maxLength: 25
+          description: Необязательное однострочное имя владельца карты длиной не более 25 Unicode-символов.
           example: Joel Miller
         expiry_month:
           type: integer
@@ -1008,15 +1016,19 @@ components:
           type: integer
           format: int32
           nullable: true
-          minimum: 1
-          maximum: 9999
+          minimum: 0
+          maximum: 99
           description: >-
-            Необязательный год окончания срока действия. Передаётся только вместе с expiry_month.
-          example: 2038
+            Необязательный двухзначный год окончания срока действия в диапазоне 0..99.
+            Передаётся только вместе с expiry_month; ведущий ноль отображает Клиент.
+          example: 38
         cvv:
           type: string
           format: password
-          description: Необязательный приватный проверочный код карты. Хранится строкой.
+          minLength: 3
+          maxLength: 3
+          pattern: '^[0-9]{3}$'
+          description: Необязательный приватный проверочный код из трёх ASCII-цифр.
           example: '014'
         metadata:
           $ref: '#/components/schemas/MetadataField'
@@ -1031,9 +1043,10 @@ components:
         filename:
           type: string
           minLength: 1
+          maxLength: 255
           description: >-
-            Обязательное приватное имя файла. Значение сохраняется без нормализации и не используется Сервером
-            как путь в файловой системе.
+            Обязательное приватное имя файла длиной не более 255 Unicode-символов. Управляющие символы,
+            разделители пути, а также значения . и .. запрещены.
           example: backup.bin
         data:
           type: string
@@ -1042,11 +1055,6 @@ components:
             Содержимое файла в Base64. После декодирования допускается не более 2097152 bytes; пустой файл
             разрешён. Отсутствующее поле и null отклоняются.
           example: AAEC/w==
-        content_type:
-          type: string
-          description: >-
-            Необязательный приватный media type. Значение хранится как UTF-8 строка и не проверяется как MIME.
-          example: application/octet-stream
         metadata:
           $ref: '#/components/schemas/MetadataField'
 

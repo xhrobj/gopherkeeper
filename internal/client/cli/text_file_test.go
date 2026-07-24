@@ -38,31 +38,31 @@ func TestReadOptionalTextFile_EmptyPath(t *testing.T) {
 	}
 }
 
-func TestReadLimitedTextFile_MaximumSize(t *testing.T) {
+func TestReadOptionalTextFile_MaximumUnicodeLength(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "metadata.txt")
-	want := strings.Repeat("a", model.MetadataMaxSize)
+	want := strings.Repeat("я", model.MetadataMaxSize)
 	if err := os.WriteFile(path, []byte(want), 0o600); err != nil {
 		t.Fatalf("write maximum metadata file: %v", err)
 	}
 
-	got, err := readLimitedTextFile(path, "metadata file", model.MetadataMaxSize)
+	got, err := readOptionalTextFile(path)
 	if err != nil {
-		t.Fatalf("readLimitedTextFile() error = %v", err)
+		t.Fatalf("readOptionalTextFile() error = %v", err)
 	}
 	if got != want {
-		t.Fatal("readLimitedTextFile() changed maximum-size data")
+		t.Fatal("readOptionalTextFile() changed maximum-length data")
 	}
 }
 
-func TestReadLimitedTextFile_RejectsTooLargeFile(t *testing.T) {
+func TestReadOptionalTextFile_RejectsTooLongFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "metadata.txt")
 	if err := os.WriteFile(path, []byte(strings.Repeat("a", model.MetadataMaxSize+1)), 0o600); err != nil {
 		t.Fatalf("write large metadata file: %v", err)
 	}
 
-	_, err := readLimitedTextFile(path, "metadata file", model.MetadataMaxSize)
+	_, err := readOptionalTextFile(path)
 	if !errors.Is(err, model.ErrPayloadTooLarge) {
-		t.Fatalf("readLimitedTextFile() error = %v, want ErrPayloadTooLarge", err)
+		t.Fatalf("readOptionalTextFile() error = %v, want ErrPayloadTooLarge", err)
 	}
 }
 

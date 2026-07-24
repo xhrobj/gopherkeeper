@@ -11,24 +11,53 @@ type textFieldPolicy int
 const (
 	textFieldASCII textFieldPolicy = iota
 	textFieldUnicode
+	textFieldDigits
 )
 
 type textField struct {
-	value  string
-	cursor int
-	policy textFieldPolicy
-	masked bool
+	value     string
+	cursor    int
+	policy    textFieldPolicy
+	masked    bool
+	maxLength int
 }
 
 func newASCIITextField(value string, masked bool) textField {
-	field := textField{policy: textFieldASCII, masked: masked}
+	return newASCIITextFieldWithLimit(value, masked, maxTextFieldLength)
+}
+
+func newASCIITextFieldWithLimit(value string, masked bool, maxLength int) textField {
+	field := textField{
+		policy:    textFieldASCII,
+		masked:    masked,
+		maxLength: clamp(maxLength, 1, maxTextFieldLength),
+	}
 	field.setValue(value)
+
 	return field
 }
 
 func newUnicodeTextField(value string) textField {
-	field := textField{policy: textFieldUnicode}
+	return newUnicodeTextFieldWithLimit(value, maxTextFieldLength)
+}
+
+func newUnicodeTextFieldWithLimit(value string, maxLength int) textField {
+	field := textField{
+		policy:    textFieldUnicode,
+		maxLength: clamp(maxLength, 1, maxTextFieldLength),
+	}
 	field.setValue(value)
+
+	return field
+}
+
+func newDigitsTextFieldWithLimit(value string, maxLength int) textField {
+	field := textField{
+		policy:    textFieldDigits,
+		maxLength: clamp(maxLength, 1, maxTextFieldLength),
+	}
+	field.setValue(value)
+
 	return field
 }
 
@@ -38,17 +67,37 @@ func (field *textField) setValue(value string) {
 }
 
 func (field textField) normalize(value string) string {
-	if field.policy == textFieldUnicode {
-		return normalizeUnicodeTextFieldValue(value)
+	switch field.policy {
+	case textFieldUnicode:
+		value = normalizeUnicodeTextFieldValue(value)
+	case textFieldDigits:
+		value = normalizeDigitsTextFieldValue(value)
+	default:
+		value = normalizeTextFieldValue(value)
 	}
-	return normalizeTextFieldValue(value)
+
+	limit := field.maxLength
+	if limit <= 0 || limit > maxTextFieldLength {
+		limit = maxTextFieldLength
+	}
+
+	runes := []rune(value)
+	if len(runes) > limit {
+		runes = runes[:limit]
+	}
+
+	return string(runes)
 }
 
 func (field textField) keyValue(key string) (string, bool) {
-	if field.policy == textFieldUnicode {
+	switch field.policy {
+	case textFieldUnicode:
 		return printableUnicodeTextKey(key)
+	case textFieldDigits:
+		return printableDigitsTextKey(key)
+	default:
+		return printableTextKey(key)
 	}
-	return printableTextKey(key)
 }
 
 func (field *textField) insertKey(key string) bool {
@@ -56,6 +105,7 @@ func (field *textField) insertKey(key string) bool {
 	if !ok {
 		return false
 	}
+
 	return field.insert(value)
 }
 
@@ -69,7 +119,12 @@ func (field *textField) insert(value string) bool {
 		return false
 	}
 
-	available := max(0, maxTextFieldLength-len(current))
+	limit := field.maxLength
+	if limit <= 0 || limit > maxTextFieldLength {
+		limit = maxTextFieldLength
+	}
+
+	available := max(0, limit-len(current))
 	if len(inserted) > available {
 		inserted = inserted[:available]
 	}
@@ -82,31 +137,37 @@ func (field *textField) insert(value string) bool {
 	result = append(result, current[:field.cursor]...)
 	result = append(result, inserted...)
 	result = append(result, current[field.cursor:]...)
+
 	field.value = string(result)
 	field.cursor += len(inserted)
+
 	return true
 }
 
 func (field *textField) backspace() bool {
 	runes := []rune(field.value)
 	field.cursor = clamp(field.cursor, 0, len(runes))
+
 	if field.cursor == 0 {
 		return false
 	}
 
 	field.value = string(append(runes[:field.cursor-1], runes[field.cursor:]...))
 	field.cursor--
+
 	return true
 }
 
 func (field *textField) delete() bool {
 	runes := []rune(field.value)
 	field.cursor = clamp(field.cursor, 0, len(runes))
+
 	if field.cursor >= len(runes) {
 		return false
 	}
 
 	field.value = string(append(runes[:field.cursor], runes[field.cursor+1:]...))
+
 	return true
 }
 
@@ -126,20 +187,34 @@ func (field textField) displayValue() string {
 	if !field.masked {
 		return field.value
 	}
+
 	return strings.Repeat("*", len([]rune(field.value)))
 }
 
 func renderTextField(t theme, field textField, width int, active bool) string {
+	return renderStyledTextField(field, width, active, false, t.input, t.inputCursor)
+}
+
+func renderStyledTextField(
+	field textField,
+	width int,
+	active bool,
+	keepEndCursorInside bool,
+	bodyStyle lipgloss.Style,
+	cursorStyle lipgloss.Style,
+) string {
 	width = max(1, width)
 	runes := []rune(field.displayValue())
 	cursor := clamp(field.cursor, 0, len(runes))
 
+	if active && keepEndCursorInside && len(runes) == width && cursor == len(runes) {
+		cursor--
+	}
+
 	if !active {
 		start := visibleSuffixStart(runes, width)
-		visible := runes[start:]
-		text := string(visible)
-		padding := max(0, width-lipgloss.Width(text))
-		return t.input.Render(text + strings.Repeat(" ", padding))
+		text := string(runes[start:])
+		return bodyStyle.Render(text + strings.Repeat(" ", max(0, width-lipgloss.Width(text))))
 	}
 
 	cursorText := " "
@@ -150,6 +225,7 @@ func renderTextField(t theme, field textField, width int, active bool) string {
 		}
 		afterStart++
 	}
+
 	cursorWidth := lipgloss.Width(cursorText)
 	start := visibleStartBeforeCursor(runes, cursor, max(0, width-cursorWidth))
 	before := string(runes[start:cursor])
@@ -158,11 +234,10 @@ func renderTextField(t theme, field textField, width int, active bool) string {
 	end := afterStart + visiblePrefixEnd(runes[afterStart:], remainingWidth)
 	after := string(runes[afterStart:end])
 	used := beforeWidth + cursorWidth + lipgloss.Width(after)
-	padding := max(0, width-used)
 
-	return t.input.Render(before) +
-		t.inputCursor.Render(cursorText) +
-		t.input.Render(after+strings.Repeat(" ", padding))
+	return bodyStyle.Render(before) +
+		cursorStyle.Render(cursorText) +
+		bodyStyle.Render(after+strings.Repeat(" ", max(0, width-used)))
 }
 
 func visiblePrefixEnd(runes []rune, width int) int {

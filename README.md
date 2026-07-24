@@ -49,14 +49,19 @@
 
 ## Ограничения данных
 
+- title, credentials login/password/url и metadata — не более 255 Unicode-символов;
+- card number — 12–20 ASCII-цифр без пробелов и дефисов;
+- cardholder — не более 25 Unicode-символов;
+- card expiry — месяц `1..12` и двухзначный год `0..99`;
+- card CVV — при наличии ровно 3 ASCII-цифры;
 - text — 1 МиБ UTF-8;
-- binary — 2 МиБ после Base64-декодирования;
-- metadata — 64 КиБ UTF-8;
+- binary filename — не более 255 Unicode-символов;
+- binary data — 2 МиБ после Base64-декодирования;
 - HTTP request body — 4 МиБ.
 
 ## Модель безопасности
 
-Трафик защищен TLS, password hash хранится через bcrypt, доступ авторизуется JWT. Payload записей шифруется на Сервере AES-256-GCM, локальный кеш — ключом из password через Argon2id и AES-256-GCM. Это не end-to-end encryption: Сервер обрабатывает plaintext в памяти; title и технические metadata записей остаются открытыми.
+Трафик защищен TLS, password hash хранится через bcrypt, доступ авторизуется JWT. Payload записей, включая пользовательскую metadata, шифруется на Сервере AES-256-GCM, локальный кеш — ключом из password через Argon2id и AES-256-GCM. Это не end-to-end encryption: Сервер обрабатывает plaintext в памяти; открытыми остаются title и системные поля записи — ID, type, revision и даты.
 
 ## Известные ограничения MVP
 
@@ -106,12 +111,12 @@ cp configs/client.example.json configs/client.json
 {
   "address": "localhost:8080",
   "ca_cert_file": ".local/certs/ca.pem",
-  "session_file": "",
+  "session_dir": "",
   "cache_dir": ""
 }
 ```
 
-Если `session_file` оставить пустым, Клиент будет хранить online-сессию в системном пользовательском cache-каталоге:
+Если `session_dir` оставить пустым, Клиент будет хранить online-сессию в системном пользовательском cache-каталоге:
 
 ```text
 <user-cache-dir>/gopherkeeper/session.json
@@ -125,13 +130,13 @@ cp configs/client.example.json configs/client.json
 
 `account-id` детерминированно вычисляется из адреса Сервера и канонического login. Исходные значения не используются как части пути.
 
-Для локальной разработки можно явно указать session-файл внутри проекта, например в каталоге `.local/session/`:
+Для локальной разработки можно явно указать каталог для session-файла, например `.local/session/`. Имя файла фиксировано — `session.json`, поэтому в `session_dir` имя файла не указывается:
 
 ```json
 {
   "address": "localhost:8080",
   "ca_cert_file": ".local/certs/ca.pem",
-  "session_file": ".local/session/session.json",
+  "session_dir": ".local/session",
   "cache_dir": ".local/cache"
 }
 ```
@@ -282,7 +287,9 @@ gkeep tui
 gkeep --config configs/client.json tui
 ```
 
-В текущем TUI доступны Server Status, Config, Register, Login, Current User, Logout.
+В TUI доступны подключение и настройка Клиента, регистрация и вход, список серверных записей, просмотр, создание, редактирование и удаление всех четырёх типов данных, а также сохранение binary-записей в файл.
+
+Встроенный file/folder picker намеренно ограничен каталогом, из которого запущен Клиент, и его подкаталогами. Перейти выше каталога запуска нельзя. Чтобы выбрать нужный файл или каталог, запускайте `gkeep tui` из подходящего рабочего каталога.
 
 ### 8. Проверить доступность Сервера
 
@@ -307,7 +314,7 @@ server unavailable: connection refused
 ### 9. Зарегистрировать пользователя
 
 ```bash
-gkeep register -l alice
+gkeep register --login alice
 ```
 
 Клиент запросит пароль интерактивно:
@@ -323,7 +330,7 @@ User alice registered successfully.
 ### 10. Войти под пользователем
 
 ```bash
-gkeep login -l alice
+gkeep login --login alice
 ```
 
 Ожидаемый результат:
@@ -410,10 +417,10 @@ gkeep records create-card --title "Joel's card"
 Клиент запросит приватные поля отдельно:
 
 ```text
-Card number:
+Card number (12-20 digits):
 Cardholder (optional):
-Expiry (MM/YYYY, optional):
-CVV (optional):
+Expiry (MM/YY, optional):
+CVV (3 digits, optional):
 ```
 
 Ожидаемый результат:
@@ -435,8 +442,7 @@ printf '\x00\x01\x02\xff' > .local/tmp/backup.bin
 ```bash
 gkeep records create-binary \
   --title 'backup' \
-  --binary-file .local/tmp/backup.bin \
-  --content-type application/octet-stream
+  --binary-file .local/tmp/backup.bin
 ```
 
 Ожидаемый результат:
@@ -445,7 +451,7 @@ gkeep records create-binary \
 Created binary record <record-id> with revision 1.
 ```
 
-Имя `backup.bin` сохраняется внутри зашифрованного payload. Необязательные `content_type` и metadata также хранятся приватно. Размер бинарных данных после Base64-декодирования не должен превышать 2 МиБ; пустой файл допустим.
+Имя `backup.bin` и необязательная metadata сохраняются внутри зашифрованного payload. Размер бинарных данных после Base64-декодирования не должен превышать 2 МиБ; пустой файл допустим.
 
 ### 16. Получить список записей
 
@@ -453,7 +459,7 @@ Created binary record <record-id> with revision 1.
 gkeep records list
 ```
 
-Список содержит только открытые metadata записи и не раскрывает приватный payload:
+Список содержит только открытые системные поля записи и не раскрывает приватный payload:
 
 ```text
 ID                                    TYPE         TITLE       REVISION  UPDATED AT
@@ -492,7 +498,6 @@ Updated at: 2026-07-12T12:03:00Z
 Filename: backup.bin
 Size: 4 bytes
 Saved to: .local/tmp/restored-backup.bin
-Content type: application/octet-stream
 ```
 
 Stored filename не используется как локальный путь. Клиент не перезаписывает существующий output-файл: для повторного сохранения нужно удалить его или указать новый путь.
@@ -555,8 +560,7 @@ printf '\x10\x20\x30\x40' > .local/tmp/backup-updated.bin
 gkeep records update-binary <record-id> \
   --revision 1 \
   --title 'updated backup' \
-  --binary-file .local/tmp/backup-updated.bin \
-  --content-type application/octet-stream
+  --binary-file .local/tmp/backup-updated.bin
 ```
 
 Ожидаемый результат:
@@ -671,7 +675,7 @@ gkeep records get <record-id> \
 - `records create-*`, `update-*` и `delete` не поддерживают `--offline` и не создают pending/outbox state;
 - background-, startup- и автоматическая post-write синхронизация отсутствуют.
 
-Для проверки сценария двух устройств используются два конфига с одинаковыми `address` и `ca_cert_file`, но разными `session_file` и `cache_dir`, например `configs/client-a.json` и `configs/client-b.json`:
+Для проверки сценария двух устройств используются два конфига с одинаковыми `address` и `ca_cert_file`, но разными `session_dir` и `cache_dir`, например `configs/client-a.json` и `configs/client-b.json`:
 
 1. Оба Клиента входят под Alice и выполняют `sync`.
 2. После остановки Сервера Client B читает запись командой `records get --offline`.
@@ -702,14 +706,14 @@ logged out
 {
   "address": "localhost:8080",
   "ca_cert_file": "",
-  "session_file": "",
+  "session_dir": "",
   "cache_dir": ""
 }
 ```
 
 - `address` — адрес Сервера в формате `host:port`;
 - `ca_cert_file` — путь к дополнительному CA certificate для проверки TLS;
-- `session_file` — путь к локальному session-файлу Клиента;
+- `session_dir` — каталог локального session-файла Клиента; файл всегда называется `session.json`;
 - `cache_dir` — базовый каталог локального зашифрованного кеша.
 
 Соответствие источников конфигурации:
@@ -719,10 +723,10 @@ logged out
 | Путь к JSON-конфигу | — | `--config`, `-c` | `CONFIG` |
 | Адрес Сервера | `address` | `--address`, `-a` | `ADDRESS` |
 | Дополнительный CA certificate | `ca_cert_file` | `--ca-cert` | `CA_CERT_FILE` |
-| Session-файл | `session_file` | `--session-file` | `SESSION_FILE` |
+| Каталог session-файла | `session_dir` | `--session-dir` | `SESSION_DIR` |
 | Каталог локального кеша | `cache_dir` | `--cache-dir` | `CACHE_DIR` |
 
-По умолчанию session-файл хранится как `gopherkeeper/session.json` внутри системного каталога пользовательского кеша. Файл создаётся с правами `0600`, а родительский каталог — с правами `0700`.
+Если `session_dir` пустой, session-файл хранится как `gopherkeeper/session.json` внутри системного каталога пользовательского кеша. При непустом `session_dir` файл `session.json` создаётся внутри указанного каталога. Файл создаётся с правами `0600`, а родительский каталог — с правами `0700`.
 
 По умолчанию базовый каталог локального кеша хранится как `gopherkeeper/cache` внутри системного пользовательского cache-каталога. Для каждой пары Сервер + canonical login используется отдельный SHA-256 идентификатор каталога.
 

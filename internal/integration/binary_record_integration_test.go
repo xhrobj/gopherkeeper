@@ -39,10 +39,9 @@ func TestIntegration_BinaryRecordServiceFlow(t *testing.T) {
 	recordsService := service.NewRecordService(records, crypto)
 
 	initial := &model.BinaryPayload{
-		Filename:    "alice-backup.bin",
-		Data:        []byte{0x00, 0x42, 0x7f, 0x80, 0xfe, 0xff},
-		ContentType: "application/octet-stream",
-		Metadata:    "Alice private binary backup",
+		Filename: "alice-backup.bin",
+		Data:     []byte{0x00, 0x42, 0x7f, 0x80, 0xfe, 0xff},
+		Metadata: "Alice private binary backup",
 	}
 	created, err := recordsService.Create(ctx, service.CreateRecordRequest{
 		UserID:  userID,
@@ -67,10 +66,9 @@ func TestIntegration_BinaryRecordServiceFlow(t *testing.T) {
 	assertBinaryRecordPayload(t, recordsService, ctx, userID, created.Metadata.ID, initial)
 
 	updatedPayload := &model.BinaryPayload{
-		Filename:    "alice-backup-v2.bin",
-		Data:        []byte{0xff, 0xfe, 0x80, 0x7f, 0x42, 0x00},
-		ContentType: "application/octet-stream",
-		Metadata:    "Updated Alice private binary backup",
+		Filename: "alice-backup-v2.bin",
+		Data:     []byte{0xff, 0xfe, 0x80, 0x7f, 0x42, 0x00},
+		Metadata: "Updated Alice private binary backup",
 	}
 	updated, err := recordsService.Update(ctx, service.UpdateRecordRequest{
 		UserID:           userID,
@@ -156,7 +154,6 @@ func assertBinaryCiphertextDoesNotContain(
 
 	secrets := [][]byte{
 		[]byte(payload.Filename),
-		[]byte(payload.ContentType),
 		[]byte(payload.Metadata),
 		[]byte(base64.StdEncoding.EncodeToString(payload.Data)),
 	}
@@ -186,7 +183,6 @@ func assertBinaryRecordPayload(
 		t.Fatalf("Get() payload = %#v, want BinaryPayload", got.Payload)
 	}
 	if payload.Filename != want.Filename ||
-		payload.ContentType != want.ContentType ||
 		payload.Metadata != want.Metadata ||
 		!bytes.Equal(payload.Data, want.Data) {
 		t.Fatalf("Get() payload = %#v, want %#v", payload, want)

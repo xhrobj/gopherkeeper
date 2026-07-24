@@ -1,7 +1,5 @@
 package model
 
-import "unicode/utf8"
-
 // TextPayload содержит приватный текстовый payload записи.
 type TextPayload struct {
 	// Text содержит приватные текстовые данные записи.
@@ -17,12 +15,12 @@ func (payload *TextPayload) Validate() error {
 		return ErrInvalidTextPayload
 	}
 
-	if payload.Text == "" || !utf8.ValidString(payload.Text) {
-		return ErrInvalidTextPayload
-	}
-
-	if len(payload.Text) > TextPayloadMaxSize {
+	valid, tooLarge := validateRequiredMultilineBytes(payload.Text, TextPayloadMaxSize)
+	if tooLarge {
 		return ErrPayloadTooLarge
+	}
+	if !valid {
+		return ErrInvalidTextPayload
 	}
 
 	return validatePayloadMetadata(payload.Metadata, ErrInvalidTextPayload)

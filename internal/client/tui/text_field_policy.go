@@ -68,3 +68,20 @@ func printableUnicodeTextKey(key string) (string, bool) {
 
 	return key, true
 }
+
+func normalizeDigitsTextFieldValue(value string) string {
+	result := make([]byte, 0, min(len(value), maxTextFieldLength))
+	for index := 0; index < len(value) && len(result) < maxTextFieldLength; index++ {
+		if value[index] >= '0' && value[index] <= '9' {
+			result = append(result, value[index])
+		}
+	}
+	return string(result)
+}
+
+func printableDigitsTextKey(key string) (string, bool) {
+	if len(key) != 1 || key[0] < '0' || key[0] > '9' {
+		return "", false
+	}
+	return key, true
+}

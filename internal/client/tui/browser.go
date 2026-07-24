@@ -31,6 +31,7 @@ func openExternalURL(value string) error {
 	if err != nil {
 		return err
 	}
+
 	return command.Start()
 }
 

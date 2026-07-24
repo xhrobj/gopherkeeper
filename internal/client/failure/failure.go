@@ -1,0 +1,255 @@
+// Package failure классифицирует ошибки клиентского runtime без привязки UI к тексту ошибок.
+package failure
+
+import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"errors"
+	"net"
+	"net/url"
+	"strings"
+	"syscall"
+)
+
+// Kind описывает категорию ошибки, значимую для пользовательских интерфейсов Клиента.
+type Kind int
+
+const (
+	Unknown Kind = iota
+	Canceled
+	Unavailable
+	HostNotFound
+	NetworkUnreachable
+	Timeout
+	TLSCertificate
+	TLSHandshake
+	HTTPSRequired
+	Unauthorized
+	Conflict
+	NotFound
+	Validation
+	TooLarge
+)
+
+// Error хранит типизированную клиентскую ошибку, диагностический контекст
+// и безопасное сообщение для пользовательского интерфейса.
+type Error struct {
+	kind        Kind
+	detail      string
+	userMessage string
+	cause       error
+}
+
+// New создаёт типизированную клиентскую ошибку с одинаковым диагностическим
+// и пользовательским сообщением.
+func New(kind Kind, message string, cause error) error {
+	return Wrap(kind, message, message, cause)
+}
+
+// Wrap создаёт типизированную ошибку, сохраняя отдельные диагностический
+// контекст и безопасное пользовательское сообщение.
+func Wrap(kind Kind, detail, userMessage string, cause error) error {
+	return &Error{
+		kind:        kind,
+		detail:      strings.TrimSpace(detail),
+		userMessage: strings.TrimSpace(userMessage),
+		cause:       cause,
+	}
+}
+
+// Error возвращает диагностическое описание с исходной причиной.
+func (e *Error) Error() string {
+	switch {
+	case e.detail != "" && e.cause != nil:
+		return e.detail + ": " + e.cause.Error()
+	case e.detail != "":
+		return e.detail
+	case e.cause != nil:
+		return e.cause.Error()
+	default:
+		return "client error"
+	}
+}
+
+// Unwrap возвращает исходную причину ошибки.
+func (e *Error) Unwrap() error { return e.cause }
+
+// FailureKind возвращает категорию ошибки.
+func (e *Error) FailureKind() Kind { return e.kind }
+
+// UserMessage возвращает безопасное сообщение для пользователя.
+func (e *Error) UserMessage() string {
+	if e.userMessage != "" {
+		return e.userMessage
+	}
+	return Reason(e.kind)
+}
+
+type kindProvider interface{ FailureKind() Kind }
+type messageProvider interface{ UserMessage() string }
+
+// KindOf определяет категорию ошибки по типизированным обёрткам и системным причинам.
+func KindOf(err error) Kind {
+	if err == nil {
+		return Unknown
+	}
+	var provider kindProvider
+	if errors.As(err, &provider) {
+		return provider.FailureKind()
+	}
+	switch {
+	case errors.Is(err, context.Canceled):
+		return Canceled
+	case errors.Is(err, context.DeadlineExceeded):
+		return Timeout
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return Unavailable
+	case errors.Is(err, syscall.ENETUNREACH), errors.Is(err, syscall.EHOSTUNREACH):
+		return NetworkUnreachable
+	}
+
+	var dnsError *net.DNSError
+	if errors.As(err, &dnsError) {
+		if dnsError.IsTimeout {
+			return Timeout
+		}
+		return HostNotFound
+	}
+	var certificateAuthority x509.UnknownAuthorityError
+	if errors.As(err, &certificateAuthority) {
+		return TLSCertificate
+	}
+	var hostnameError x509.HostnameError
+	if errors.As(err, &hostnameError) {
+		return TLSCertificate
+	}
+	var certificateInvalid x509.CertificateInvalidError
+	if errors.As(err, &certificateInvalid) {
+		return TLSCertificate
+	}
+	var recordHeaderError tls.RecordHeaderError
+	if errors.As(err, &recordHeaderError) {
+		return TLSHandshake
+	}
+	var urlError *url.Error
+	if errors.As(err, &urlError) && urlError.Err != nil {
+		if kind := KindOf(urlError.Err); kind != Unknown {
+			return kind
+		}
+	}
+	var networkError net.Error
+	if errors.As(err, &networkError) && networkError.Timeout() {
+		return Timeout
+	}
+
+	// Некоторые ошибки net/http не имеют публичного отдельного типа.
+	message := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(message, "server gave http response to https client"):
+		return HTTPSRequired
+	case strings.Contains(message, "x509") || strings.Contains(message, "certificate"):
+		return TLSCertificate
+	case strings.Contains(message, "tls"):
+		return TLSHandshake
+	case strings.Contains(message, "no such host") || strings.Contains(message, "name or service not known"):
+		return HostNotFound
+	case strings.Contains(message, "network is unreachable"):
+		return NetworkUnreachable
+	case strings.Contains(message, "connection refused"):
+		return Unavailable
+	case strings.Contains(message, "timeout") || strings.Contains(message, "deadline exceeded"):
+		return Timeout
+	default:
+		return Unknown
+	}
+}
+
+// Message возвращает наиболее близкое безопасное пользовательское сообщение.
+func Message(err error) string {
+	if err == nil {
+		return ""
+	}
+	var provider messageProvider
+	if errors.As(err, &provider) {
+		return strings.TrimSpace(provider.UserMessage())
+	}
+	return stripLegacyOperationPrefixes(err.Error())
+}
+
+var legacyOperationPrefixes = [...]string{
+	"login user:",
+	"register user:",
+	"get current user:",
+	"load online session:",
+	"delete online session:",
+	"create client application:",
+	"list records:",
+	"get record:",
+	"delete record:",
+	"create text record:",
+	"create credentials record:",
+	"create card record:",
+	"create binary record:",
+	"update text record:",
+	"update credentials record:",
+	"update card record:",
+	"update binary record:",
+}
+
+func stripLegacyOperationPrefixes(message string) string {
+	message = strings.TrimSpace(message)
+	for {
+		previous := message
+		for _, prefix := range legacyOperationPrefixes {
+			message = strings.TrimSpace(strings.TrimPrefix(message, prefix))
+		}
+		if message == previous {
+			return message
+		}
+	}
+}
+
+// Network преобразует сетевую ошибку в типизированную форму, сохраняя
+// диагностическое имя операции.
+func Network(operation string, err error) error {
+	kind := KindOf(err)
+	if kind == Unknown {
+		return Wrap(Unknown, operation, "Connection failed", err)
+	}
+	return Wrap(kind, operation, Reason(kind), err)
+}
+
+// Reason возвращает стабильное пользовательское описание категории.
+func Reason(kind Kind) string {
+	switch kind {
+	case Canceled:
+		return "Operation canceled"
+	case Unavailable:
+		return "Connection refused"
+	case HostNotFound:
+		return "Host not found"
+	case NetworkUnreachable:
+		return "Network unreachable"
+	case Timeout:
+		return "Connection timed out"
+	case TLSCertificate:
+		return "Certificate verification failed"
+	case TLSHandshake:
+		return "TLS handshake failed"
+	case HTTPSRequired:
+		return "Server does not support HTTPS"
+	case Unauthorized:
+		return "Not authorized"
+	case Conflict:
+		return "Conflict"
+	case NotFound:
+		return "Not found"
+	case Validation:
+		return "Invalid data"
+	case TooLarge:
+		return "Payload exceeds the allowed size"
+	default:
+		return "Connection failed"
+	}
+}

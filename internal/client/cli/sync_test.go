@@ -56,7 +56,7 @@ func TestSyncCommand_ConfigurationAndRefresh(t *testing.T) {
 			"--refresh",
 			"--address", "localhost:8082",
 			"--ca-cert", "flag-ca.pem",
-			"--session-file", "flag-session.json",
+			"--session-dir", "flag-session",
 			"--cache-dir", "flag-cache",
 		},
 		strings.NewReader(testRegistrationPassword+"\n"),
@@ -69,10 +69,10 @@ func TestSyncCommand_ConfigurationAndRefresh(t *testing.T) {
 	}
 
 	wantConfig := config.Config{
-		Address:     "localhost:8082",
-		CACertFile:  "flag-ca.pem",
-		SessionFile: "flag-session.json",
-		CacheDir:    "flag-cache",
+		Address:    "localhost:8082",
+		CACertFile: "flag-ca.pem",
+		SessionDir: "flag-session",
+		CacheDir:   "flag-cache",
 	}
 	if gotConfig != wantConfig {
 		t.Errorf("configuration = %+v, want %+v", gotConfig, wantConfig)

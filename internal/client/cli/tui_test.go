@@ -16,10 +16,10 @@ func TestTUICommand_RunsWithResolvedConfiguration(t *testing.T) {
 	isolateClientConfig(t)
 
 	wantConfig := config.Config{
-		Address:     "localhost:8443",
-		CACertFile:  "ca.pem",
-		SessionFile: "session.json",
-		CacheDir:    "cache",
+		Address:    "localhost:8443",
+		CACertFile: "ca.pem",
+		SessionDir: "session",
+		CacheDir:   "cache",
 	}
 	var gotConfig config.Config
 	var gotConfigFile string
@@ -49,7 +49,7 @@ func TestTUICommand_RunsWithResolvedConfiguration(t *testing.T) {
 		"gopherkeeper",
 		"--address", wantConfig.Address,
 		"--ca-cert", wantConfig.CACertFile,
-		"--session-file", wantConfig.SessionFile,
+		"--session-dir", wantConfig.SessionDir,
 		"--cache-dir", wantConfig.CacheDir,
 		"tui",
 	}, runOptions{
@@ -87,7 +87,7 @@ func TestTUICommand_PassesConfigFilePath(t *testing.T) {
 	configFile := writeClientConfig(t, `{
   "address": "localhost:9443",
   "ca_cert_file": "ca.pem",
-  "session_file": "session.json",
+  "session_dir": "session",
   "cache_dir": "cache"
 }`)
 
@@ -127,43 +127,32 @@ func TestTUICommand_PassesConfigFilePath(t *testing.T) {
 
 func TestNewTUIBackendBuildsIndependentRuntime(t *testing.T) {
 	firstConfig := config.Config{
-		Address:     "localhost:8080",
-		SessionFile: t.TempDir() + "/first-session.json",
+		Address:    "localhost:8080",
+		SessionDir: t.TempDir() + "/first-session",
 	}
-	firstBackend := newTUIBackend(firstConfig).(*tuiBackend)
-
-	if firstBackend.healthClientError != nil ||
-		firstBackend.applicationError != nil ||
-		firstBackend.logoutError != nil {
-		t.Fatalf(
-			"initial runtime errors = health %v application %v logout %v",
-			firstBackend.healthClientError,
-			firstBackend.applicationError,
-			firstBackend.logoutError,
-		)
+	firstRuntime, err := newTUIBackend(firstConfig)
+	if err != nil {
+		t.Fatalf("newTUIBackend() error = %v", err)
 	}
-	if firstBackend.healthClient == nil ||
-		firstBackend.application == nil ||
-		firstBackend.logoutApplication == nil {
-		t.Fatal("initial runtime contains nil dependencies")
+	firstBackend := firstRuntime.(*tuiBackend)
+	if firstBackend.application == nil {
+		t.Fatal("initial runtime contains nil application")
 	}
 
 	secondConfig := config.Config{
-		Address:     "localhost:9090",
-		SessionFile: t.TempDir() + "/second-session.json",
+		Address:    "localhost:9090",
+		SessionDir: t.TempDir() + "/second-session",
 	}
-	secondBackend := newTUIBackend(secondConfig).(*tuiBackend)
+	secondRuntime, err := newTUIBackend(secondConfig)
+	if err != nil {
+		t.Fatalf("newTUIBackend() error = %v", err)
+	}
+	secondBackend := secondRuntime.(*tuiBackend)
 
 	if secondBackend == firstBackend {
 		t.Fatal("backend factory reused a mutable runtime")
 	}
-	if secondBackend.healthClient == firstBackend.healthClient {
-		t.Fatal("health client was reused across runtime configurations")
-	}
 	if secondBackend.application == firstBackend.application {
 		t.Fatal("application runtime was reused across configurations")
-	}
-	if secondBackend.logoutApplication == firstBackend.logoutApplication {
-		t.Fatal("logout runtime was reused across configurations")
 	}
 }

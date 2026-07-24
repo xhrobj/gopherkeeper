@@ -64,12 +64,32 @@ func TestTextPayload_Validate(t *testing.T) {
 			wantErr: ErrInvalidTextPayload,
 		},
 		{
+			name: "allowed multiline controls",
+			payload: TextPayload{
+				Text:     "first\tline\r\nsecond",
+				Metadata: "note\ncontinued",
+			},
+		},
+		{
+			name: "forbidden text control",
+			payload: TextPayload{
+				Text: "secret\x1bnote",
+			},
+			wantErr: ErrInvalidTextPayload,
+		},
+		{
 			name: "invalid UTF-8 metadata",
 			payload: TextPayload{
 				Text:     "secret note",
 				Metadata: string([]byte{0xff}),
 			},
 			wantErr: ErrInvalidTextPayload,
+		},
+		{
+			name: "text at byte limit",
+			payload: TextPayload{
+				Text: strings.Repeat("a", TextPayloadMaxSize),
+			},
 		},
 		{
 			name: "text too large",
@@ -84,7 +104,7 @@ func TestTextPayload_Validate(t *testing.T) {
 				Text:     "secret note",
 				Metadata: strings.Repeat("a", MetadataMaxSize+1),
 			},
-			wantErr: ErrPayloadTooLarge,
+			wantErr: ErrInvalidTextPayload,
 		},
 	}
 
@@ -145,7 +165,8 @@ func TestValidateRecordTitle(t *testing.T) {
 	}{
 		{name: "valid", title: "github note"},
 		{name: "Cyrillic", title: "секретная заметка"},
-		{name: "maximum size", title: strings.Repeat("я", RecordTitleMaxSize/2)},
+		{name: "maximum ASCII size", title: strings.Repeat("a", RecordTitleMaxSize)},
+		{name: "maximum Unicode size", title: strings.Repeat("я", RecordTitleMaxSize)},
 		{name: "empty", title: "", wantErr: ErrInvalidRecordTitle},
 		{name: "blank", title: " \t\n", wantErr: ErrInvalidRecordTitle},
 		{name: "too large", title: strings.Repeat("a", RecordTitleMaxSize+1), wantErr: ErrInvalidRecordTitle},

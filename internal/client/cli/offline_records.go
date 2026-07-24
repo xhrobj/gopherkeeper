@@ -34,9 +34,8 @@ func offlineReadFlags() []urfavecli.Flag {
 			Usage: "read from the encrypted local cache",
 		},
 		&urfavecli.StringFlag{
-			Name:    loginFlag,
-			Aliases: []string{"l"},
-			Usage:   "account login for the encrypted local cache",
+			Name:  loginFlag,
+			Usage: "account login for the encrypted local cache",
 		},
 	}
 }

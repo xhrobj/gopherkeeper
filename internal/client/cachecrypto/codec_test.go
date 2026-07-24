@@ -11,7 +11,7 @@ import (
 
 func TestRecordCodec_RoundTrip(t *testing.T) {
 	expiryMonth := 7
-	expiryYear := 2028
+	expiryYear := 28
 	createdAt := time.Date(2026, time.July, 14, 12, 0, 0, 0, time.UTC)
 	updatedAt := createdAt.Add(time.Hour)
 
@@ -23,7 +23,7 @@ func TestRecordCodec_RoundTrip(t *testing.T) {
 		{name: "text", typeID: model.RecordTypeText, payload: &model.TextPayload{Text: "secret", Metadata: "note"}},
 		{name: "credentials", typeID: model.RecordTypeCredentials, payload: &model.CredentialsPayload{Login: "alice", Password: "password", URL: "https://example.com"}},
 		{name: "card", typeID: model.RecordTypeCard, payload: &model.CardPayload{Number: "2013061420200619", ExpiryMonth: &expiryMonth, ExpiryYear: &expiryYear, CVV: "123"}},
-		{name: "binary", typeID: model.RecordTypeBinary, payload: &model.BinaryPayload{Filename: "backup.bin", Data: []byte{0, 1, 2, 255}, ContentType: "application/octet-stream"}},
+		{name: "binary", typeID: model.RecordTypeBinary, payload: &model.BinaryPayload{Filename: "backup.bin", Data: []byte{0, 1, 2, 255}}},
 	}
 
 	for _, tt := range tests {

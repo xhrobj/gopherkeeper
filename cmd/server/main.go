@@ -97,10 +97,7 @@ func run(ctx context.Context, args []string) error {
 
 	server := httpserver.NewServer(cfg.Address, handler)
 
-	lg.Info(
-		"https server starting",
-		zap.String("server_address", cfg.Address),
-	)
+	lg.Info("https server starting", zap.String("server_address", cfg.Address))
 
 	if err := httpserver.ServeTLS(
 		ctx,

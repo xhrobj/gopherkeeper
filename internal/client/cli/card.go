@@ -173,7 +173,7 @@ func readCardPayload(
 	promptOutput io.Writer,
 	metadataFile string,
 ) (model.CardPayload, error) {
-	number, err := reader.ReadHidden(input, promptOutput, "Card number: ")
+	number, err := reader.ReadHidden(input, promptOutput, "Card number (12-20 digits): ")
 	if err != nil {
 		return model.CardPayload{}, fmt.Errorf("read card number: %w", err)
 	}
@@ -188,7 +188,7 @@ func readCardPayload(
 		return model.CardPayload{}, fmt.Errorf("read card expiry: %w", err)
 	}
 
-	cvv, err := reader.ReadHidden(input, promptOutput, "CVV (optional): ")
+	cvv, err := reader.ReadHidden(input, promptOutput, "CVV (3 digits, optional): ")
 	if err != nil {
 		return model.CardPayload{}, fmt.Errorf("read card CVV: %w", err)
 	}
@@ -219,7 +219,7 @@ func readOptionalCardExpiry(
 	promptOutput io.Writer,
 ) (*int, *int, error) {
 	for {
-		value, err := readPromptedLine(reader, input, promptOutput, "Expiry (MM/YYYY, optional): ")
+		value, err := readPromptedLine(reader, input, promptOutput, "Expiry (MM/YY, optional): ")
 		if err != nil {
 			return nil, nil, err
 		}
@@ -234,14 +234,14 @@ func readOptionalCardExpiry(
 			return &month, &year, nil
 		}
 
-		if _, err := fmt.Fprintln(promptOutput, "Invalid expiry. Use MM/YYYY or leave it empty."); err != nil {
+		if _, err := fmt.Fprintln(promptOutput, "Invalid expiry. Use MM/YY or leave it empty."); err != nil {
 			return nil, nil, fmt.Errorf("write expiry validation message: %w", err)
 		}
 	}
 }
 
 func parseCardExpiry(value string) (int, int, bool) {
-	if len(value) != len("MM/YYYY") || value[2] != '/' ||
+	if len(value) != len("MM/YY") || value[2] != '/' ||
 		!containsOnlyASCIIDigits(value[:2]) || !containsOnlyASCIIDigits(value[3:]) {
 		return 0, 0, false
 	}
@@ -252,7 +252,7 @@ func parseCardExpiry(value string) (int, int, bool) {
 	}
 
 	year, err := strconv.Atoi(value[3:])
-	if err != nil || year < 1 || year > 9999 {
+	if err != nil || year < 0 || year > model.CardExpiryYearMax {
 		return 0, 0, false
 	}
 

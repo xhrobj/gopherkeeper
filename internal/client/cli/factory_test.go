@@ -59,10 +59,10 @@ func TestApplicationFromCommand_ReturnsFactoryError(t *testing.T) {
 
 func TestOfflineApplicationFromCommand(t *testing.T) {
 	wantConfig := config.Config{
-		Address:     "localhost:8080",
-		CACertFile:  "missing-ca.pem",
-		SessionFile: "missing-session.json",
-		CacheDir:    "cache",
+		Address:    "localhost:8080",
+		CACertFile: "missing-ca.pem",
+		SessionDir: "missing-session",
+		CacheDir:   "cache",
 	}
 	wantApplication := newApplicationStub(t)
 	factory := newClientFactoryStub(t)

@@ -9,9 +9,9 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/client/app"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
-	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
 	"github.com/xhrobj/gopherkeeper/internal/client/tui"
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
+	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 type tuiRunner interface {
@@ -28,51 +28,26 @@ type tuiRunner interface {
 type defaultTUIRunner struct{}
 
 type tuiBackend struct {
-	healthClient      *httpclient.Client
-	healthClientError error
-	application       *usecase.Application
-	applicationError  error
-	logoutApplication *usecase.LogoutApplication
-	logoutError       error
+	application *usecase.Application
 }
 
-func newTUIBackend(cfg config.Config) tui.Backend {
-	healthClient, healthClientError := httpclient.New(cfg.Address, cfg.CACertFile)
-	application, applicationError := app.New(cfg)
-	logoutApplication, logoutError := app.NewLogout(cfg)
+var _ tui.Backend = (*tuiBackend)(nil)
 
-	return &tuiBackend{
-		healthClient:      healthClient,
-		healthClientError: healthClientError,
-		application:       application,
-		applicationError:  applicationError,
-		logoutApplication: logoutApplication,
-		logoutError:       logoutError,
+func newTUIBackend(cfg config.Config) (tui.Backend, error) {
+	application, err := app.New(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create client application: %w", err)
 	}
+
+	return &tuiBackend{application: application}, nil
 }
 
 func (backend *tuiBackend) Health(ctx context.Context) (string, error) {
-	client := backend.healthClient
-	err := backend.healthClientError
-
-	if err != nil {
-		return "", err
-	}
-
-	return client.Health(ctx)
+	return backend.application.Health(ctx)
 }
 
-func (backend *tuiBackend) Register(
-	ctx context.Context,
-	login string,
-	password string,
-) (string, error) {
-	application, err := backend.onlineApplication()
-	if err != nil {
-		return "", err
-	}
-
-	user, err := application.Register(ctx, login, password)
+func (backend *tuiBackend) Register(ctx context.Context, login, password string) (string, error) {
+	user, err := backend.application.Register(ctx, login, password)
 	if err != nil {
 		return "", err
 	}
@@ -80,17 +55,8 @@ func (backend *tuiBackend) Register(
 	return user.Login, nil
 }
 
-func (backend *tuiBackend) Login(
-	ctx context.Context,
-	login string,
-	password string,
-) (string, error) {
-	application, err := backend.onlineApplication()
-	if err != nil {
-		return "", err
-	}
-
-	user, err := application.Login(ctx, login, password)
+func (backend *tuiBackend) Login(ctx context.Context, login, password string) (string, error) {
+	user, err := backend.application.Login(ctx, login, password)
 	if err != nil {
 		return "", err
 	}
@@ -99,12 +65,7 @@ func (backend *tuiBackend) Login(
 }
 
 func (backend *tuiBackend) CurrentUser(ctx context.Context) (string, error) {
-	application, err := backend.onlineApplication()
-	if err != nil {
-		return "", err
-	}
-
-	user, err := application.Whoami(ctx)
+	user, err := backend.application.Whoami(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -113,21 +74,37 @@ func (backend *tuiBackend) CurrentUser(ctx context.Context) (string, error) {
 }
 
 func (backend *tuiBackend) Logout(ctx context.Context) error {
-	application := backend.logoutApplication
-	err := backend.logoutError
-
-	if err != nil {
-		return err
-	}
-
-	return application.Logout(ctx)
+	return backend.application.Logout(ctx)
 }
 
-func (backend *tuiBackend) onlineApplication() (*usecase.Application, error) {
-	application := backend.application
-	err := backend.applicationError
+func (backend *tuiBackend) ListRecords(ctx context.Context) ([]model.RecordMetadata, error) {
+	return backend.application.ListRecords(ctx)
+}
 
-	return application, err
+func (backend *tuiBackend) GetRecord(ctx context.Context, recordID string) (model.Record, error) {
+	return backend.application.GetRecord(ctx, recordID)
+}
+
+func (backend *tuiBackend) CreateRecord(ctx context.Context, title string, payload model.RecordPayload) (model.Record, error) {
+	return backend.application.CreateRecord(ctx, usecase.CreateRecordRequest{Title: title, Payload: payload})
+}
+
+func (backend *tuiBackend) UpdateRecord(
+	ctx context.Context,
+	recordID string,
+	expectedRevision int64,
+	title string,
+	payload model.RecordPayload,
+) (model.Record, error) {
+	return backend.application.UpdateRecord(ctx, usecase.UpdateRecordRequest{
+		RecordID: recordID, ExpectedRevision: expectedRevision, Title: title, Payload: payload,
+	})
+}
+
+func (backend *tuiBackend) DeleteRecord(ctx context.Context, recordID string, expectedRevision int64) error {
+	return backend.application.DeleteRecord(ctx, usecase.DeleteRecordRequest{
+		RecordID: recordID, ExpectedRevision: expectedRevision,
+	})
 }
 
 func (defaultTUIRunner) Run(

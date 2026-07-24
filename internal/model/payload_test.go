@@ -53,7 +53,7 @@ func TestRecordPayload_RecordType(t *testing.T) {
 			},
 			want: RecordTypeCredentials,
 		},
-		{name: "card", payload: &CardPayload{Number: "2013 0614 2020 0619"}, want: RecordTypeCard},
+		{name: "card", payload: &CardPayload{Number: "2013061420200619"}, want: RecordTypeCard},
 		{name: "binary", payload: &BinaryPayload{Filename: "secret.bin", Data: []byte{0x2a}}, want: RecordTypeBinary},
 	}
 

@@ -7,6 +7,11 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+const (
+	menuBarY  = 0
+	dropdownY = 1
+)
+
 type menuID int
 
 const (
@@ -26,12 +31,13 @@ type menuDefinition struct {
 }
 
 type menuItem struct {
-	label     string
-	mnemonic  rune
-	shortcut  string
-	action    actionID
-	disabled  bool
-	separator bool
+	label              string
+	mnemonic           rune
+	mnemonicOccurrence int
+	shortcut           string
+	action             actionID
+	disabled           bool
+	separator          bool
 }
 
 type actionID int
@@ -59,7 +65,7 @@ const (
 var menus = []menuDefinition{
 	{
 		name:     "System",
-		mnemonic: 's',
+		mnemonic: 'S',
 		items: []menuItem{
 			{label: "Server Status", mnemonic: 'u', action: actionServerStatus},
 			{label: "Config...", mnemonic: 'c', action: actionConfig},
@@ -71,23 +77,24 @@ var menus = []menuDefinition{
 		name:     "Account",
 		mnemonic: 'a',
 		items: []menuItem{
-			{label: "Register...", mnemonic: 'r', action: actionRegister},
 			{label: "Login...", mnemonic: 'l', action: actionLogin},
+			{label: "Register...", mnemonic: 'r', action: actionRegister},
 			{label: "Current User", mnemonic: 'U', action: actionCurrentUser, disabled: true},
 			{separator: true},
-			{label: "Logout", mnemonic: 'o', action: actionLogout, disabled: true},
+			{label: "Logout", mnemonic: 'o', mnemonicOccurrence: 1, action: actionLogout, disabled: true},
 		},
 	},
 	{
 		name:     "Record",
-		mnemonic: 'r',
+		mnemonic: 'R',
 		disabled: true,
 		items: []menuItem{
-			{label: "Browse", action: actionBrowseRecords, disabled: true},
-			{label: "New...", action: actionNewRecord, disabled: true},
-			{label: "View", action: actionViewRecord, disabled: true},
-			{label: "Edit", action: actionEditRecord, disabled: true},
-			{label: "Delete...", action: actionDeleteRecord, disabled: true},
+			{label: "Browse", mnemonic: 'b', action: actionBrowseRecords, disabled: true},
+			{separator: true},
+			{label: "New...", mnemonic: 'n', action: actionNewRecord, disabled: true},
+			{label: "View", mnemonic: 'v', action: actionViewRecord, disabled: true},
+			{label: "Edit...", mnemonic: 'e', action: actionEditRecord, disabled: true},
+			{label: "Delete...", mnemonic: 'd', action: actionDeleteRecord, disabled: true},
 		},
 	},
 	{
@@ -100,9 +107,9 @@ var menus = []menuDefinition{
 	},
 	{
 		name:     "Window",
-		mnemonic: 'w',
+		mnemonic: 'W',
 		items: []menuItem{
-			{label: "Close Active Window", action: actionCloseWindow},
+			{label: "Close Active Window", mnemonic: 'W', action: actionCloseWindow},
 		},
 	},
 	{
@@ -124,13 +131,13 @@ func menuDefinitions(dialog dialogID, loggedIn bool) []menuDefinition {
 		definitions[index].items = append([]menuItem(nil), menus[index].items...)
 	}
 
-	definitions[menuAccount].items[0].disabled = loggedIn
-	definitions[menuAccount].items[1].disabled = loggedIn
-	definitions[menuAccount].items[2].disabled = !loggedIn
-	definitions[menuAccount].items[4].disabled = !loggedIn
+	setMenuActionDisabled(&definitions[menuAccount], actionRegister, loggedIn)
+	setMenuActionDisabled(&definitions[menuAccount], actionLogin, loggedIn)
+	setMenuActionDisabled(&definitions[menuAccount], actionCurrentUser, !loggedIn)
+	setMenuActionDisabled(&definitions[menuAccount], actionLogout, !loggedIn)
 
 	if dialog == dialogNone {
-		definitions[menuWindow].items[0].disabled = true
+		setMenuActionDisabled(&definitions[menuWindow], actionCloseWindow, true)
 	}
 
 	for index := range definitions {
@@ -140,6 +147,66 @@ func menuDefinitions(dialog dialogID, loggedIn bool) []menuDefinition {
 	}
 
 	return definitions
+}
+
+func (m model) currentMenuDefinitions() []menuDefinition {
+	definitions := menuDefinitions(m.dialog, m.authentication.session.authenticated())
+	recordMenu := &definitions[menuRecord]
+	loggedIn := m.authentication.session.authenticated()
+
+	setMenuActionDisabled(recordMenu, actionBrowseRecords, !loggedIn || !m.recordsAvailable())
+	setMenuActionDisabled(recordMenu, actionNewRecord, !loggedIn || !m.recordCreateAvailable())
+
+	_, viewSelected := m.recordViewTarget()
+	setMenuActionDisabled(recordMenu, actionViewRecord, !loggedIn || !m.recordsAvailable() || !viewSelected)
+
+	_, editSelected := m.recordEditTarget()
+	setMenuActionDisabled(recordMenu, actionEditRecord, !loggedIn || !m.recordEditAvailable() || !editSelected)
+
+	_, deleteSelected := m.recordDeleteTarget()
+	setMenuActionDisabled(recordMenu, actionDeleteRecord, !loggedIn || !m.recordDeleteAvailable() || !deleteSelected)
+	recordMenu.disabled = !hasEnabledMenuItem(*recordMenu)
+
+	if m.dialog == dialogNone && m.recordFeature.workspace.open {
+		setMenuActionDisabled(&definitions[menuWindow], actionCloseWindow, false)
+		definitions[menuWindow].disabled = false
+	}
+
+	return definitions
+}
+
+func (m model) currentAction() actionID {
+	if m.dialog == dialogPathPicker {
+		switch m.pathPicker.target {
+		case pathPickerBinarySaveDirectory:
+			return actionBrowseRecords
+		case pathPickerBinaryCreateFile:
+			return actionNewRecord
+		case pathPickerBinaryEditFile:
+			return actionEditRecord
+		}
+	}
+
+	if m.dialog != dialogNone {
+		return currentDialogAction(m.dialog)
+	}
+
+	if !m.recordFeature.workspace.open {
+		return actionNone
+	}
+
+	return actionBrowseRecords
+}
+
+func setMenuActionDisabled(definition *menuDefinition, action actionID, disabled bool) bool {
+	for index := range definition.items {
+		if definition.items[index].action == action {
+			definition.items[index].disabled = disabled
+			return true
+		}
+	}
+
+	return false
 }
 
 func hasEnabledMenuItem(definition menuDefinition) bool {
@@ -152,19 +219,40 @@ func hasEnabledMenuItem(definition menuDefinition) bool {
 	return false
 }
 
-func renderMenuBar(t theme, definitions []menuDefinition, width int, active int, focused bool) string {
-	var content strings.Builder
-
-	for index, definition := range definitions {
-		content.WriteString(renderMenuPad(t, definition, focused && index == active))
-	}
-
-	return t.menuBar.Width(width).Render(content.String())
+type menuBarLayout struct {
+	content string
+	bounds  []layoutBounds
 }
 
-func renderMenuPad(t theme, definition menuDefinition, active bool) string {
+func buildMenuBarLayout(t theme, definitions []menuDefinition, width int, active int, focused, blocked bool) menuBarLayout {
+	var content strings.Builder
+	bounds := make([]layoutBounds, len(definitions))
+	x := 0
+
+	for index, definition := range definitions {
+		pad := renderMenuPad(t, definition, focused && index == active, blocked)
+		padWidth := lipgloss.Width(pad)
+		bounds[index] = layoutBounds{x: x, y: menuBarY, width: padWidth, height: 1}
+		x += padWidth
+		content.WriteString(pad)
+	}
+
+	return menuBarLayout{
+		content: t.menuBar.Width(width).Render(content.String()),
+		bounds:  bounds,
+	}
+}
+
+func renderMenuBar(t theme, definitions []menuDefinition, width int, active int, focused, blocked bool) string {
+	return buildMenuBarLayout(t, definitions, width, active, focused, blocked).content
+}
+
+func renderMenuPad(t theme, definition menuDefinition, active, blocked bool) string {
 	if definition.disabled {
 		return t.menuDisabled.Render(" " + definition.name + " ")
+	}
+	if blocked {
+		return t.menuBlocked.Render(" " + definition.name + " ")
 	}
 
 	if active {
@@ -179,19 +267,22 @@ func renderMenuPad(t theme, definition menuDefinition, active bool) string {
 }
 
 func splitMnemonic(name string, mnemonic rune) (string, string, string) {
+	return splitMnemonicOccurrence(name, mnemonic, 0)
+}
+
+func splitMnemonicOccurrence(name string, mnemonic rune, occurrence int) (string, string, string) {
 	runes := []rune(name)
-
-	for index, value := range runes {
-		if value == mnemonic {
-			return string(runes[:index]), string(value), string(runes[index+1:])
-		}
-	}
-
 	wanted := unicode.ToLower(mnemonic)
+	matched := 0
+
 	for index, value := range runes {
-		if unicode.ToLower(value) == wanted {
+		if unicode.ToLower(value) != wanted {
+			continue
+		}
+		if matched == occurrence {
 			return string(runes[:index]), string(value), string(runes[index+1:])
 		}
+		matched++
 	}
 	return name, "", ""
 }
@@ -265,7 +356,7 @@ func renderMenuItemLine(t theme, item menuItem, contentWidth int, selected, curr
 		return baseStyle.Render(line)
 	}
 
-	before, mnemonic, after := splitMnemonic(item.label, item.mnemonic)
+	before, mnemonic, after := splitMnemonicOccurrence(item.label, item.mnemonic, item.mnemonicOccurrence)
 	if mnemonic == "" {
 		return baseStyle.Render(line)
 	}
@@ -384,4 +475,72 @@ func menuIndexByAltKey(definitions []menuDefinition, key string) (int, bool) {
 	}
 
 	return menuIndexByMnemonic(definitions, value[0])
+}
+
+func menuIndexAtX(bounds []layoutBounds, x int) (int, bool) {
+	for index, bound := range bounds {
+		if bound.contains(x, menuBarY) {
+			return index, true
+		}
+	}
+
+	return 0, false
+}
+
+type dropdownItemLayout struct {
+	selected int
+	item     menuItem
+	bounds   layoutBounds
+}
+
+type dropdownMenuLayout struct {
+	bounds layoutBounds
+	items  []dropdownItemLayout
+}
+
+func buildDropdownMenuLayout(screenWidth, activeMenu int, definition menuDefinition) dropdownMenuLayout {
+	width := dropdownWidth(definition) + 2
+	x := min(menuOffset(activeMenu), max(0, screenWidth-width))
+	layout := dropdownMenuLayout{
+		bounds: layoutBounds{
+			x:      x,
+			y:      dropdownY,
+			width:  width,
+			height: len(definition.items) + 2,
+		},
+	}
+	selected := -1
+
+	for index, item := range definition.items {
+		if item.separator {
+			continue
+		}
+		selected++
+		layout.items = append(layout.items, dropdownItemLayout{
+			selected: selected,
+			item:     item,
+			bounds: layoutBounds{
+				x:      x + 1,
+				y:      dropdownY + 1 + index,
+				width:  max(0, width-2),
+				height: 1,
+			},
+		})
+	}
+
+	return layout
+}
+
+func (layout dropdownMenuLayout) itemAt(x, y int) (int, menuItem, bool) {
+	if !layout.bounds.contains(x, y) {
+		return 0, menuItem{}, false
+	}
+
+	for _, item := range layout.items {
+		if item.bounds.contains(x, y) {
+			return item.selected, item.item, true
+		}
+	}
+
+	return 0, menuItem{}, false
 }

@@ -19,7 +19,7 @@ func TestRecordService_Create(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 11, 12, 0, 0, 0, time.UTC)
 	updatedAt := time.Date(2026, time.July, 11, 12, 1, 0, 0, time.UTC)
 	expiryMonth := 3
-	expiryYear := 2038
+	expiryYear := 38
 	tests := []struct {
 		name    string
 		title   string
@@ -47,7 +47,7 @@ func TestRecordService_Create(t *testing.T) {
 			name:  "card record",
 			title: "Joel's card",
 			payload: &model.CardPayload{
-				Number:      "2013 0614 2020 0619",
+				Number:      "2013061420200619",
 				Cardholder:  "Joel Miller",
 				ExpiryMonth: &expiryMonth,
 				ExpiryYear:  &expiryYear,
@@ -59,10 +59,9 @@ func TestRecordService_Create(t *testing.T) {
 			name:  "binary record",
 			title: "Alice backup",
 			payload: &model.BinaryPayload{
-				Filename:    "backup.bin",
-				Data:        []byte{0x00, 0x42, 0xfe, 0xff},
-				ContentType: "application/octet-stream",
-				Metadata:    "private backup",
+				Filename: "backup.bin",
+				Data:     []byte{0x00, 0x42, 0xfe, 0xff},
+				Metadata: "private backup",
 			},
 		},
 	}
@@ -230,7 +229,7 @@ func TestRecordService_Get(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 11, 12, 0, 0, 0, time.UTC)
 	updatedAt := time.Date(2026, time.July, 11, 12, 1, 0, 0, time.UTC)
 	expiryMonth := 3
-	expiryYear := 2038
+	expiryYear := 38
 	tests := []struct {
 		name       string
 		recordType model.RecordType
@@ -255,7 +254,7 @@ func TestRecordService_Get(t *testing.T) {
 			name:       "card record",
 			recordType: model.RecordTypeCard,
 			payload: &model.CardPayload{
-				Number:      "2013 0614 2020 0619",
+				Number:      "2013061420200619",
 				Cardholder:  "Joel Miller",
 				ExpiryMonth: &expiryMonth,
 				ExpiryYear:  &expiryYear,
@@ -267,10 +266,9 @@ func TestRecordService_Get(t *testing.T) {
 			name:       "binary record",
 			recordType: model.RecordTypeBinary,
 			payload: &model.BinaryPayload{
-				Filename:    "backup.bin",
-				Data:        []byte{0x00, 0x42, 0xfe, 0xff},
-				ContentType: "application/octet-stream",
-				Metadata:    "private backup",
+				Filename: "backup.bin",
+				Data:     []byte{0x00, 0x42, 0xfe, 0xff},
+				Metadata: "private backup",
 			},
 		},
 	}
@@ -1171,4 +1169,83 @@ func (s *recordPayloadCryptoStub) Decrypt(encrypted recordcrypto.EncryptedPayloa
 	}
 
 	return s.decryptFunc(encrypted, aad)
+}
+
+func TestRecordService_RejectsInvalidPayloadFields(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload model.RecordPayload
+		wantErr error
+	}{
+		{
+			name: "metadata over 255 characters",
+			payload: &model.TextPayload{
+				Text:     "secret",
+				Metadata: strings.Repeat("я", model.MetadataMaxSize+1),
+			},
+			wantErr: model.ErrInvalidTextPayload,
+		},
+		{
+			name: "credentials field over 255 characters",
+			payload: &model.CredentialsPayload{
+				Login:    strings.Repeat("я", model.CredentialsFieldMaxSize+1),
+				Password: "secret",
+			},
+			wantErr: model.ErrInvalidCredentialsPayload,
+		},
+		{
+			name:    "formatted card number",
+			payload: &model.CardPayload{Number: "4111 1111 1111 1111"},
+			wantErr: model.ErrInvalidCardPayload,
+		},
+		{
+			name:    "two digit CVV",
+			payload: &model.CardPayload{Number: "4111111111111111", CVV: "14"},
+			wantErr: model.ErrInvalidCardPayload,
+		},
+		{
+			name: "binary filename with path",
+			payload: &model.BinaryPayload{
+				Filename: "dir/backup.bin",
+				Data:     []byte{0x2a},
+			},
+			wantErr: model.ErrInvalidBinaryPayload,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			crypto := &recordPayloadCryptoStub{}
+			records := &recordRepositoryStub{}
+			service := NewRecordService(records, crypto)
+
+			_, err := service.Create(context.Background(), CreateRecordRequest{
+				UserID:  42,
+				Title:   "Test record",
+				Payload: tt.payload,
+			})
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Create() error = %v, want %v", err, tt.wantErr)
+			}
+
+			_, err = service.Update(context.Background(), UpdateRecordRequest{
+				UserID:           42,
+				RecordID:         "550e8400-e29b-41d4-a716-446655440000",
+				ExpectedRevision: 1,
+				Title:            "Test record",
+				Payload:          tt.payload,
+			})
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Update() error = %v, want %v", err, tt.wantErr)
+			}
+
+			if crypto.encryptCalls != 0 || records.createCalls != 0 ||
+				records.getCalls != 0 || records.updateCalls != 0 {
+				t.Fatalf(
+					"calls: Encrypt=%d Create=%d Get=%d Update=%d, want 0",
+					crypto.encryptCalls, records.createCalls, records.getCalls, records.updateCalls,
+				)
+			}
+		})
+	}
 }

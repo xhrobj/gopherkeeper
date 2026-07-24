@@ -134,10 +134,9 @@ func TestClient_CreateBinaryRecord(t *testing.T) {
 			Type    model.RecordType `json:"type"`
 			Title   string           `json:"title"`
 			Payload struct {
-				Filename    string `json:"filename"`
-				Data        string `json:"data"`
-				ContentType string `json:"content_type"`
-				Metadata    string `json:"metadata"`
+				Filename string `json:"filename"`
+				Data     string `json:"data"`
+				Metadata string `json:"metadata"`
 			} `json:"payload"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -151,10 +150,9 @@ func TestClient_CreateBinaryRecord(t *testing.T) {
 		}
 
 		payload := &model.BinaryPayload{
-			Filename:    request.Payload.Filename,
-			Data:        data,
-			ContentType: request.Payload.ContentType,
-			Metadata:    request.Payload.Metadata,
+			Filename: request.Payload.Filename,
+			Data:     data,
+			Metadata: request.Payload.Metadata,
 		}
 		writeRecordResponse(t, w, http.StatusCreated, recordResponse{
 			ID:        testRecordID,
@@ -177,10 +175,9 @@ func TestClient_CreateBinaryRecord(t *testing.T) {
 		"test.jwt.token",
 		"Alice encrypted backup",
 		&model.BinaryPayload{
-			Filename:    "backup.bin",
-			Data:        data,
-			ContentType: "application/octet-stream",
-			Metadata:    "private backup",
+			Filename: "backup.bin",
+			Data:     data,
+			Metadata: "private backup",
 		},
 	)
 	if err != nil {
@@ -204,7 +201,7 @@ type clientGetRecordTestCase struct {
 
 func TestClient_GetRecord(t *testing.T) {
 	expiryMonth := 3
-	expiryYear := 2038
+	expiryYear := 38
 	tests := []clientGetRecordTestCase{
 		{
 			name:       "text",
@@ -223,7 +220,7 @@ func TestClient_GetRecord(t *testing.T) {
 			name:       "card",
 			recordType: model.RecordTypeCard,
 			payload: &model.CardPayload{
-				Number:      "2013 0614 2020 0619",
+				Number:      "2013061420200619",
 				Cardholder:  "Joel Miller",
 				ExpiryMonth: &expiryMonth,
 				ExpiryYear:  &expiryYear,
@@ -235,10 +232,9 @@ func TestClient_GetRecord(t *testing.T) {
 			name:       "binary",
 			recordType: model.RecordTypeBinary,
 			payload: &model.BinaryPayload{
-				Filename:    "backup.bin",
-				Data:        []byte{0x00, 0x01, 0x02, 0xff},
-				ContentType: "application/octet-stream",
-				Metadata:    "private backup",
+				Filename: "backup.bin",
+				Data:     []byte{0x00, 0x01, 0x02, 0xff},
+				Metadata: "private backup",
 			},
 		},
 		{

@@ -37,9 +37,9 @@ func renderAbout(
 ) string {
 	rows := []string{
 		renderAboutEmptyRow(t, width),
-		renderAboutCenteredText(t.aboutTitle, width, "(^-^)/"),
-		renderAboutCenteredText(t.aboutTitle, width, "GophKeeper"),
-		renderAboutCenteredText(t.aboutTitle, width, "Access your secrets securely"),
+		renderAboutCenteredText(t.aboutTitle, width, "(^-^)/ GophKeeper"),
+		renderAboutEmptyRow(t, width),
+		renderAboutCenteredText(t.aboutTitle, width, "Access your Secrets Securely"),
 		renderAboutEmptyRow(t, width),
 		renderAboutBuildRow(t, width, "Version", version),
 		renderAboutBuildRow(t, width, "Build date", date),
@@ -57,6 +57,7 @@ func renderAbout(
 		renderAboutButtons(t, width, activeButton),
 		renderAboutEmptyRow(t, width),
 	}
+
 	return strings.Join(rows, "\n")
 }
 
@@ -90,22 +91,22 @@ func renderAboutBuildRow(t theme, width int, label, value string) string {
 		t.aboutBody.Width(rightPadding).Render("")
 }
 
-func renderAboutButtons(t theme, width, activeButton int) string {
-	courseButton := t.aboutButton.Render("< Course >")
-	okButton := t.aboutButton.Render("< OK >")
+func aboutButtonsLayout(t theme, width, activeButton int) buttonRowLayout {
+	courseStyle := t.aboutButton
+	okStyle := t.aboutButton
+
 	if activeButton == 0 {
-		courseButton = t.aboutButtonActive.Render("< Course >")
+		courseStyle = t.aboutButtonActive
 	} else {
-		okButton = t.aboutButtonActive.Render("< OK >")
+		okStyle = t.aboutButtonActive
 	}
 
-	buttonsWidth := lipgloss.Width(courseButton) + aboutButtonGap + lipgloss.Width(okButton)
-	leftWidth := max(0, (width-buttonsWidth)/2)
-	rightWidth := max(0, width-buttonsWidth-leftWidth)
+	return centeredButtonRowLayout(t.aboutBody, width, aboutButtonGap, []styledButton{
+		{label: "< Course >", style: courseStyle},
+		{label: "< OK >", style: okStyle},
+	})
+}
 
-	return t.aboutBody.Width(leftWidth).Render("") +
-		courseButton +
-		t.aboutBody.Width(aboutButtonGap).Render("") +
-		okButton +
-		t.aboutBody.Width(rightWidth).Render("")
+func renderAboutButtons(t theme, width, activeButton int) string {
+	return aboutButtonsLayout(t, width, activeButton).content
 }
