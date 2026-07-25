@@ -101,7 +101,7 @@ func (m model) activateRecordCreate() (tea.Model, tea.Cmd) {
 		if m.backend == nil {
 			return m, nil
 		}
-		requestCtx, requestID := m.operations.begin(m.ctx, operationCreateRecord)
+		requestCtx, requestID := m.operations.begin(m.operationDone, operationCreateRecord)
 		return m, m.operationCommand(operationCreateRecord, recordCreateCommand(
 			requestCtx,
 			m.backend,

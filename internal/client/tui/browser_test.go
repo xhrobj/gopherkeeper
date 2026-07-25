@@ -1,6 +1,9 @@
 package tui
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestBrowserCommand(t *testing.T) {
 	tests := []struct {
@@ -12,41 +15,42 @@ func TestBrowserCommand(t *testing.T) {
 		{
 			name:     "macOS",
 			goos:     "darwin",
-			wantPath: "open",
-			wantArgs: []string{"open", aboutURL},
+			wantPath: darwinOpenCommand,
+			wantArgs: []string{darwinOpenCommand, aboutURL},
 		},
 		{
 			name:     "Linux",
 			goos:     "linux",
-			wantPath: "xdg-open",
-			wantArgs: []string{"xdg-open", aboutURL},
+			wantPath: linuxOpenCommand,
+			wantArgs: []string{linuxOpenCommand, aboutURL},
 		},
 		{
 			name:     "Windows",
 			goos:     "windows",
-			wantPath: "rundll32",
-			wantArgs: []string{"rundll32", "url.dll,FileProtocolHandler", aboutURL},
+			wantPath: windowsOpenCommand,
+			wantArgs: []string{windowsOpenCommand, "url.dll,FileProtocolHandler", aboutURL},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			command, err := browserCommand(test.goos, aboutURL)
-			if err != nil {
-				t.Fatalf("browserCommand() error = %v", err)
-			}
-			if command.Path == "" || command.Args[0] != test.wantPath {
-				t.Fatalf("command path = %q args = %#v, want %q", command.Path, command.Args, test.wantPath)
-			}
-			if len(command.Args) != len(test.wantArgs) {
-				t.Fatalf("command args = %#v, want %#v", command.Args, test.wantArgs)
-			}
-			for index := range test.wantArgs {
-				if command.Args[index] != test.wantArgs[index] {
-					t.Fatalf("command args = %#v, want %#v", command.Args, test.wantArgs)
-				}
-			}
+			assertBrowserCommand(t, test.goos, test.wantPath, test.wantArgs)
 		})
+	}
+}
+
+func assertBrowserCommand(t *testing.T, goos, wantPath string, wantArgs []string) {
+	t.Helper()
+
+	command, err := browserCommand(goos, aboutURL)
+	if err != nil {
+		t.Fatalf("browserCommand() error = %v", err)
+	}
+	if command.Path != wantPath {
+		t.Fatalf("command path = %q, want %q", command.Path, wantPath)
+	}
+	if !slices.Equal(command.Args, wantArgs) {
+		t.Fatalf("command args = %#v, want %#v", command.Args, wantArgs)
 	}
 }
 

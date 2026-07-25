@@ -26,6 +26,9 @@ func Run(ctx context.Context, options Options) error {
 	if options.BackendFactory == nil {
 		return errors.New("TUI backend factory is required")
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	model, err := newModel(ctx, options.Config, options.ConfigFile, options.Info, options.BackendFactory)
 	if err != nil {
@@ -34,7 +37,7 @@ func Run(ctx context.Context, options Options) error {
 
 	program := tea.NewProgram(
 		model,
-		tea.WithContext(model.ctx),
+		tea.WithContext(ctx),
 		tea.WithInput(options.Input),
 		tea.WithOutput(options.Output),
 	)

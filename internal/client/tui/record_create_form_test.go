@@ -1,8 +1,8 @@
 package tui
 
 import (
-	"bytes"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -34,23 +34,36 @@ func TestParseRecordCardExpiry(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			month, year, err := parseRecordCardExpiry(test.month, test.year)
-			if (err != nil) != test.wantErr {
-				t.Fatalf("parseRecordCardExpiry() error = %v, wantErr %t", err, test.wantErr)
-			}
-			if test.wantErr {
-				return
-			}
-			if test.wantEmpty {
-				if month != nil || year != nil {
-					t.Fatalf("expiry = %v/%v, want empty", month, year)
-				}
-				return
-			}
-			if month == nil || year == nil || *month != test.wantMonth || *year != test.wantYear {
-				t.Fatalf("expiry = %v/%v, want %d/%d", month, year, test.wantMonth, test.wantYear)
-			}
+			assertParsedRecordCardExpiry(t, test.month, test.year, test.wantMonth, test.wantYear, test.wantEmpty, test.wantErr)
 		})
+	}
+}
+
+func assertParsedRecordCardExpiry(
+	t *testing.T,
+	monthValue,
+	yearValue string,
+	wantMonth,
+	wantYear int,
+	wantEmpty,
+	wantErr bool,
+) {
+	t.Helper()
+	month, year, err := parseRecordCardExpiry(monthValue, yearValue)
+	if (err != nil) != wantErr {
+		t.Fatalf("parseRecordCardExpiry() error = %v, wantErr %t", err, wantErr)
+	}
+	if wantErr {
+		return
+	}
+	if wantEmpty {
+		if month != nil || year != nil {
+			t.Fatalf("expiry = %v/%v, want empty", month, year)
+		}
+		return
+	}
+	if month == nil || year == nil || *month != wantMonth || *year != wantYear {
+		t.Fatalf("expiry = %v/%v, want %d/%d", month, year, wantMonth, wantYear)
 	}
 }
 
@@ -66,7 +79,7 @@ func TestRecordFormInput_BuildPayload(t *testing.T) {
 	tests := []struct {
 		name  string
 		input recordFormInput
-		check func(*testing.T, recordmodel.RecordPayload)
+		want  recordmodel.RecordPayload
 	}{
 		{
 			name: "text",
@@ -76,12 +89,7 @@ func TestRecordFormInput_BuildPayload(t *testing.T) {
 				text:       "first\nsecond",
 				metadata:   "personal",
 			},
-			check: func(t *testing.T, payload recordmodel.RecordPayload) {
-				value := payload.(*recordmodel.TextPayload)
-				if value.Text != "first\nsecond" || value.Metadata != "personal" {
-					t.Fatalf("payload = %#v", value)
-				}
-			},
+			want: &recordmodel.TextPayload{Text: "first\nsecond", Metadata: "personal"},
 		},
 		{
 			name: "credentials",
@@ -92,11 +100,8 @@ func TestRecordFormInput_BuildPayload(t *testing.T) {
 				password:   "secret",
 				url:        "https://github.com",
 			},
-			check: func(t *testing.T, payload recordmodel.RecordPayload) {
-				value := payload.(*recordmodel.CredentialsPayload)
-				if value.Login != "alice" || value.Password != "secret" {
-					t.Fatalf("payload = %#v", value)
-				}
+			want: &recordmodel.CredentialsPayload{
+				Login: "alice", Password: "secret", URL: "https://github.com",
 			},
 		},
 		{
@@ -110,12 +115,9 @@ func TestRecordFormInput_BuildPayload(t *testing.T) {
 				expiryYear:  "30",
 				cvv:         "014",
 			},
-			check: func(t *testing.T, payload recordmodel.RecordPayload) {
-				value := payload.(*recordmodel.CardPayload)
-				if value.ExpiryMonth == nil || value.ExpiryYear == nil ||
-					*value.ExpiryMonth != 12 || *value.ExpiryYear != 30 || value.CVV != "014" {
-					t.Fatalf("payload = %#v", value)
-				}
+			want: &recordmodel.CardPayload{
+				Number: "4111111111111111", Cardholder: "JOEL MILLER",
+				ExpiryMonth: intPointer(12), ExpiryYear: intPointer(30), CVV: "014",
 			},
 		},
 		{
@@ -125,12 +127,7 @@ func TestRecordFormInput_BuildPayload(t *testing.T) {
 				title:      "Backup",
 				filePath:   "/tmp/backup.bin",
 			},
-			check: func(t *testing.T, payload recordmodel.RecordPayload) {
-				value := payload.(*recordmodel.BinaryPayload)
-				if value.Filename != "backup.bin" || !bytes.Equal(value.Data, binaryData) {
-					t.Fatalf("payload = %#v", value)
-				}
-			},
+			want: &recordmodel.BinaryPayload{Filename: "backup.bin", Data: binaryData},
 		},
 	}
 
@@ -140,9 +137,15 @@ func TestRecordFormInput_BuildPayload(t *testing.T) {
 			if err != nil {
 				t.Fatalf("buildPayload() error = %v", err)
 			}
-			test.check(t, payload)
+			if !reflect.DeepEqual(payload, test.want) {
+				t.Fatalf("payload = %#v, want %#v", payload, test.want)
+			}
 		})
 	}
+}
+
+func intPointer(value int) *int {
+	return &value
 }
 
 func TestRecordCreateForm_ExpiryFieldsAcceptAtMostTwoDigits(t *testing.T) {

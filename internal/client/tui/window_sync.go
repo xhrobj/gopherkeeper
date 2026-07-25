@@ -110,7 +110,7 @@ func syncResultButtonLayout(t theme, width int, blocked bool) buttonRowLayout {
 		style = t.recordFormButtonDisabledActive
 	}
 
-	return singleStyledButtonLayout(t.recordFormBody, style, width, "< OK >")
+	return singleStyledButtonLayout(t.recordFormBody, style, width, okButtonLabel)
 }
 
 func renderSyncResultButton(t theme, width int, blocked bool) string {

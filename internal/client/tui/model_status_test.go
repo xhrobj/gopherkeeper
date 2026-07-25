@@ -197,30 +197,16 @@ func TestModel_ServerStatusCheckShowsPendingState(t *testing.T) {
 
 func TestRenderServerStatus_UsesSameWindowSizeAndNoBorder(t *testing.T) {
 	theme := newTheme()
-	ready := renderServerStatusWindow(
-		theme,
-		58,
-		"localhost:8888",
-		serverStatusReady,
-		"ok",
-		serverStatusFailure{},
-		1,
-		false,
-		false,
-		"",
-	)
-	failed := renderServerStatusWindow(
-		theme,
-		58,
-		"localhost:8888",
-		serverStatusFailed,
-		"",
-		serverStatusFailure{status: "Unreachable", reason: "Connection refused"},
-		1,
-		false,
-		false,
-		"",
-	)
+	ready := renderServerStatusWindow(theme, serverStatusWindowOptions{
+		width: 58, address: "localhost:8888", state: serverStatusReady, health: "ok", activeButton: 1,
+	})
+	failed := renderServerStatusWindow(theme, serverStatusWindowOptions{
+		width:        58,
+		address:      "localhost:8888",
+		state:        serverStatusFailed,
+		failure:      serverStatusFailure{status: "Unreachable", reason: "Connection refused"},
+		activeButton: 1,
+	})
 	if lipgloss.Width(ready) != lipgloss.Width(failed) || lipgloss.Height(ready) != lipgloss.Height(failed) {
 		t.Fatalf(
 			"status window sizes differ: ready=%dx%d failed=%dx%d",
@@ -287,11 +273,13 @@ func TestModel_ServerStatusUsesSpinnerAndGlobalBlockWhileChecking(t *testing.T) 
 func TestStatusButtonsLayout_DisablesBothButtonsAndPreservesFocusWhileBlocked(t *testing.T) {
 	theme := newTheme()
 	rendered := statusButtonsLayout(
-		theme.aboutBody,
-		theme.aboutButton,
-		theme.aboutButtonActive,
-		theme.aboutButtonDisabled,
-		theme.aboutButtonDisabledActive,
+		statusButtonStyles{
+			background:     theme.aboutBody,
+			button:         theme.aboutButton,
+			active:         theme.aboutButtonActive,
+			disabled:       theme.aboutButtonDisabled,
+			disabledActive: theme.aboutButtonDisabledActive,
+		},
 		40,
 		0,
 		true,

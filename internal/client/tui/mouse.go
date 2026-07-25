@@ -331,7 +331,7 @@ func (m model) dialogButtonBounds() []layoutBounds {
 			buttonStyle = m.theme.errorButton
 		}
 
-		layout := singleStyledButtonLayout(bodyStyle, buttonStyle, window.width-4, "< OK >").
+		layout := singleStyledButtonLayout(bodyStyle, buttonStyle, window.width-4, okButtonLabel).
 			positioned(2, alertButtonRow(m.alertMessage, m.alertHighlight))
 
 		return window.screenBounds(layout.bounds)
@@ -392,7 +392,7 @@ func (m model) dialogButtonBounds() []layoutBounds {
 		if blocked {
 			style = m.theme.aboutButtonDisabledActive
 		}
-		layout = singleStyledButtonLayout(m.theme.aboutBody, style, contentWidth, "< OK >").
+		layout = singleStyledButtonLayout(m.theme.aboutBody, style, contentWidth, okButtonLabel).
 			positioned(2, currentUserButtonRow)
 	case dialogAbout:
 		layout = aboutButtonsLayout(m.theme, window.width, m.activeButton).
@@ -404,7 +404,7 @@ func (m model) dialogButtonBounds() []layoutBounds {
 		layout = configButtonsLayout(m.theme, contentWidth, m.configForm.focus, m.configForm.canSave()).
 			positioned(2, configButtonRow)
 	case dialogControls:
-		layout = controlsButtonLayout(m.theme, contentWidth, "< OK >").
+		layout = controlsButtonLayout(m.theme, contentWidth, okButtonLabel).
 			positioned(2, controlsButtonRow)
 	case dialogCacheBrowse:
 		layout = cacheBrowseButtonsLayout(

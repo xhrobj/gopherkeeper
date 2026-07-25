@@ -102,7 +102,7 @@ func aboutButtonsLayout(t theme, width, activeButton int) buttonRowLayout {
 
 	return centeredButtonRowLayout(t.aboutBody, width, aboutButtonGap, []styledButton{
 		{label: "< Course >", style: courseStyle},
-		{label: "< OK >", style: okStyle},
+		{label: okButtonLabel, style: okStyle},
 	})
 }
 

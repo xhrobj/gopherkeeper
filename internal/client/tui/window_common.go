@@ -50,7 +50,7 @@ func renderCurrentUserWindow(
 	rows := []string{
 		t.aboutBody.Width(contentWidth).AlignHorizontal(lipgloss.Center).Render(message),
 		t.aboutBody.Width(contentWidth).Render(""),
-		renderSingleStyledButton(t.aboutBody, buttonStyle, contentWidth, "< OK >"),
+		renderSingleStyledButton(t.aboutBody, buttonStyle, contentWidth, okButtonLabel),
 	}
 
 	title := renderWindowTitle(t.windowTitle, width, "Current User", spinnerFrame, pending)
@@ -97,7 +97,7 @@ func renderAlertWindow(
 	rows = append(rows,
 		bodyStyle.Width(width).Render(""),
 		bodyStyle.Width(2).Render("")+
-			renderSingleStyledButton(bodyStyle, buttonStyle, contentWidth, "< OK >")+
+			renderSingleStyledButton(bodyStyle, buttonStyle, contentWidth, okButtonLabel)+
 			bodyStyle.Width(2).Render(""),
 		bodyStyle.Width(width).Render(""),
 	)
@@ -138,47 +138,50 @@ func wrapAlertText(value string, width int) []string {
 	lines := make([]string, 0, len(paragraphs))
 
 	for _, paragraph := range paragraphs {
-		words := strings.Fields(paragraph)
-		if len(words) == 0 {
-			lines = append(lines, "")
-			continue
-		}
-
-		line := ""
-		for _, word := range words {
-			candidate := word
-			if line != "" {
-				candidate = line + " " + word
-			}
-			if lipgloss.Width(candidate) <= width {
-				line = candidate
-				continue
-			}
-
-			if line != "" {
-				lines = append(lines, line)
-				line = ""
-			}
-
-			if lipgloss.Width(word) <= width {
-				line = word
-				continue
-			}
-
-			parts := wrapRecordViewText(word, width)
-			if len(parts) == 0 {
-				continue
-			}
-			lines = append(lines, parts[:len(parts)-1]...)
-			line = parts[len(parts)-1]
-		}
-
-		if line != "" {
-			lines = append(lines, line)
-		}
+		lines = append(lines, wrapAlertParagraph(paragraph, width)...)
 	}
 
 	return lines
+}
+
+func wrapAlertParagraph(paragraph string, width int) []string {
+	words := strings.Fields(paragraph)
+	if len(words) == 0 {
+		return []string{""}
+	}
+
+	lines := make([]string, 0, len(words))
+	line := ""
+	for _, word := range words {
+		lines, line = appendAlertWord(lines, line, word, width)
+	}
+	if line != "" {
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+func appendAlertWord(lines []string, line, word string, width int) ([]string, string) {
+	candidate := word
+	if line != "" {
+		candidate = line + " " + word
+	}
+	if lipgloss.Width(candidate) <= width {
+		return lines, candidate
+	}
+	if line != "" {
+		lines = append(lines, line)
+	}
+	if lipgloss.Width(word) <= width {
+		return lines, word
+	}
+
+	parts := wrapRecordViewText(word, width)
+	if len(parts) == 0 {
+		return lines, ""
+	}
+	lines = append(lines, parts[:len(parts)-1]...)
+	return lines, parts[len(parts)-1]
 }
 
 func alertButtonRow(message, highlight string) int {

@@ -174,7 +174,7 @@ func (m model) activateSync() (tea.Model, tea.Cmd) {
 		}
 		password := m.syncFeature.form.password.value
 		m.syncFeature.form.password.setValue("")
-		requestCtx, requestID := m.operations.begin(m.ctx, operationSync)
+		requestCtx, requestID := m.operations.begin(m.operationDone, operationSync)
 		return m, m.operationCommand(operationSync, syncCommand(requestCtx, m.backend, requestID, password))
 	case syncCancel:
 		m.closeSync()

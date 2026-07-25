@@ -54,7 +54,7 @@ func (m *model) openRecordEdit() tea.Cmd {
 	}
 
 	m.operations.cancel(operationEditRecord)
-	requestCtx, requestID := m.operations.begin(m.ctx, operationLoadRecordForEdit)
+	requestCtx, requestID := m.operations.begin(m.operationDone, operationLoadRecordForEdit)
 	m.recordFeature.edit.begin(m.recordMetadataByID(recordID), dialogNone)
 	m.dialog = dialogRecordEdit
 	m.activeButton = 0
@@ -143,7 +143,7 @@ func (m model) activateRecordEdit() (tea.Model, tea.Cmd) {
 		if m.backend == nil {
 			return m, nil
 		}
-		requestCtx, requestID := m.operations.begin(m.ctx, operationEditRecord)
+		requestCtx, requestID := m.operations.begin(m.operationDone, operationEditRecord)
 		return m, m.operationCommand(operationEditRecord, recordEditCommand(
 			requestCtx,
 			m.backend,

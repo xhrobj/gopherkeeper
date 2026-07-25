@@ -49,7 +49,7 @@ func TestRenderRecordViewWindow_RendersStructuredDetails(t *testing.T) {
 		Payload: &recordmodel.TextPayload{Text: "first line\nsecond line", Metadata: "private note"},
 	}
 	state := recordViewState{status: recordViewReady, record: record}
-	styled := renderRecordViewWindow(newTheme(), 72, 24, state, 0, false, false, "")
+	styled := renderRecordViewWindow(newTheme(), newRecordViewWindowOptions(72, 24, state, 0, false, false, ""))
 	plain := ansi.Strip(styled)
 
 	for _, want := range []string{
@@ -82,7 +82,7 @@ func TestRenderRecordViewWindow_LoadingUsesTitleSpinnerAndDisabledButtons(t *tes
 		status: recordViewLoading,
 		record: recordmodel.Record{Metadata: recordmodel.RecordMetadata{Type: recordmodel.RecordTypeBinary}},
 	}
-	styled := renderRecordViewWindow(theme, 72, 20, state, 1, true, true, "⠋")
+	styled := renderRecordViewWindow(theme, newRecordViewWindowOptions(72, 20, state, 1, true, true, "⠋"))
 	plain := ansi.Strip(styled)
 	if !strings.Contains(plain, "Record Binary Online ⠋") {
 		t.Fatalf("loading title has no stable type and spinner:\n%s", plain)
@@ -203,7 +203,7 @@ func TestRenderRecordViewWindow_BinaryOffersSaveAs(t *testing.T) {
 			Payload:  &recordmodel.BinaryPayload{Filename: "backup.bin", Data: []byte{0x01}},
 		},
 	}
-	plain := ansi.Strip(renderRecordViewWindow(newTheme(), 72, 20, state, 0, false, false, ""))
+	plain := ansi.Strip(renderRecordViewWindow(newTheme(), newRecordViewWindowOptions(72, 20, state, 0, false, false, "")))
 	if !strings.Contains(plain, "< Save As... >") || !strings.Contains(plain, "< Close >") {
 		t.Fatalf("binary record actions are missing:\n%s", plain)
 	}
@@ -220,7 +220,7 @@ func TestRecordViewLines_CardholderIsRenderedUppercase(t *testing.T) {
 			},
 		},
 	}
-	plain := ansi.Strip(renderRecordViewWindow(newTheme(), 72, 24, state, 0, false, false, ""))
+	plain := ansi.Strip(renderRecordViewWindow(newTheme(), newRecordViewWindowOptions(72, 24, state, 0, false, false, "")))
 	if !strings.Contains(plain, "JOEL MILLER") {
 		t.Fatalf("cardholder is not rendered uppercase:\n%s", plain)
 	}
@@ -245,7 +245,7 @@ func TestRecordViewLines_CardPreviewLooksLikeCard(t *testing.T) {
 			},
 		},
 	}
-	plain := ansi.Strip(renderRecordViewWindow(newTheme(), 72, 24, state, 0, false, false, ""))
+	plain := ansi.Strip(renderRecordViewWindow(newTheme(), newRecordViewWindowOptions(72, 24, state, 0, false, false, "")))
 	for _, want := range []string{"Record Card Online", "•••• •••• •••• 1111", "JOEL MILLER", "▒▒▒▒", "exp 12/30", "[cvv •••]"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("card preview does not contain %q:\n%s", want, plain)
@@ -269,7 +269,7 @@ func TestRenderRecordViewAndDeleteForms_KeepOneBlankRowAroundButtons(t *testing.
 		t.Run(string(record.Metadata.Type), func(t *testing.T) {
 			viewState := recordViewState{status: recordViewReady, record: record}
 			viewHeight := recordViewWindowHeightForState(theme, 100, 40, viewState)
-			assertOneBlankRowAroundRecordButtons(t, ansi.Strip(renderRecordViewWindow(theme, recordViewWindowWidth(100), viewHeight, viewState, 0, false, false, "")), "< Close >")
+			assertOneBlankRowAroundRecordButtons(t, ansi.Strip(renderRecordViewWindow(theme, newRecordViewWindowOptions(recordViewWindowWidth(100), viewHeight, viewState, 0, false, false, ""))), "< Close >")
 
 			deleteState := recordDeleteState{metadata: record.Metadata}
 			assertOneBlankRowAroundRecordButtons(t, ansi.Strip(renderRecordDeleteWindow(theme, recordDeleteWindowWidth(100), deleteState, false, false, "", 1)), "< Cancel >")

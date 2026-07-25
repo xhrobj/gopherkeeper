@@ -176,7 +176,7 @@ func TestModel_CloseRecordCreateClearsSecretsAndCancelsRequest(t *testing.T) {
 	m := newRecordCreateTestModel(t, recordCreateBackendStub{})
 	m.openRecordCreate(0)
 	m.recordFeature.createForm.password.setValue("secret")
-	_, requestID := m.operations.begin(m.ctx, operationCreateRecord)
+	_, requestID := m.operations.begin(m.operationDone, operationCreateRecord)
 
 	m.closeRecordCreate()
 	if m.dialog != dialogNone || m.recordFeature.createForm.password.value != "" {

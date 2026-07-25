@@ -370,35 +370,42 @@ func TestModel_RecordViewButtonBoundsIgnoreButtonLabelsInPayload(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			m := newTestModel(t, config.Config{}, buildinfo.Info{})
-			m.width = 100
-			m.height = 36
-			m.dialog = dialogRecordView
-			m.recordFeature.view = recordViewState{status: recordViewReady, record: test.record}
-
-			window := m.renderDialog()
-			lines := strings.Split(ansi.Strip(window), "\n")
-			buttonRow := -1
-			for index := len(lines) - 1; index >= 0; index-- {
-				if strings.Contains(lines[index], test.label) {
-					buttonRow = index
-					break
-				}
-			}
-			if buttonRow < 0 {
-				t.Fatalf("rendered button %q was not found", test.label)
-			}
-
-			windowY := max(2, (m.height-lipgloss.Height(window))/2)
-			buttons := m.dialogButtonBounds()
-			if len(buttons) == 0 {
-				t.Fatal("record view button bounds are empty")
-			}
-			if buttons[0].y != windowY+buttonRow {
-				t.Fatalf("button y = %d, want rendered row %d", buttons[0].y, windowY+buttonRow)
-			}
+			assertRecordViewButtonBounds(t, test.record, test.label)
 		})
 	}
+}
+
+func assertRecordViewButtonBounds(t *testing.T, record recordmodel.Record, label string) {
+	t.Helper()
+	m := newTestModel(t, config.Config{}, buildinfo.Info{})
+	m.width = 100
+	m.height = 36
+	m.dialog = dialogRecordView
+	m.recordFeature.view = recordViewState{status: recordViewReady, record: record}
+
+	window := m.renderDialog()
+	buttonRow := lastLineIndexContaining(strings.Split(ansi.Strip(window), "\n"), label)
+	if buttonRow < 0 {
+		t.Fatalf("rendered button %q was not found", label)
+	}
+
+	buttons := m.dialogButtonBounds()
+	if len(buttons) == 0 {
+		t.Fatal("record view button bounds are empty")
+	}
+	wantY := max(2, (m.height-lipgloss.Height(window))/2) + buttonRow
+	if buttons[0].y != wantY {
+		t.Fatalf("button y = %d, want rendered row %d", buttons[0].y, wantY)
+	}
+}
+
+func lastLineIndexContaining(lines []string, value string) int {
+	for index := len(lines) - 1; index >= 0; index-- {
+		if strings.Contains(lines[index], value) {
+			return index
+		}
+	}
+	return -1
 }
 
 func TestModel_MouseClickIgnoresDisabledConfigSave(t *testing.T) {

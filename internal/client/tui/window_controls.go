@@ -44,7 +44,7 @@ func renderControls(t theme, width int) string {
 		spacerRow,
 		renderControlRow(t, width, "Quit", "Ctrl+Q"),
 		spacerRow,
-		renderControlsButton(t, width, "< OK >"),
+		renderControlsButton(t, width, okButtonLabel),
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, rows...)

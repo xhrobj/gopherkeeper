@@ -40,18 +40,7 @@ func (a *Application) Sync(ctx context.Context, request SyncRequest) (result Syn
 
 	syncCompleted := false
 	defer func() {
-		closeErr := repository.Close()
-		if closeErr == nil || syncCompleted {
-			return
-		}
-
-		result = SyncResult{}
-		wrapped := newUserError("failed to close encrypted local cache", closeErr)
-		if err == nil {
-			err = wrapped
-			return
-		}
-		err = errors.Join(err, wrapped)
+		result, err = finishSync(repository, syncCompleted, result, err)
 	}()
 
 	serverRecords, err := a.records.ListRecords(ctx, authentication.AccessToken)
@@ -98,6 +87,25 @@ func (a *Application) Sync(ctx context.Context, request SyncRequest) (result Syn
 	syncCompleted = true
 
 	return syncResult(plan), nil
+}
+
+func finishSync(
+	repository SyncCacheRepository,
+	syncCompleted bool,
+	result SyncResult,
+	err error,
+) (SyncResult, error) {
+	closeErr := repository.Close()
+	if closeErr == nil || syncCompleted {
+		return result, err
+	}
+
+	wrapped := newUserError("failed to close encrypted local cache", closeErr)
+	if err == nil {
+		return SyncResult{}, wrapped
+	}
+
+	return SyncResult{}, errors.Join(err, wrapped)
 }
 
 func (a *Application) authenticateSync(

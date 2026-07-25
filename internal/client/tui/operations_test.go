@@ -15,12 +15,12 @@ import (
 func TestOperationCoordinator_Lifecycle(t *testing.T) {
 	operations := operationCoordinator{}
 
-	firstContext, firstID := operations.begin(context.Background(), operationLogin)
+	firstContext, firstID := operations.begin(context.Background().Done(), operationLogin)
 	if !operations.pending(operationLogin) || !operations.accepts(operationLogin, firstID) {
 		t.Fatalf("first operation = pending %t accepts %t", operations.pending(operationLogin), operations.accepts(operationLogin, firstID))
 	}
 
-	secondContext, secondID := operations.begin(context.Background(), operationLogin)
+	secondContext, secondID := operations.begin(context.Background().Done(), operationLogin)
 	if secondID == firstID || operations.accepts(operationLogin, firstID) || !operations.accepts(operationLogin, secondID) {
 		t.Fatalf("restarted operation = first %d second %d accepts first %t accepts second %t", firstID, secondID, operations.accepts(operationLogin, firstID), operations.accepts(operationLogin, secondID))
 	}
@@ -35,8 +35,8 @@ func TestOperationCoordinator_Lifecycle(t *testing.T) {
 
 func TestOperationCoordinator_TracksKindsIndependently(t *testing.T) {
 	operations := operationCoordinator{}
-	_, loginID := operations.begin(context.Background(), operationLogin)
-	_, binaryID := operations.begin(context.Background(), operationBinarySave)
+	_, loginID := operations.begin(context.Background().Done(), operationLogin)
+	_, binaryID := operations.begin(context.Background().Done(), operationBinarySave)
 
 	operations.finish(operationLogin)
 
@@ -50,7 +50,7 @@ func TestOperationCoordinator_TracksKindsIndependently(t *testing.T) {
 
 func TestOperationCoordinator_CancelInvalidatesResult(t *testing.T) {
 	operations := operationCoordinator{}
-	operationContext, requestID := operations.begin(context.Background(), operationViewRecord)
+	operationContext, requestID := operations.begin(context.Background().Done(), operationViewRecord)
 
 	operations.cancel(operationViewRecord)
 
@@ -62,12 +62,12 @@ func TestOperationCoordinator_CancelInvalidatesResult(t *testing.T) {
 
 func TestOperationCoordinator_CancelAllIncludesLocalOperations(t *testing.T) {
 	operations := operationCoordinator{}
-	loginContext, _ := operations.begin(context.Background(), operationLogin)
-	logoutContext, _ := operations.begin(context.Background(), operationLogout)
-	binaryContext, _ := operations.begin(context.Background(), operationBinarySave)
-	cacheContext, _ := operations.begin(context.Background(), operationOpenCache)
-	cachedRecordContext, _ := operations.begin(context.Background(), operationViewCachedRecord)
-	syncContext, _ := operations.begin(context.Background(), operationSync)
+	loginContext, _ := operations.begin(context.Background().Done(), operationLogin)
+	logoutContext, _ := operations.begin(context.Background().Done(), operationLogout)
+	binaryContext, _ := operations.begin(context.Background().Done(), operationBinarySave)
+	cacheContext, _ := operations.begin(context.Background().Done(), operationOpenCache)
+	cachedRecordContext, _ := operations.begin(context.Background().Done(), operationViewCachedRecord)
+	syncContext, _ := operations.begin(context.Background().Done(), operationSync)
 
 	operations.cancelAll()
 
@@ -153,28 +153,39 @@ func TestModel_CurrentNetworkBusyStateCoversBlockingOperations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			m := newTestModel(t, config.Config{}, buildinfo.Info{})
-			test.prepare(&m)
-
-			state := m.currentNetworkBusyState()
-			if state.operation != test.operation || state.message != test.message || state.inline != test.inline {
-				t.Fatalf("busy state = %#v, want operation %d message %q inline %t", state, test.operation, test.message, test.inline)
-			}
-			if !m.networkBusy() || !m.interactionBlocked() || !m.spinnerPending() {
-				t.Fatal("network operation did not activate the global busy state")
-			}
-
-			_, visible := m.networkBusyPlacement()
-			if visible == test.inline {
-				t.Fatalf("busy overlay visible = %t, want %t", visible, !test.inline)
-			}
-			if !test.inline {
-				assertViewContains(t, m.View().Content, "Please wait", test.message+"...", m.spinnerFrameValue())
-			} else {
-				assertViewExcludes(t, m.View().Content, "Please wait")
-			}
+			assertBlockingOperationState(t, test.prepare, test.operation, test.message, test.inline)
 		})
 	}
+}
+
+func assertBlockingOperationState(
+	t *testing.T,
+	prepare func(*model),
+	operation operationKind,
+	message string,
+	inline bool,
+) {
+	t.Helper()
+	m := newTestModel(t, config.Config{}, buildinfo.Info{})
+	prepare(&m)
+
+	state := m.currentNetworkBusyState()
+	if state.operation != operation || state.message != message || state.inline != inline {
+		t.Fatalf("busy state = %#v, want operation %d message %q inline %t", state, operation, message, inline)
+	}
+	if !m.networkBusy() || !m.interactionBlocked() || !m.spinnerPending() {
+		t.Fatal("network operation did not activate the global busy state")
+	}
+
+	_, visible := m.networkBusyPlacement()
+	if visible == inline {
+		t.Fatalf("busy overlay visible = %t, want %t", visible, !inline)
+	}
+	if inline {
+		assertViewExcludes(t, m.View().Content, "Please wait")
+		return
+	}
+	assertViewContains(t, m.View().Content, "Please wait", message+"...", m.spinnerFrameValue())
 }
 
 func TestRenderNetworkBusyWindow_KeepsSpinnerInTitleAndUsesASCIIDotsInBody(t *testing.T) {

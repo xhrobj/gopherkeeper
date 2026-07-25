@@ -118,7 +118,7 @@ func (m *model) beginRecordView(recordID string) tea.Cmd {
 	m.activeButton = recordViewDefaultButton(m.recordFeature.view.record)
 
 	if source == recordSourceCache {
-		requestCtx, requestID := m.operations.begin(m.ctx, operationViewCachedRecord)
+		requestCtx, requestID := m.operations.begin(m.operationDone, operationViewCachedRecord)
 
 		return m.operationCommand(
 			operationViewCachedRecord,
@@ -126,7 +126,7 @@ func (m *model) beginRecordView(recordID string) tea.Cmd {
 		)
 	}
 
-	requestCtx, requestID := m.operations.begin(m.ctx, operationViewRecord)
+	requestCtx, requestID := m.operations.begin(m.operationDone, operationViewRecord)
 
 	return m.operationCommand(operationViewRecord, recordViewCommand(requestCtx, m.backend, requestID, recordID))
 }
@@ -254,18 +254,31 @@ func (m model) updateRecordView(key string) (tea.Model, tea.Cmd) {
 	if m.recordFeature.view.status != recordViewReady {
 		return m, nil
 	}
+	if updated, command, handled := m.updateRecordViewControls(key); handled {
+		return updated, command
+	}
+
+	m.updateRecordViewScroll(key)
+	return m, nil
+}
+
+func (m model) updateRecordViewControls(key string) (tea.Model, tea.Cmd, bool) {
 
 	hasTwoButtons := len(recordViewButtonLabels(m.recordFeature.view)) == 2
 	if key == "tab" || key == "shift+tab" || key == "left" || key == "right" {
 		if hasTwoButtons {
 			m.activeButton = 1 - m.activeButton
 		}
-		return m, nil
+		return m, nil, true
 	}
 	if key == "enter" {
-		return m.activateDialogButton()
+		updated, command := m.activateDialogButton()
+		return updated, command, true
 	}
+	return m, nil, false
+}
 
+func (m *model) updateRecordViewScroll(key string) {
 	pageSize := recordViewPageSizeForState(m.theme, m.width, m.height, m.recordFeature.view)
 	lines := recordViewLines(m.theme, m.recordFeature.view, recordViewContentWidth(m.width))
 	maxOffset := max(0, len(lines)-pageSize)
@@ -294,8 +307,6 @@ func (m model) updateRecordView(key string) (tea.Model, tea.Cmd) {
 		m.recordFeature.view.offset = maxOffset
 		m.recordFeature.view.textArea.end()
 	}
-
-	return m, nil
 }
 
 func (m *model) scrollRecordViewTextArea(step int, lines []recordViewLine, pageSize int) bool {

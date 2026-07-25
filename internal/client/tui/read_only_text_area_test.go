@@ -52,7 +52,7 @@ func TestRecordView_TextAlwaysUsesReadOnlyTextArea(t *testing.T) {
 		if !state.textArea.active() {
 			t.Fatalf("text %q does not use multiline viewport", value)
 		}
-		plain := ansi.Strip(renderRecordViewWindow(newTheme(), 66, 36, state, 0, false, false, ""))
+		plain := ansi.Strip(renderRecordViewWindow(newTheme(), newRecordViewWindowOptions(66, 36, state, 0, false, false, "")))
 		for _, want := range []string{"Text:", "▲", "▼", "Notes: notes remain visible", "< Close >"} {
 			if !strings.Contains(plain, want) {
 				t.Fatalf("text view does not contain %q:\n%s", want, plain)

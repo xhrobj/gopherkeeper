@@ -125,16 +125,36 @@ func newRecordViewContentLayout(t theme, width, height int, state recordViewStat
 	return layout
 }
 
-func renderRecordViewWindow(
-	t theme,
+type recordViewWindowOptions struct {
+	width        int
+	height       int
+	state        recordViewState
+	activeButton int
+	pending      bool
+	blocked      bool
+	spinnerFrame string
+}
+
+func newRecordViewWindowOptions(
 	width, height int,
 	state recordViewState,
 	activeButton int,
-	pending bool,
-	blocked bool,
+	pending, blocked bool,
 	spinnerFrame string,
-) string {
-	layout := newRecordViewContentLayout(t, width, height, state)
+) recordViewWindowOptions {
+	return recordViewWindowOptions{
+		width:        width,
+		height:       height,
+		state:        state,
+		activeButton: activeButton,
+		pending:      pending,
+		blocked:      blocked,
+		spinnerFrame: spinnerFrame,
+	}
+}
+
+func renderRecordViewWindow(t theme, options recordViewWindowOptions) string {
+	layout := newRecordViewContentLayout(t, options.width, options.height, options.state)
 	contentWidth := layout.window.contentWidth
 	bodyHeight := layout.window.bodyHeight
 
@@ -142,24 +162,30 @@ func renderRecordViewWindow(
 	for _, line := range layout.visible {
 		rows = append(rows, renderRecordViewLine(t, contentWidth, line))
 	}
-	rows = append(rows, renderRecordViewButtons(t, contentWidth, state, activeButton, blocked))
+	rows = append(rows, renderRecordViewButtons(t, contentWidth, options.state, options.activeButton, options.blocked))
 
 	title := "Record"
-	if state.record.Metadata.Type != "" {
-		title = "Record " + recordTypeTitle(state.record.Metadata.Type)
+	if options.state.record.Metadata.Type != "" {
+		title = "Record " + recordTypeTitle(options.state.record.Metadata.Type)
 	}
 
-	if state.source == recordSourceCache {
+	if options.state.source == recordSourceCache {
 		title += " from Cache"
-		if state.login != "" {
-			title += ": " + state.login
+		if options.state.login != "" {
+			title += ": " + options.state.login
 		}
 	} else {
 		title += " Online"
 	}
 
-	titleLine := renderWindowTitle(t.windowTitle, width, fitSingleLine(title, width), spinnerFrame, pending)
-	body := t.windowBody.Width(width).Height(bodyHeight).Padding(1, 2).Render(strings.Join(rows, "\n"))
+	titleLine := renderWindowTitle(
+		t.windowTitle,
+		options.width,
+		fitSingleLine(title, options.width),
+		options.spinnerFrame,
+		options.pending,
+	)
+	body := t.windowBody.Width(options.width).Height(bodyHeight).Padding(1, 2).Render(strings.Join(rows, "\n"))
 
 	return lipgloss.JoinVertical(lipgloss.Left, titleLine, body)
 }
@@ -204,7 +230,6 @@ func renderRecordViewLineWithStyles(
 
 func recordViewLines(t theme, state recordViewState, width int) []recordViewLine {
 	record := state.record
-	reveal := state.revealed
 	metadata := record.Metadata
 
 	lines := make([]recordViewLine, 0, 16)
@@ -212,45 +237,95 @@ func recordViewLines(t theme, state recordViewState, width int) []recordViewLine
 	lines = append(lines, recordViewLine{})
 	lines = appendRecordViewField(lines, "Title", metadata.Title, width)
 	lines = append(lines, recordViewLine{})
-
-	switch payload := record.Payload.(type) {
-	case *recordmodel.TextPayload:
-		if payload != nil {
-			if state.textArea.active() {
-				lines = append(lines, recordViewLine{label: "Text:", textArea: true})
-				for _, row := range renderReadOnlyTextArea(t, state.textArea, width) {
-					lines = append(lines, recordViewLine{rendered: row, textArea: true})
-				}
-			} else {
-				lines = appendRecordViewField(lines, "Text", payload.Text, width)
-			}
-			lines = appendRecordViewNotes(lines, payload.Metadata, width)
-		}
-	case *recordmodel.CredentialsPayload:
-		if payload != nil {
-			lines = appendRecordViewField(lines, "Login", payload.Login, width)
-			lines = appendRecordViewField(lines, "Password", visibleSecret(payload.Password, reveal), width)
-			if payload.URL != "" {
-				lines = appendRecordViewField(lines, "URL", payload.URL, width)
-			}
-			lines = appendRecordViewNotes(lines, payload.Metadata, width)
-		}
-	case *recordmodel.CardPayload:
-		if payload != nil {
-			lines = append(lines, buildCardPreviewLines(t, payload, reveal, width)...)
-			lines = appendRecordViewNotes(lines, payload.Metadata, width)
-		}
-	case *recordmodel.BinaryPayload:
-		if payload != nil {
-			lines = appendRecordViewField(lines, "Filename", payload.Filename, width)
-			lines = appendRecordViewField(lines, "Size", fmt.Sprintf("%d bytes", len(payload.Data)), width)
-			lines = appendRecordViewNotes(lines, payload.Metadata, width)
-		}
-	default:
-		lines = append(lines, recordViewLine{message: "Unsupported record payload"})
-	}
+	lines = append(lines, recordViewPayloadLines(t, state, width)...)
 
 	return lines
+}
+
+func recordViewPayloadLines(t theme, state recordViewState, width int) []recordViewLine {
+	switch payload := state.record.Payload.(type) {
+	case *recordmodel.TextPayload:
+		return recordViewTextPayloadLines(t, state, payload, width)
+	case *recordmodel.CredentialsPayload:
+		return recordViewCredentialsPayloadLines(payload, state.revealed, width)
+	case *recordmodel.CardPayload:
+		return recordViewCardPayloadLines(t, payload, state.revealed, width)
+	case *recordmodel.BinaryPayload:
+		return recordViewBinaryPayloadLines(payload, width)
+	default:
+		return []recordViewLine{{message: "Unsupported record payload"}}
+	}
+}
+
+func recordViewTextPayloadLines(
+	t theme,
+	state recordViewState,
+	payload *recordmodel.TextPayload,
+	width int,
+) []recordViewLine {
+	if payload == nil {
+		return nil
+	}
+
+	lines := make([]recordViewLine, 0, 4)
+
+	if state.textArea.active() {
+		lines = append(lines, recordViewLine{label: "Text:", textArea: true})
+		for _, row := range renderReadOnlyTextArea(t, state.textArea, width) {
+			lines = append(lines, recordViewLine{rendered: row, textArea: true})
+		}
+	} else {
+		lines = appendRecordViewField(lines, "Text", payload.Text, width)
+	}
+
+	return appendRecordViewNotes(lines, payload.Metadata, width)
+}
+
+func recordViewCredentialsPayloadLines(
+	payload *recordmodel.CredentialsPayload,
+	reveal bool,
+	width int,
+) []recordViewLine {
+	if payload == nil {
+		return nil
+	}
+
+	lines := make([]recordViewLine, 0, 4)
+	lines = appendRecordViewField(lines, "Login", payload.Login, width)
+	lines = appendRecordViewField(lines, "Password", visibleSecret(payload.Password, reveal), width)
+
+	if payload.URL != "" {
+		lines = appendRecordViewField(lines, "URL", payload.URL, width)
+	}
+
+	return appendRecordViewNotes(lines, payload.Metadata, width)
+}
+
+func recordViewCardPayloadLines(
+	t theme,
+	payload *recordmodel.CardPayload,
+	reveal bool,
+	width int,
+) []recordViewLine {
+	if payload == nil {
+		return nil
+	}
+
+	lines := buildCardPreviewLines(t, payload, reveal, width)
+
+	return appendRecordViewNotes(lines, payload.Metadata, width)
+}
+
+func recordViewBinaryPayloadLines(payload *recordmodel.BinaryPayload, width int) []recordViewLine {
+	if payload == nil {
+		return nil
+	}
+
+	lines := make([]recordViewLine, 0, 3)
+	lines = appendRecordViewField(lines, "Filename", payload.Filename, width)
+	lines = appendRecordViewField(lines, "Size", fmt.Sprintf("%d bytes", len(payload.Data)), width)
+
+	return appendRecordViewNotes(lines, payload.Metadata, width)
 }
 
 func recordViewTextAreaRange(lines []recordViewLine) (int, int, bool) {

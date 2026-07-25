@@ -6,6 +6,11 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/client/failure"
 )
 
+const (
+	okButtonLabel = "< OK >"
+	menuHintText  = "F10 = Menu"
+)
+
 func clamp(value, minimum, maximum int) int {
 	return min(max(value, minimum), maximum)
 }

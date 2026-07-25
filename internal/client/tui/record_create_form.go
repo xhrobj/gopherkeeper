@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -99,47 +100,68 @@ func newRecordEditForm(record recordmodel.Record) recordForm {
 	form.editing = true
 	form.recordMetadata = record.Metadata
 	form.title.setValue(record.Metadata.Title)
-
-	switch payload := record.Payload.(type) {
-	case *recordmodel.TextPayload:
-		if payload != nil {
-			form.text.setValue(payload.Text)
-			form.textOriginal = payload.Text
-			form.metadata.setValue(payload.Metadata)
-		}
-	case *recordmodel.CredentialsPayload:
-		if payload != nil {
-			form.login.setValue(payload.Login)
-			form.password.setValue(payload.Password)
-			form.url.setValue(payload.URL)
-			form.metadata.setValue(payload.Metadata)
-		}
-	case *recordmodel.CardPayload:
-		if payload != nil {
-			form.number.setValue(payload.Number)
-			form.cardholder.setValue(payload.Cardholder)
-			if payload.ExpiryMonth != nil && payload.ExpiryYear != nil {
-				form.expiryMonth.setValue(strconv.Itoa(*payload.ExpiryMonth))
-				if *payload.ExpiryMonth < 10 {
-					form.expiryMonth.setValue("0" + form.expiryMonth.value)
-				}
-				form.expiryYear.setValue(strconv.Itoa(*payload.ExpiryYear))
-				if *payload.ExpiryYear < 10 {
-					form.expiryYear.setValue("0" + form.expiryYear.value)
-				}
-			}
-			form.cvv.setValue(payload.CVV)
-			form.metadata.setValue(payload.Metadata)
-		}
-	case *recordmodel.BinaryPayload:
-		if payload != nil {
-			form.filename = payload.Filename
-			form.metadata.setValue(payload.Metadata)
-			form.binaryExisting = payload.Data != nil
-		}
-	}
-
+	populateRecordEditForm(&form, record.Payload)
 	return form
+}
+
+func populateRecordEditForm(form *recordForm, recordPayload recordmodel.RecordPayload) {
+	switch payload := recordPayload.(type) {
+	case *recordmodel.TextPayload:
+		populateTextRecordEditForm(form, payload)
+	case *recordmodel.CredentialsPayload:
+		populateCredentialsRecordEditForm(form, payload)
+	case *recordmodel.CardPayload:
+		populateCardRecordEditForm(form, payload)
+	case *recordmodel.BinaryPayload:
+		populateBinaryRecordEditForm(form, payload)
+	}
+}
+
+func populateTextRecordEditForm(form *recordForm, payload *recordmodel.TextPayload) {
+	if payload == nil {
+		return
+	}
+	form.text.setValue(payload.Text)
+	form.textOriginal = payload.Text
+	form.metadata.setValue(payload.Metadata)
+}
+
+func populateCredentialsRecordEditForm(form *recordForm, payload *recordmodel.CredentialsPayload) {
+	if payload == nil {
+		return
+	}
+	form.login.setValue(payload.Login)
+	form.password.setValue(payload.Password)
+	form.url.setValue(payload.URL)
+	form.metadata.setValue(payload.Metadata)
+}
+
+func populateCardRecordEditForm(form *recordForm, payload *recordmodel.CardPayload) {
+	if payload == nil {
+		return
+	}
+	form.number.setValue(payload.Number)
+	form.cardholder.setValue(payload.Cardholder)
+	populateCardExpiry(form, payload.ExpiryMonth, payload.ExpiryYear)
+	form.cvv.setValue(payload.CVV)
+	form.metadata.setValue(payload.Metadata)
+}
+
+func populateCardExpiry(form *recordForm, month, year *int) {
+	if month == nil || year == nil {
+		return
+	}
+	form.expiryMonth.setValue(fmt.Sprintf("%02d", *month))
+	form.expiryYear.setValue(fmt.Sprintf("%02d", *year))
+}
+
+func populateBinaryRecordEditForm(form *recordForm, payload *recordmodel.BinaryPayload) {
+	if payload == nil {
+		return
+	}
+	form.filename = payload.Filename
+	form.metadata.setValue(payload.Metadata)
+	form.binaryExisting = payload.Data != nil
 }
 
 func (form recordForm) controls() []recordFormControl {
@@ -470,58 +492,96 @@ func (input recordFormInput) buildPayload(
 		return nil, err
 	}
 
-	var payload recordmodel.RecordPayload
-
-	switch input.recordType {
-	case recordmodel.RecordTypeText:
-		payload = &recordmodel.TextPayload{Text: input.text, Metadata: input.metadata}
-	case recordmodel.RecordTypeCredentials:
-		payload = &recordmodel.CredentialsPayload{
-			Login: input.login, Password: input.password, URL: input.url, Metadata: input.metadata,
-		}
-	case recordmodel.RecordTypeCard:
-		month, year, err := parseRecordCardExpiry(input.expiryMonth, input.expiryYear)
-		if err != nil {
-			return nil, err
-		}
-
-		payload = &recordmodel.CardPayload{
-			Number: input.number, Cardholder: input.cardholder,
-			ExpiryMonth: month, ExpiryYear: year, CVV: input.cvv, Metadata: input.metadata,
-		}
-	case recordmodel.RecordTypeBinary:
-		if input.editing {
-			if input.filePath == "" && !input.binaryExisting {
-				return nil, errors.New("binary payload is required")
-			}
-		} else if input.filePath == "" {
-			return nil, errors.New("binary file path is required")
-		}
-
-		filename := input.filename
-		var data []byte
-		if input.filePath != "" {
-			readFilename, readData, err := readBinary(input.filePath)
-			if err != nil {
-				return nil, err
-			}
-			filename = readFilename
-			data = readData
-		} else if existingPayload, ok := existing.(*recordmodel.BinaryPayload); ok && existingPayload != nil {
-			data = cloneBinaryData(existingPayload.Data)
-		}
-		payload = &recordmodel.BinaryPayload{
-			Filename: filename, Data: data, Metadata: input.metadata,
-		}
-	default:
-		return nil, recordmodel.ErrRecordTypeUnsupported
+	payload, err := input.payloadForType(readBinary, existing)
+	if err != nil {
+		return nil, err
 	}
-
 	if err := payload.Validate(); err != nil {
 		return nil, err
 	}
 
 	return payload, nil
+}
+
+func (input recordFormInput) payloadForType(
+	readBinary binaryFileReader,
+	existing recordmodel.RecordPayload,
+) (recordmodel.RecordPayload, error) {
+	switch input.recordType {
+	case recordmodel.RecordTypeText:
+		return &recordmodel.TextPayload{Text: input.text, Metadata: input.metadata}, nil
+	case recordmodel.RecordTypeCredentials:
+		return &recordmodel.CredentialsPayload{
+			Login: input.login, Password: input.password, URL: input.url, Metadata: input.metadata,
+		}, nil
+	case recordmodel.RecordTypeCard:
+		return input.cardPayload()
+	case recordmodel.RecordTypeBinary:
+		return input.binaryPayload(readBinary, existing)
+	default:
+		return nil, recordmodel.ErrRecordTypeUnsupported
+	}
+}
+
+func (input recordFormInput) cardPayload() (recordmodel.RecordPayload, error) {
+	month, year, err := parseRecordCardExpiry(input.expiryMonth, input.expiryYear)
+	if err != nil {
+		return nil, err
+	}
+
+	return &recordmodel.CardPayload{
+		Number: input.number, Cardholder: input.cardholder,
+		ExpiryMonth: month, ExpiryYear: year, CVV: input.cvv, Metadata: input.metadata,
+	}, nil
+}
+
+func (input recordFormInput) binaryPayload(
+	readBinary binaryFileReader,
+	existing recordmodel.RecordPayload,
+) (recordmodel.RecordPayload, error) {
+	if err := input.validateBinarySelection(); err != nil {
+		return nil, err
+	}
+
+	filename, data, err := input.binaryContent(readBinary, existing)
+	if err != nil {
+		return nil, err
+	}
+
+	return &recordmodel.BinaryPayload{
+		Filename: filename, Data: data, Metadata: input.metadata,
+	}, nil
+}
+
+func (input recordFormInput) validateBinarySelection() error {
+	if input.editing {
+		if input.filePath == "" && !input.binaryExisting {
+			return errors.New("binary payload is required")
+		}
+		return nil
+	}
+
+	if input.filePath == "" {
+		return errors.New("binary file path is required")
+	}
+
+	return nil
+}
+
+func (input recordFormInput) binaryContent(
+	readBinary binaryFileReader,
+	existing recordmodel.RecordPayload,
+) (string, []byte, error) {
+	if input.filePath != "" {
+		return readBinary(input.filePath)
+	}
+
+	filename := input.filename
+	if existingPayload, ok := existing.(*recordmodel.BinaryPayload); ok && existingPayload != nil {
+		return filename, cloneBinaryData(existingPayload.Data), nil
+	}
+
+	return filename, nil, nil
 }
 
 func cloneBinaryData(data []byte) []byte {

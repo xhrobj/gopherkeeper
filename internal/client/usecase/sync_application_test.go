@@ -165,54 +165,57 @@ func TestApplication_SyncUpdatesChangedRecords(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			getCalls := 0
-			application := newSyncTestApplication(syncTestDependencies{
-				users: successfulSyncUsers(t),
-				records: recordGatewayStub{
-					list: func(context.Context, string) ([]model.RecordMetadata, error) {
-						return []model.RecordMetadata{updatedRecord.Metadata}, nil
-					},
-					get: func(_ context.Context, _ string, recordID string) (model.Record, error) {
-						getCalls++
-						if recordID != syncUpdatedRecordID {
-							t.Errorf("GetRecord() ID = %q, want %q", recordID, syncUpdatedRecordID)
-						}
-						return updatedRecord, nil
-					},
-				},
-				sessions: successfulSyncSessions(),
-				cache: cacheRepositoryStub{
-					listState: func(context.Context) ([]RecordState, error) {
-						return []RecordState{{ID: syncUpdatedRecordID, Revision: tt.localRevision}}, nil
-					},
-					applyChanges: func(_ context.Context, upserts []model.Record, deleteIDs []string) error {
-						if !reflect.DeepEqual(upserts, []model.Record{updatedRecord}) {
-							t.Errorf("cache upserts = %#v, want updated server record", upserts)
-						}
-						if len(deleteIDs) != 0 {
-							t.Errorf("cache deletes = %#v, want empty", deleteIDs)
-						}
-						return nil
-					},
-				},
-			})
-
-			result, err := application.Sync(context.Background(), SyncRequest{Password: testPassword})
-			if err != nil {
-				t.Fatalf("Sync() error = %v", err)
-			}
-			if getCalls != 1 {
-				t.Errorf("GetRecord() calls = %d, want 1", getCalls)
-			}
-
-			wantUpdated := []RevisionChange{{
-				Metadata:      updatedRecord.Metadata,
-				LocalRevision: tt.localRevision,
-			}}
-			if !reflect.DeepEqual(result.Updated, wantUpdated) {
-				t.Errorf("updated = %#v, want %#v", result.Updated, wantUpdated)
-			}
+			assertSyncUpdatesChangedRecord(t, updatedRecord, tt.localRevision)
 		})
+	}
+}
+
+func assertSyncUpdatesChangedRecord(t *testing.T, updatedRecord model.Record, localRevision int64) {
+	t.Helper()
+
+	getCalls := 0
+	application := newSyncTestApplication(syncTestDependencies{
+		users: successfulSyncUsers(t),
+		records: recordGatewayStub{
+			list: func(context.Context, string) ([]model.RecordMetadata, error) {
+				return []model.RecordMetadata{updatedRecord.Metadata}, nil
+			},
+			get: func(_ context.Context, _ string, recordID string) (model.Record, error) {
+				getCalls++
+				if recordID != syncUpdatedRecordID {
+					t.Errorf("GetRecord() ID = %q, want %q", recordID, syncUpdatedRecordID)
+				}
+				return updatedRecord, nil
+			},
+		},
+		sessions: successfulSyncSessions(),
+		cache: cacheRepositoryStub{
+			listState: func(context.Context) ([]RecordState, error) {
+				return []RecordState{{ID: syncUpdatedRecordID, Revision: localRevision}}, nil
+			},
+			applyChanges: func(_ context.Context, upserts []model.Record, deleteIDs []string) error {
+				if !reflect.DeepEqual(upserts, []model.Record{updatedRecord}) {
+					t.Errorf("cache upserts = %#v, want updated server record", upserts)
+				}
+				if len(deleteIDs) != 0 {
+					t.Errorf("cache deletes = %#v, want empty", deleteIDs)
+				}
+				return nil
+			},
+		},
+	})
+
+	result, err := application.Sync(context.Background(), SyncRequest{Password: testPassword})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if getCalls != 1 {
+		t.Errorf("GetRecord() calls = %d, want 1", getCalls)
+	}
+
+	wantUpdated := []RevisionChange{{Metadata: updatedRecord.Metadata, LocalRevision: localRevision}}
+	if !reflect.DeepEqual(result.Updated, wantUpdated) {
+		t.Errorf("updated = %#v, want %#v", result.Updated, wantUpdated)
 	}
 }
 

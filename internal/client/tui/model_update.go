@@ -101,23 +101,34 @@ func (m model) handleCurrentUserResult(msg currentUserResultMsg) (tea.Model, tea
 	previousLogin := m.authentication.session.login
 	m.operations.finish(operationCurrentUser)
 
-	if msg.err == nil {
-		m.authentication.session = authSession{state: authAuthenticated, login: msg.login}
-		if checkMode == currentUserCheckManual {
-			if m.recordFeature.workspace.open && previousLogin != msg.login {
-				m.closeRecordWorkspace()
-			}
-			m.dialog = dialogCurrentUser
-			m.activeButton = 0
-			return m, nil
-		}
-		if m.dialog == dialogLogin {
-			m.dialog = dialogNone
-		}
-		return m, m.beginOnlineRecordList()
+	if msg.err != nil {
+		return m.handleCurrentUserFailure(checkMode, msg.err)
 	}
+	return m.handleCurrentUserSuccess(checkMode, previousLogin, msg.login)
+}
 
-	if isNotLoggedIn(msg.err) {
+func (m model) handleCurrentUserSuccess(
+	checkMode currentUserCheckMode,
+	previousLogin,
+	login string,
+) (tea.Model, tea.Cmd) {
+	m.authentication.session = authSession{state: authAuthenticated, login: login}
+	if checkMode == currentUserCheckManual {
+		if m.recordFeature.workspace.open && previousLogin != login {
+			m.closeRecordWorkspace()
+		}
+		m.dialog = dialogCurrentUser
+		m.activeButton = 0
+		return m, nil
+	}
+	if m.dialog == dialogLogin {
+		m.dialog = dialogNone
+	}
+	return m, m.beginOnlineRecordList()
+}
+
+func (m model) handleCurrentUserFailure(checkMode currentUserCheckMode, err error) (tea.Model, tea.Cmd) {
+	if isNotLoggedIn(err) {
 		if checkMode == currentUserCheckManual {
 			m.handleSessionExpired()
 			return m, nil
@@ -132,7 +143,7 @@ func (m model) handleCurrentUserResult(msg currentUserResultMsg) (tea.Model, tea
 	}
 
 	if checkMode == currentUserCheckManual {
-		m.showAlert(alertError, "Current user check failed", cleanCurrentUserError(msg.err), dialogNone)
+		m.showAlert(alertError, "Current user check failed", cleanCurrentUserError(err), dialogNone)
 		return m, nil
 	}
 
@@ -143,7 +154,7 @@ func (m model) handleCurrentUserResult(msg currentUserResultMsg) (tea.Model, tea
 		returnDialog = dialogLogin
 	}
 
-	m.showAlert(alertError, "Session check failed", cleanCurrentUserError(msg.err), returnDialog)
+	m.showAlert(alertError, "Session check failed", cleanCurrentUserError(err), returnDialog)
 
 	return m, nil
 }
@@ -275,63 +286,122 @@ func (m model) updatePaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 
 func (m model) updateKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
+
+	if updated, command, handled := m.handleImmediateKey(key); handled {
+		return updated, command
+	}
+
+	if updated, command, handled := m.handleAlertKey(key); handled {
+		return updated, command
+	}
+
+	if updated, command, handled := m.handleMenuKey(key); handled {
+		return updated, command
+	}
+
+	if updated, command, handled := m.handleDialogOrWorkspaceKey(msg, key); handled {
+		return updated, command
+	}
+
+	return m.updateWindowKey(key)
+}
+
+func (m model) handleImmediateKey(key string) (tea.Model, tea.Cmd, bool) {
 	if key == "ctrl+c" || key == "ctrl+q" {
 		m.cancelAllRequests()
-		return m, tea.Quit
+		return m, tea.Quit, true
 	}
 
 	if m.width < minimumWidth || m.height < minimumHeight || m.interactionBlocked() {
-		return m, nil
+		return m, nil, true
 	}
 
-	if m.alert != alertNone {
-		if key == "enter" || key == "esc" {
-			m.dismissAlert()
-		}
-		return m, nil
+	return m, nil, false
+}
+
+func (m model) handleAlertKey(key string) (tea.Model, tea.Cmd, bool) {
+	if m.alert == alertNone {
+		return m, nil, false
 	}
 
+	if key == "enter" || key == "esc" {
+		m.dismissAlert()
+	}
+
+	return m, nil, true
+}
+
+func (m model) handleMenuKey(key string) (tea.Model, tea.Cmd, bool) {
 	definitions := m.currentMenuDefinitions()
 	if index, ok := menuIndexByAltKey(definitions, key); ok {
-		return m.openMenu(index)
+		updated, command := m.openMenu(index)
+		return updated, command, true
 	}
+
 	if key == "f10" {
 		if m.menuFocused || m.dropdownOpen {
 			m.closeMenu()
-			return m, nil
+		} else {
+			m.openCurrentMenu(definitions)
 		}
-		m.openCurrentMenu(definitions)
-		return m, nil
-	}
-	if m.menuFocused || m.dropdownOpen {
-		return m.updateMenu(key)
-	}
-	if updated, command, handled := m.updateDialogKey(msg, key); handled {
-		return updated, command
-	}
-	if m.dialog == dialogNone && m.recordFeature.workspace.open {
-		return m.updateRecordWorkspace(key)
+		return m, nil, true
 	}
 
+	if m.menuFocused || m.dropdownOpen {
+		updated, command := m.updateMenu(key)
+		return updated, command, true
+	}
+
+	return m, nil, false
+}
+
+func (m model) handleDialogOrWorkspaceKey(
+	msg tea.KeyPressMsg,
+	key string,
+) (tea.Model, tea.Cmd, bool) {
+	if updated, command, handled := m.updateDialogKey(msg, key); handled {
+		return updated, command, true
+	}
+
+	if m.dialog == dialogNone && m.recordFeature.workspace.open {
+		updated, command := m.updateRecordWorkspace(key)
+		return updated, command, true
+	}
+
+	return m, nil, false
+}
+
+func (m model) updateWindowKey(key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "tab", "shift+tab", "right", "left":
-		switch m.dialog {
-		case dialogAbout:
-			m.activeButton = 1 - m.activeButton
-		case dialogServerStatus:
-			m.moveServerStatusButton()
-		}
+		m.moveDialogButton()
 	case "enter":
 		return m.activateDialogButton()
 	case "esc":
-		if m.dialog != dialogNone {
-			m.closeActiveDialog()
-		} else if m.recordFeature.workspace.open {
-			m.closeRecordWorkspace()
-		}
+		m.closeVisibleWindow()
 	}
 
 	return m, nil
+}
+
+func (m *model) moveDialogButton() {
+	switch m.dialog {
+	case dialogAbout:
+		m.activeButton = 1 - m.activeButton
+	case dialogServerStatus:
+		m.moveServerStatusButton()
+	}
+}
+
+func (m *model) closeVisibleWindow() {
+	if m.dialog != dialogNone {
+		m.closeActiveDialog()
+		return
+	}
+
+	if m.recordFeature.workspace.open {
+		m.closeRecordWorkspace()
+	}
 }
 
 func (m model) updateDialogKey(msg tea.KeyPressMsg, key string) (tea.Model, tea.Cmd, bool) {

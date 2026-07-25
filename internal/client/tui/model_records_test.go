@@ -34,7 +34,7 @@ func TestModel_BeginOnlineRecordList(t *testing.T) {
 	}
 	m := newRecordsTestModel(t, config.Config{}, backend)
 
-	if command := m.beginOnlineRecordList(); command != nil {
+	if m.beginOnlineRecordList() != nil {
 		t.Fatal("guest started online record loading")
 	}
 

@@ -20,6 +20,26 @@ type serverStatusFailure struct {
 	reason string
 }
 
+type serverStatusWindowOptions struct {
+	width        int
+	address      string
+	state        serverStatusState
+	health       string
+	failure      serverStatusFailure
+	activeButton int
+	pending      bool
+	blocked      bool
+	spinnerFrame string
+}
+
+type statusButtonStyles struct {
+	background     lipgloss.Style
+	button         lipgloss.Style
+	active         lipgloss.Style
+	disabled       lipgloss.Style
+	disabledActive lipgloss.Style
+}
+
 func serverStatusCmd(
 	ctx context.Context,
 	backend Backend,
@@ -64,7 +84,7 @@ func cleanServerStatusReason(err error) string {
 func (m model) startServerStatusCheck() (tea.Model, tea.Cmd) {
 	m.activeButton = 0
 
-	requestCtx, requestID := m.operations.begin(m.ctx, operationServerStatus)
+	requestCtx, requestID := m.operations.begin(m.operationDone, operationServerStatus)
 
 	return m, m.operationCommand(operationServerStatus, serverStatusCmd(
 		requestCtx,
@@ -87,21 +107,11 @@ func serverStatusWindowWidth(screenWidth int) int {
 	return clamp(screenWidth-18, 48, 62)
 }
 
-func renderServerStatusWindow(
-	t theme,
-	width int,
-	address string,
-	state serverStatusState,
-	health string,
-	failure serverStatusFailure,
-	activeButton int,
-	pending bool,
-	blocked bool,
-	spinnerFrame string,
-) string {
+func renderServerStatusWindow(t theme, options serverStatusWindowOptions) string {
 	statusValue := ""
 	detailLabel := "Health"
 	detailValue := ""
+	failure := options.failure
 
 	bodyStyle := t.aboutBody
 	labelStyle := t.aboutLabel
@@ -109,13 +119,13 @@ func renderServerStatusWindow(
 	detailStyle := t.aboutValue
 
 	switch {
-	case pending:
+	case options.pending:
 		statusValue = "Checking..."
 		detailValue = "pending"
-	case state == serverStatusReady:
+	case options.state == serverStatusReady:
 		statusValue = "Available"
-		detailValue = health
-	case state == serverStatusFailed:
+		detailValue = options.health
+	case options.state == serverStatusFailed:
 		if failure.status == "" {
 			failure = serverStatusFailure{
 				status: "Connection error",
@@ -131,18 +141,25 @@ func renderServerStatusWindow(
 		detailStyle = t.errorText
 	}
 
-	contentWidth := max(1, width-4)
+	contentWidth := max(1, options.width-4)
 	rows := []string{
-		renderServerStatusRow(bodyStyle, labelStyle, contentWidth, "Address", address, detailStyle),
+		renderServerStatusRow(bodyStyle, labelStyle, contentWidth, "Address", options.address, detailStyle),
 		renderServerStatusRow(bodyStyle, labelStyle, contentWidth, "Status", statusValue, statusStyle),
 		renderServerStatusRow(bodyStyle, labelStyle, contentWidth, detailLabel, detailValue, detailStyle),
 		bodyStyle.Width(contentWidth).Render(""),
-		serverStatusButtonsLayout(t, contentWidth, state, pending, activeButton, blocked).content,
+		serverStatusButtonsLayout(
+			t,
+			contentWidth,
+			options.state,
+			options.pending,
+			options.activeButton,
+			options.blocked,
+		).content,
 	}
 
-	title := renderWindowTitle(t.windowTitle, width, "Server Status", spinnerFrame, pending)
+	title := renderWindowTitle(t.windowTitle, options.width, "Server Status", options.spinnerFrame, options.pending)
 	body := bodyStyle.
-		Width(width).
+		Width(options.width).
 		Padding(1, 2).
 		Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 
@@ -190,11 +207,13 @@ func serverStatusButtonsLayout(
 	}
 
 	return statusButtonsLayout(
-		background,
-		buttonStyle,
-		activeStyle,
-		disabledStyle,
-		disabledActiveStyle,
+		statusButtonStyles{
+			background:     background,
+			button:         buttonStyle,
+			active:         activeStyle,
+			disabled:       disabledStyle,
+			disabledActive: disabledActiveStyle,
+		},
 		width,
 		activeButton,
 		blocked,
@@ -202,30 +221,26 @@ func serverStatusButtonsLayout(
 }
 
 func statusButtonsLayout(
-	background lipgloss.Style,
-	buttonStyle lipgloss.Style,
-	activeStyle lipgloss.Style,
-	disabledStyle lipgloss.Style,
-	disabledActiveStyle lipgloss.Style,
+	styles statusButtonStyles,
 	width int,
 	activeButton int,
 	blocked bool,
 ) buttonRowLayout {
-	labels := []string{"< Check >", "< OK >"}
+	labels := []string{"< Check >", okButtonLabel}
 	buttons := make([]styledButton, len(labels))
 
 	for index, label := range labels {
-		style := buttonStyle
+		style := styles.button
 		if blocked {
-			style = disabledStyle
+			style = styles.disabled
 			if index == activeButton {
-				style = disabledActiveStyle
+				style = styles.disabledActive
 			}
 		} else if index == activeButton {
-			style = activeStyle
+			style = styles.active
 		}
 		buttons[index] = styledButton{label: label, style: style}
 	}
 
-	return centeredButtonRowLayout(background, width, serverStatusButtonGap, buttons)
+	return centeredButtonRowLayout(styles.background, width, serverStatusButtonGap, buttons)
 }

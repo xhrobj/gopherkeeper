@@ -1,6 +1,18 @@
 package tui
 
-import tea "charm.land/bubbletea/v2"
+import (
+	tea "charm.land/bubbletea/v2"
+	recordmodel "github.com/xhrobj/gopherkeeper/internal/model"
+)
+
+type actionTargets struct {
+	viewID        string
+	hasView       bool
+	cachedViewID  string
+	hasCachedView bool
+	deleteRecord  recordmodel.RecordMetadata
+	hasDelete     bool
+}
 
 func (m model) activateDialogButton() (tea.Model, tea.Cmd) {
 	switch m.dialog {
@@ -51,19 +63,39 @@ func (m model) activateDialogButton() (tea.Model, tea.Cmd) {
 
 func (m model) updateMenu(key string) (tea.Model, tea.Cmd) {
 	definitions := m.currentMenuDefinitions()
+	if updated, command, handled := m.activateMenuMnemonic(definitions, key); handled {
+		return updated, command
+	}
 
-	if value := []rune(key); len(value) == 1 {
-		if m.dropdownOpen {
-			if selected, item, ok := menuItemByMnemonic(definitions[m.activeMenu], value[0]); ok {
-				m.selectedItem = selected
-				return m.activate(item.action)
-			}
-		}
-		if index, ok := menuIndexByMnemonic(definitions, value[0]); ok {
-			return m.openMenu(index)
+	return m.updateMenuKey(definitions, key)
+}
+
+func (m model) activateMenuMnemonic(
+	definitions []menuDefinition,
+	key string,
+) (tea.Model, tea.Cmd, bool) {
+	value := []rune(key)
+	if len(value) != 1 {
+		return m, nil, false
+	}
+
+	if m.dropdownOpen {
+		if selected, item, ok := menuItemByMnemonic(definitions[m.activeMenu], value[0]); ok {
+			m.selectedItem = selected
+			updated, command := m.activate(item.action)
+			return updated, command, true
 		}
 	}
 
+	index, ok := menuIndexByMnemonic(definitions, value[0])
+	if !ok {
+		return m, nil, false
+	}
+	updated, command := m.openMenu(index)
+	return updated, command, true
+}
+
+func (m model) updateMenuKey(definitions []menuDefinition, key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "esc":
 		m.closeMenu()
@@ -139,30 +171,76 @@ func (m model) activate(action actionID) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	viewTarget, hasViewTarget := m.recordViewTarget()
-
-	if action == actionViewRecord && !hasViewTarget {
-		return m, nil
-	}
-
-	cachedViewTarget, hasCachedViewTarget := m.cachedRecordViewTarget()
-
-	if action == actionViewCachedRecord && !hasCachedViewTarget {
-		return m, nil
-	}
-
-	deleteTarget, hasDeleteTarget := m.recordDeleteTarget()
-
-	if action == actionDeleteRecord && !hasDeleteTarget {
+	targets := m.captureActionTargets()
+	if !targets.supports(action) {
 		return m, nil
 	}
 
 	m.prepareDialogChange(action)
 
 	switch action {
+	case actionQuit, actionServerStatus, actionConfig:
+		return m.activateSystemAction(action)
+	case actionLogin, actionRegister, actionCurrentUser, actionLogout:
+		return m.activateAccountAction(action)
+	case actionBrowseRecords, actionNewRecord, actionViewRecord, actionEditRecord, actionDeleteRecord:
+		return m.activateRecordAction(action, targets)
+	case actionBrowseCache, actionViewCachedRecord, actionSynchronize:
+		return m.activateCacheAction(action, targets)
+	case actionCloseWindow, actionControls, actionAbout:
+		return m.activateWindowAction(action)
+	default:
+		return m, nil
+	}
+}
+
+func (m model) captureActionTargets() actionTargets {
+	viewID, hasView := m.recordViewTarget()
+	cachedViewID, hasCachedView := m.cachedRecordViewTarget()
+	deleteRecord, hasDelete := m.recordDeleteTarget()
+
+	return actionTargets{
+		viewID:        viewID,
+		hasView:       hasView,
+		cachedViewID:  cachedViewID,
+		hasCachedView: hasCachedView,
+		deleteRecord:  deleteRecord,
+		hasDelete:     hasDelete,
+	}
+}
+
+func (targets actionTargets) supports(action actionID) bool {
+	switch action {
+	case actionViewRecord:
+		return targets.hasView
+	case actionViewCachedRecord:
+		return targets.hasCachedView
+	case actionDeleteRecord:
+		return targets.hasDelete
+	default:
+		return true
+	}
+}
+
+func (m model) activateSystemAction(action actionID) (tea.Model, tea.Cmd) {
+	switch action {
 	case actionQuit:
 		m.cancelAllRequests()
 		return m, tea.Quit
+	case actionServerStatus:
+		m.dialog = dialogServerStatus
+		m.activeButton = 0
+		return m.startServerStatusCheck()
+	case actionConfig:
+		m.dialog = dialogConfig
+		m.configForm = newConfigForm(m.config)
+	}
+
+	return m, nil
+}
+
+func (m model) activateAccountAction(action actionID) (tea.Model, tea.Cmd) {
+	switch action {
 	case actionLogin:
 		m.cancelSessionCheckForManualAuth()
 		m.dialog = dialogLogin
@@ -181,65 +259,108 @@ func (m model) activate(action actionID) (tea.Model, tea.Cmd) {
 		if m.authentication.session.authenticated() {
 			return m.startLogout()
 		}
+	}
+
+	return m, nil
+}
+
+func (m model) activateRecordAction(action actionID, targets actionTargets) (tea.Model, tea.Cmd) {
+	switch action {
 	case actionBrowseRecords:
-		if m.authentication.session.authenticated() && m.recordsAvailable() {
-			m.dialog = dialogNone
-			return m, m.beginOnlineRecordList()
-		}
-	case actionBrowseCache:
-		if m.backend != nil {
-			login := m.cacheFeature.form.login.value
-			if m.authentication.session.authenticated() {
-				login = m.authentication.session.login
-			}
-			m.dialog = dialogCacheBrowse
-			m.cacheFeature.form = newCacheBrowseForm(login)
-			m.activeButton = 0
-		}
+		return m.activateBrowseRecords()
 	case actionNewRecord:
-		if m.authentication.session.authenticated() && m.recordCreateAvailable() {
-			if m.recordFeature.workspace.source == recordSourceCache {
-				m.closeRecordWorkspace()
-			}
-			return m, m.openRecordTypePicker()
-		}
+		return m.activateNewRecord()
 	case actionViewRecord:
-		if hasViewTarget && m.authentication.session.authenticated() && m.recordsAvailable() {
-			return m, m.beginRecordView(viewTarget)
-		}
-	case actionViewCachedRecord:
-		if hasCachedViewTarget && m.backend != nil {
-			return m, m.beginRecordView(cachedViewTarget)
+		if m.authentication.session.authenticated() && m.recordsAvailable() {
+			return m, m.beginRecordView(targets.viewID)
 		}
 	case actionEditRecord:
 		if m.authentication.session.authenticated() && m.recordEditAvailable() {
 			return m, m.openRecordEdit()
 		}
 	case actionDeleteRecord:
-		if hasDeleteTarget && m.authentication.session.authenticated() && m.recordDeleteAvailable() {
-			m.openRecordDelete(deleteTarget)
+		if m.authentication.session.authenticated() && m.recordDeleteAvailable() {
+			m.openRecordDelete(targets.deleteRecord)
+		}
+	}
+
+	return m, nil
+}
+
+func (m model) activateBrowseRecords() (tea.Model, tea.Cmd) {
+	if !m.authentication.session.authenticated() || !m.recordsAvailable() {
+		return m, nil
+	}
+
+	m.dialog = dialogNone
+
+	return m, m.beginOnlineRecordList()
+}
+
+func (m model) activateNewRecord() (tea.Model, tea.Cmd) {
+	if !m.authentication.session.authenticated() || !m.recordCreateAvailable() {
+		return m, nil
+	}
+
+	if m.recordFeature.workspace.source == recordSourceCache {
+		m.closeRecordWorkspace()
+	}
+
+	return m, m.openRecordTypePicker()
+}
+
+func (m model) activateCacheAction(action actionID, targets actionTargets) (tea.Model, tea.Cmd) {
+	switch action {
+	case actionBrowseCache:
+		m.openCacheBrowser()
+	case actionViewCachedRecord:
+		if m.backend != nil {
+			return m, m.beginRecordView(targets.cachedViewID)
 		}
 	case actionSynchronize:
-		if m.authentication.session.authenticated() {
-			if m.recordFeature.workspace.source == recordSourceCache {
-				m.closeRecordWorkspace()
-			}
-			m.dialog = dialogSync
-			m.syncFeature = syncFeatureState{form: newSyncForm()}
-			m.activeButton = 0
-		}
+		m.openSyncDialog()
+	}
+
+	return m, nil
+}
+
+func (m *model) openCacheBrowser() {
+	if m.backend == nil {
+		return
+	}
+
+	login := m.cacheFeature.form.login.value
+
+	if m.authentication.session.authenticated() {
+		login = m.authentication.session.login
+	}
+
+	m.dialog = dialogCacheBrowse
+	m.cacheFeature.form = newCacheBrowseForm(login)
+	m.activeButton = 0
+}
+
+func (m *model) openSyncDialog() {
+	if !m.authentication.session.authenticated() {
+		return
+	}
+
+	if m.recordFeature.workspace.source == recordSourceCache {
+		m.closeRecordWorkspace()
+	}
+
+	m.dialog = dialogSync
+	m.syncFeature = syncFeatureState{form: newSyncForm()}
+	m.activeButton = 0
+}
+
+func (m model) activateWindowAction(action actionID) (tea.Model, tea.Cmd) {
+	switch action {
 	case actionControls:
 		m.dialog = dialogControls
 	case actionAbout:
 		m.dialog = dialogAbout
 		m.activeButton = 1
-	case actionServerStatus:
-		m.dialog = dialogServerStatus
-		m.activeButton = 0
-		return m.startServerStatusCheck()
-	case actionConfig:
-		m.dialog = dialogConfig
-		m.configForm = newConfigForm(m.config)
 	case actionCloseWindow:
 		if m.dialog != dialogNone {
 			m.closeActiveDialog()
@@ -353,6 +474,7 @@ func firstEnabledIndex(definition menuDefinition) int {
 			return index
 		}
 	}
+
 	return 0
 }
 
@@ -367,6 +489,7 @@ func nextEnabledIndex(definition menuDefinition, current, step int) int {
 			return current
 		}
 	}
+
 	return current
 }
 

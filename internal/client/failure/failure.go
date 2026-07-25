@@ -16,19 +16,46 @@ import (
 type Kind int
 
 const (
+	// Unknown обозначает ошибку, для которой не удалось определить категорию.
 	Unknown Kind = iota
+
+	// Canceled обозначает отменённую операцию.
 	Canceled
+
+	// Unavailable обозначает недоступный Сервер или отказ в соединении.
 	Unavailable
+
+	// HostNotFound обозначает ошибку разрешения имени узла.
 	HostNotFound
+
+	// NetworkUnreachable обозначает недоступную сеть или маршрут.
 	NetworkUnreachable
+
+	// Timeout обозначает истечение времени ожидания операции.
 	Timeout
+
+	// TLSCertificate обозначает ошибку проверки TLS-сертификата.
 	TLSCertificate
+
+	// TLSHandshake обозначает ошибку TLS-handshake.
 	TLSHandshake
+
+	// HTTPSRequired обозначает попытку HTTPS-подключения к HTTP endpoint.
 	HTTPSRequired
+
+	// Unauthorized обозначает отсутствие действующей авторизации.
 	Unauthorized
+
+	// Conflict обозначает конфликт конкурентного изменения.
 	Conflict
+
+	// NotFound обозначает отсутствие запрошенного ресурса.
 	NotFound
+
+	// Validation обозначает некорректные пользовательские данные.
 	Validation
+
+	// TooLarge обозначает превышение допустимого размера данных.
 	TooLarge
 )
 
@@ -94,10 +121,29 @@ func KindOf(err error) Kind {
 	if err == nil {
 		return Unknown
 	}
+
 	var provider kindProvider
 	if errors.As(err, &provider) {
 		return provider.FailureKind()
 	}
+	if kind := kindFromKnownErrors(err); kind != Unknown {
+		return kind
+	}
+	if kind := kindFromTypedNetworkErrors(err); kind != Unknown {
+		return kind
+	}
+
+	var urlError *url.Error
+	if errors.As(err, &urlError) && urlError.Err != nil {
+		if kind := KindOf(urlError.Err); kind != Unknown {
+			return kind
+		}
+	}
+
+	return kindFromErrorMessage(err.Error())
+}
+
+func kindFromKnownErrors(err error) Kind {
 	switch {
 	case errors.Is(err, context.Canceled):
 		return Canceled
@@ -107,8 +153,12 @@ func KindOf(err error) Kind {
 		return Unavailable
 	case errors.Is(err, syscall.ENETUNREACH), errors.Is(err, syscall.EHOSTUNREACH):
 		return NetworkUnreachable
+	default:
+		return Unknown
 	}
+}
 
+func kindFromTypedNetworkErrors(err error) Kind {
 	var dnsError *net.DNSError
 	if errors.As(err, &dnsError) {
 		if dnsError.IsTimeout {
@@ -132,19 +182,17 @@ func KindOf(err error) Kind {
 	if errors.As(err, &recordHeaderError) {
 		return TLSHandshake
 	}
-	var urlError *url.Error
-	if errors.As(err, &urlError) && urlError.Err != nil {
-		if kind := KindOf(urlError.Err); kind != Unknown {
-			return kind
-		}
-	}
 	var networkError net.Error
 	if errors.As(err, &networkError) && networkError.Timeout() {
 		return Timeout
 	}
 
+	return Unknown
+}
+
+func kindFromErrorMessage(value string) Kind {
 	// Некоторые ошибки net/http не имеют публичного отдельного типа.
-	message := strings.ToLower(err.Error())
+	message := strings.ToLower(value)
 	switch {
 	case strings.Contains(message, "server gave http response to https client"):
 		return HTTPSRequired

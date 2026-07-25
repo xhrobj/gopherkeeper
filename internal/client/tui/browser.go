@@ -11,6 +11,12 @@ import (
 
 const aboutURL = "https://practicum.yandex.ru/go-advanced/"
 
+const (
+	darwinOpenCommand  = "/usr/bin/open"
+	linuxOpenCommand   = "/usr/bin/xdg-open"
+	windowsOpenCommand = `C:\Windows\System32\rundll32.exe`
+)
+
 type openURLFunc func(string) error
 
 type openURLResultMsg struct {
@@ -38,11 +44,11 @@ func openExternalURL(value string) error {
 func browserCommand(goos, value string) (*exec.Cmd, error) {
 	switch goos {
 	case "darwin":
-		return exec.Command("open", value), nil
+		return exec.Command(darwinOpenCommand, value), nil
 	case "linux":
-		return exec.Command("xdg-open", value), nil
+		return exec.Command(linuxOpenCommand, value), nil
 	case "windows":
-		return exec.Command("rundll32", "url.dll,FileProtocolHandler", value), nil
+		return exec.Command(windowsOpenCommand, "url.dll,FileProtocolHandler", value), nil
 	default:
 		return nil, errors.New("opening links is not supported on this platform")
 	}

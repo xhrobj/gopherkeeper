@@ -199,6 +199,16 @@ type configWindowLayout struct {
 	browseBounds   []layoutBounds
 }
 
+type configPathFieldOptions struct {
+	label         string
+	required      bool
+	requiredStyle lipgloss.Style
+	field         textField
+	inputWidth    int
+	fieldActive   bool
+	browseActive  bool
+}
+
 func newConfigWindowLayout(t theme, windowWidth int) configWindowLayout {
 	contentWidth := max(1, windowWidth-4)
 	inputWidth, pathInputWidth := configInputWidths(t, contentWidth)
@@ -246,38 +256,31 @@ func renderConfigWindow(t theme, width int, form configForm, configFile string) 
 	rows := []string{
 		renderConfigField(t, "Address", true, t.configRequiredYellow, form.fields[0], inputWidth, form.focus == configAddress),
 		t.windowBody.Width(contentWidth).Render(""),
-		renderConfigPathField(
-			t,
-			"CA cert file",
-			true,
-			t.configRequiredYellow,
-			form.fields[1],
-			pathInputWidth,
-			form.focus == configCACertFile,
-			form.focus == configCACertBrowse,
-		),
+		renderConfigPathField(t, configPathFieldOptions{
+			label:         "CA cert file",
+			required:      true,
+			requiredStyle: t.configRequiredYellow,
+			field:         form.fields[1],
+			inputWidth:    pathInputWidth,
+			fieldActive:   form.focus == configCACertFile,
+			browseActive:  form.focus == configCACertBrowse,
+		}),
 		t.windowBody.Width(contentWidth).Render(""),
-		renderConfigPathField(
-			t,
-			"Session dir",
-			false,
-			lipgloss.Style{},
-			form.fields[2],
-			pathInputWidth,
-			form.focus == configSessionDir,
-			form.focus == configSessionBrowse,
-		),
+		renderConfigPathField(t, configPathFieldOptions{
+			label:        "Session dir",
+			field:        form.fields[2],
+			inputWidth:   pathInputWidth,
+			fieldActive:  form.focus == configSessionDir,
+			browseActive: form.focus == configSessionBrowse,
+		}),
 		t.windowBody.Width(contentWidth).Render(""),
-		renderConfigPathField(
-			t,
-			"Cache dir",
-			false,
-			lipgloss.Style{},
-			form.fields[3],
-			pathInputWidth,
-			form.focus == configCacheDir,
-			form.focus == configCacheBrowse,
-		),
+		renderConfigPathField(t, configPathFieldOptions{
+			label:        "Cache dir",
+			field:        form.fields[3],
+			inputWidth:   pathInputWidth,
+			fieldActive:  form.focus == configCacheDir,
+			browseActive: form.focus == configCacheBrowse,
+		}),
 		t.windowBody.Width(contentWidth).Render(""),
 		renderConfigFileField(t, configFile, inputWidth),
 		renderConfigStatus(t, contentWidth, form.errorMessage),
@@ -308,22 +311,21 @@ func renderConfigField(
 	return labelPart + gap + renderTextField(t, field, inputWidth, active)
 }
 
-func renderConfigPathField(
-	t theme,
-	label string,
-	required bool,
-	requiredStyle lipgloss.Style,
-	field textField,
-	inputWidth int,
-	fieldActive bool,
-	browseActive bool,
-) string {
+func renderConfigPathField(t theme, options configPathFieldOptions) string {
 	browse := t.button.Render(configBrowseLabel)
-	if browseActive {
+	if options.browseActive {
 		browse = t.buttonActive.Render(configBrowseLabel)
 	}
 
-	return renderConfigField(t, label, required, requiredStyle, field, inputWidth, fieldActive) +
+	return renderConfigField(
+		t,
+		options.label,
+		options.required,
+		options.requiredStyle,
+		options.field,
+		options.inputWidth,
+		options.fieldActive,
+	) +
 		t.windowBody.Width(configBrowseGap).Render("") +
 		browse
 }

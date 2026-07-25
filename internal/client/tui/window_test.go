@@ -53,23 +53,34 @@ func TestRenderControls_RendersGroupedAlignedRows(t *testing.T) {
 	if separatorColumn < 0 {
 		t.Fatalf("Controls colon was not found: %q", menuLine)
 	}
+	assertControlsSpacerRows(t, lines)
+	assertControlsSeparatorAlignment(t, lines, separatorColumn)
+	assertControlsRowWidths(t, lines, width)
+}
+
+func assertControlsSpacerRows(t *testing.T, lines []string) {
+	t.Helper()
 	for _, index := range []int{1, 4, 8, 12, 16, 18} {
 		if strings.TrimSpace(lines[index]) != "" {
 			t.Fatalf("controls spacer row %d is not empty: %q", index, lines[index])
 		}
 	}
+}
+
+func assertControlsSeparatorAlignment(t *testing.T, lines []string, separatorColumn int) {
+	t.Helper()
 	for _, index := range []int{0, 2, 3, 5, 6, 7, 9, 10, 11, 13, 14, 15, 17} {
 		if strings.Index(lines[index], ":") != separatorColumn {
 			t.Fatalf("controls colon row %d is not aligned: %q", index, lines[index])
 		}
 	}
+}
 
+func assertControlsRowWidths(t *testing.T, lines []string, width int) {
+	t.Helper()
 	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-		if gotWidth := lipgloss.Width(line); gotWidth != width {
-			t.Fatalf("controls row width = %d, want %d: %q", gotWidth, width, line)
+		if line != "" && lipgloss.Width(line) != width {
+			t.Fatalf("controls row width = %d, want %d: %q", lipgloss.Width(line), width, line)
 		}
 	}
 }

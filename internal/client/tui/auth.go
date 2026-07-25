@@ -182,37 +182,27 @@ func (m model) updateLogin(key string) (tea.Model, tea.Cmd) {
 	case "left":
 		if m.authentication.loginForm.focus >= loginSubmit {
 			m.authentication.loginForm.move(-1, submitDisabled)
-		} else if !m.operations.pending(operationLogin) {
+		} else {
 			m.authentication.loginForm.moveCursor(-1)
 		}
 	case "right":
 		if m.authentication.loginForm.focus >= loginSubmit {
 			m.authentication.loginForm.move(1, submitDisabled)
-		} else if !m.operations.pending(operationLogin) {
+		} else {
 			m.authentication.loginForm.moveCursor(1)
 		}
 	case "home":
-		if !m.operations.pending(operationLogin) {
-			m.authentication.loginForm.moveCursorToStart()
-		}
+		m.authentication.loginForm.moveCursorToStart()
 	case "end":
-		if !m.operations.pending(operationLogin) {
-			m.authentication.loginForm.moveCursorToEnd()
-		}
+		m.authentication.loginForm.moveCursorToEnd()
 	case "backspace":
-		if !m.operations.pending(operationLogin) {
-			m.authentication.loginForm.backspace()
-		}
+		m.authentication.loginForm.backspace()
 	case "delete":
-		if !m.operations.pending(operationLogin) {
-			m.authentication.loginForm.delete()
-		}
+		m.authentication.loginForm.delete()
 	case "enter":
 		return m.activateLogin()
 	default:
-		if !m.operations.pending(operationLogin) {
-			m.authentication.loginForm.insertKey(key)
-		}
+		m.authentication.loginForm.insertKey(key)
 	}
 
 	return m, nil
@@ -238,7 +228,7 @@ func (m model) activateLogin() (tea.Model, tea.Cmd) {
 }
 
 func (m model) startLogin(userName, password string) (tea.Model, tea.Cmd) {
-	requestCtx, requestID := m.operations.begin(m.ctx, operationLogin)
+	requestCtx, requestID := m.operations.begin(m.operationDone, operationLogin)
 	return m, m.operationCommand(operationLogin, loginCommand(requestCtx, m.backend, requestID, userName, password))
 }
 
@@ -263,42 +253,32 @@ func (m model) updateRegister(key string) (tea.Model, tea.Cmd) {
 	case "shift+tab", "up":
 		m.authentication.registerForm.move(-1, submitDisabled)
 	case "left":
-		if m.authentication.registerForm.focus >= registerSubmit {
-			m.authentication.registerForm.move(-1, submitDisabled)
-		} else if !m.operations.pending(operationRegister) {
-			m.authentication.registerForm.moveCursor(-1)
-		}
+		m.moveRegisterCursorOrFocus(-1, submitDisabled)
 	case "right":
-		if m.authentication.registerForm.focus >= registerSubmit {
-			m.authentication.registerForm.move(1, submitDisabled)
-		} else if !m.operations.pending(operationRegister) {
-			m.authentication.registerForm.moveCursor(1)
-		}
+		m.moveRegisterCursorOrFocus(1, submitDisabled)
 	case "home":
-		if !m.operations.pending(operationRegister) {
-			m.authentication.registerForm.moveCursorToStart()
-		}
+		m.authentication.registerForm.moveCursorToStart()
 	case "end":
-		if !m.operations.pending(operationRegister) {
-			m.authentication.registerForm.moveCursorToEnd()
-		}
+		m.authentication.registerForm.moveCursorToEnd()
 	case "backspace":
-		if !m.operations.pending(operationRegister) {
-			m.authentication.registerForm.backspace()
-		}
+		m.authentication.registerForm.backspace()
 	case "delete":
-		if !m.operations.pending(operationRegister) {
-			m.authentication.registerForm.delete()
-		}
+		m.authentication.registerForm.delete()
 	case "enter":
 		return m.activateRegister()
 	default:
-		if !m.operations.pending(operationRegister) {
-			m.authentication.registerForm.insertKey(key)
-		}
+		m.authentication.registerForm.insertKey(key)
 	}
 
 	return m, nil
+}
+
+func (m *model) moveRegisterCursorOrFocus(delta int, submitDisabled bool) {
+	if m.authentication.registerForm.focus >= registerSubmit {
+		m.authentication.registerForm.move(delta, submitDisabled)
+		return
+	}
+	m.authentication.registerForm.moveCursor(delta)
 }
 
 func (m model) activateRegister() (tea.Model, tea.Cmd) {
@@ -321,7 +301,7 @@ func (m model) activateRegister() (tea.Model, tea.Cmd) {
 }
 
 func (m model) startRegister(userName, password string) (tea.Model, tea.Cmd) {
-	requestCtx, requestID := m.operations.begin(m.ctx, operationRegister)
+	requestCtx, requestID := m.operations.begin(m.operationDone, operationRegister)
 	return m, m.operationCommand(operationRegister, registerCommand(requestCtx, m.backend, requestID, userName, password))
 }
 
@@ -332,7 +312,7 @@ func (m *model) clearRegisterForm() {
 
 func (m model) startLogout() (tea.Model, tea.Cmd) {
 	m.operations.cancel(operationCurrentUser)
-	requestCtx, requestID := m.operations.begin(m.ctx, operationLogout)
+	requestCtx, requestID := m.operations.begin(m.operationDone, operationLogout)
 
 	m.closeMenu()
 

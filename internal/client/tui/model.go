@@ -90,7 +90,7 @@ type model struct {
 	alertHighlight    string
 	alertReturnDialog dialogID
 	openURL           openURLFunc
-	ctx               context.Context
+	operationDone     <-chan struct{}
 	statusState       serverStatusState
 	statusValue       string
 	statusFailure     serverStatusFailure
@@ -139,7 +139,7 @@ func newModel(
 		readBinaryFile:    binaryfile.Read,
 		writeBinaryFile:   binaryfile.Write,
 		openURL:           openExternalURL,
-		ctx:               ctx,
+		operationDone:     ctx.Done(),
 		statusState:       serverStatusIdle,
 		statusMinDuration: 500 * time.Millisecond,
 		activitySpinner:   newActivitySpinner(),

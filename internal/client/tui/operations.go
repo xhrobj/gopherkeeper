@@ -40,16 +40,37 @@ type operationCoordinator struct {
 	requests [operationCount]requestState
 }
 
-func (operations *operationCoordinator) begin(parent context.Context, kind operationKind) (context.Context, uint64) {
+func (operations *operationCoordinator) begin(parentDone <-chan struct{}, kind operationKind) (context.Context, uint64) {
 	request := operations.request(kind)
 	request.cancelRequest()
 	request.pending = true
 	request.id++
 
-	ctx, cancel := context.WithCancel(parent)
+	ctx, cancel := context.WithCancel(context.Background())
 	request.cancel = cancel
+	watchOperationParent(ctx, parentDone, cancel)
 
 	return ctx, request.id
+}
+
+func watchOperationParent(ctx context.Context, parentDone <-chan struct{}, cancel context.CancelFunc) {
+	if parentDone == nil {
+		return
+	}
+	select {
+	case <-parentDone:
+		cancel()
+		return
+	default:
+	}
+
+	go func() {
+		select {
+		case <-parentDone:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
 }
 
 func (operations *operationCoordinator) cancel(kind operationKind) {
@@ -114,7 +135,7 @@ func (m *model) beginCurrentUserCheck(mode currentUserCheckMode) tea.Cmd {
 		m.authentication.session = authSession{state: authUnknown}
 	}
 
-	requestCtx, requestID := m.operations.begin(m.ctx, operationCurrentUser)
+	requestCtx, requestID := m.operations.begin(m.operationDone, operationCurrentUser)
 	return m.operationCommand(
 		operationCurrentUser,
 		currentUserCommand(requestCtx, m.backend, requestID),

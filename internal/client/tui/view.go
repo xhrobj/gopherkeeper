@@ -10,10 +10,10 @@ import (
 
 func renderMenuHint(t theme, blocked bool) string {
 	if blocked {
-		return t.menuHintBlocked.Render("F10 = Menu")
+		return t.menuHintBlocked.Render(menuHintText)
 	}
 
-	return t.menuHint.Render("F10 = Menu")
+	return t.menuHint.Render(menuHintText)
 }
 
 func (m model) View() tea.View {
@@ -45,7 +45,7 @@ func (m model) render() string {
 			blocked,
 		)).X(0).Y(0).Z(10),
 		lipgloss.NewLayer(renderMenuHint(m.theme, blocked)).
-			X(max(0, m.width-len("F10 = Menu")-1)).Y(0).Z(11),
+			X(max(0, m.width-len(menuHintText)-1)).Y(0).Z(11),
 	}
 
 	if window, ok := m.workspacePlacement(); ok {
@@ -132,18 +132,17 @@ func (m model) renderDialog() string {
 			m.pathPicker,
 		)
 	case dialogServerStatus:
-		return renderServerStatusWindow(
-			m.theme,
-			serverStatusWindowWidth(m.width),
-			m.config.Address,
-			m.statusState,
-			m.statusValue,
-			m.statusFailure,
-			m.activeButton,
-			m.operations.pending(operationServerStatus),
-			blocked,
-			spinnerFrame,
-		)
+		return renderServerStatusWindow(m.theme, serverStatusWindowOptions{
+			width:        serverStatusWindowWidth(m.width),
+			address:      m.config.Address,
+			state:        m.statusState,
+			health:       m.statusValue,
+			failure:      m.statusFailure,
+			activeButton: m.activeButton,
+			pending:      m.operations.pending(operationServerStatus),
+			blocked:      blocked,
+			spinnerFrame: spinnerFrame,
+		})
 	case dialogLogin:
 		width := clamp(m.width-18, 44, 58)
 		return renderLoginWindow(m.theme, width, m.authentication.loginForm, m.operations.pending(operationLogin), blocked, spinnerFrame)
@@ -154,16 +153,15 @@ func (m model) renderDialog() string {
 		width := clamp(m.width-24, 44, 58)
 		return renderCurrentUserWindow(m.theme, width, m.authentication.session.login, m.operations.pending(operationCurrentUser), blocked, spinnerFrame)
 	case dialogRecordView:
-		return renderRecordViewWindow(
-			m.theme,
-			recordViewWindowWidth(m.width),
-			recordViewWindowHeightForState(m.theme, m.width, m.height, m.recordFeature.view),
-			m.recordFeature.view,
-			m.activeButton,
-			m.operations.pending(operationViewRecord) || m.operations.pending(operationViewCachedRecord),
-			blocked,
-			spinnerFrame,
-		)
+		return renderRecordViewWindow(m.theme, recordViewWindowOptions{
+			width:        recordViewWindowWidth(m.width),
+			height:       recordViewWindowHeightForState(m.theme, m.width, m.height, m.recordFeature.view),
+			state:        m.recordFeature.view,
+			activeButton: m.activeButton,
+			pending:      m.operations.pending(operationViewRecord) || m.operations.pending(operationViewCachedRecord),
+			blocked:      blocked,
+			spinnerFrame: spinnerFrame,
+		})
 	case dialogBinarySave:
 		return renderBinarySaveWindow(m.theme, binarySaveWindowWidth(m.width), m.recordFeature.binarySaveForm, m.operations.pending(operationBinarySave))
 	case dialogRecordType:

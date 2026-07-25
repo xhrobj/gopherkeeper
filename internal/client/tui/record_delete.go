@@ -80,7 +80,7 @@ func (m model) activateRecordDelete() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	requestCtx, requestID := m.operations.begin(m.ctx, operationDeleteRecord)
+	requestCtx, requestID := m.operations.begin(m.operationDone, operationDeleteRecord)
 	metadata := m.recordFeature.deletion.metadata
 
 	return m, m.operationCommand(operationDeleteRecord, recordDeleteCommand(requestCtx, m.backend, requestID, metadata))

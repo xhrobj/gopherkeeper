@@ -465,7 +465,7 @@ func canonicalPath(path string) string {
 	return filepath.Join(canonicalPath(parent), filepath.Base(path))
 }
 
-func pathPickerStartDirectory(currentValue string, rootDirectory string) string {
+func pathPickerStartDirectory(currentValue, rootDirectory string) string {
 	rootDirectory = filepath.Clean(rootDirectory)
 
 	selectionPath, ok := pathPickerCurrentSelectionPath(currentValue, rootDirectory)
@@ -513,10 +513,7 @@ func pathPickerInitialSelection(
 	return filepath.Base(selectionPath)
 }
 
-func pathPickerCurrentSelectionPath(
-	currentValue string,
-	rootDirectory string,
-) (string, bool) {
+func pathPickerCurrentSelectionPath(currentValue, rootDirectory string) (string, bool) {
 	value := strings.TrimSpace(currentValue)
 	if value == "" {
 		return "", false

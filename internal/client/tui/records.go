@@ -77,7 +77,7 @@ func (m *model) beginOnlineRecordList() tea.Cmd {
 		m.closeRecordWorkspace()
 	}
 
-	requestCtx, requestID := m.operations.begin(m.ctx, operationListRecords)
+	requestCtx, requestID := m.operations.begin(m.operationDone, operationListRecords)
 	m.recordFeature.workspace.beginServer()
 	return m.operationCommand(operationListRecords, onlineRecordListCommand(requestCtx, m.backend, requestID))
 }

@@ -144,12 +144,7 @@ type labeledFieldColumnLayout struct {
 }
 
 func newLabeledFieldColumnLayout(
-	windowWidth int,
-	labelWidth int,
-	minimumInputWidth int,
-	fieldCount int,
-	firstRow int,
-	rowStep int,
+	windowWidth, labelWidth, minimumInputWidth, fieldCount, firstRow, rowStep int,
 ) labeledFieldColumnLayout {
 	contentWidth := max(1, windowWidth-4)
 	inputWidth := max(minimumInputWidth, contentWidth-labelWidth-2)

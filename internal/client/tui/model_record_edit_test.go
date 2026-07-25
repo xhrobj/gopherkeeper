@@ -263,7 +263,7 @@ func TestModel_CloseRecordEditClearsSecretsAndBinary(t *testing.T) {
 	m := newRecordEditTestModel(t, recordEditBackendStub{})
 	m.recordFeature.edit.apply(record, dialogNone)
 	m.dialog = dialogRecordEdit
-	_, requestID := m.operations.begin(m.ctx, operationEditRecord)
+	_, requestID := m.operations.begin(m.operationDone, operationEditRecord)
 
 	m.closeRecordEdit()
 	if m.dialog != dialogNone || m.recordFeature.edit.form.password.value != "" || m.recordFeature.edit.record.Payload != nil {

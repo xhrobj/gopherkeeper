@@ -220,7 +220,7 @@ func (m model) activateBinarySave() (tea.Model, tea.Cmd) {
 			m.recordFeature.binarySaveForm.focus = binarySavePath
 			return m, nil
 		}
-		requestCtx, requestID := m.operations.begin(m.ctx, operationBinarySave)
+		requestCtx, requestID := m.operations.begin(m.operationDone, operationBinarySave)
 		return m, m.operationCommand(operationBinarySave, binarySaveCommand(requestCtx, m.writeBinaryFile, requestID, path, payload.Data))
 	case binarySaveCancel:
 		m.closeBinarySave()

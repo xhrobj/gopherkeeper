@@ -40,7 +40,7 @@ func TestRenderMenuBar_BlocksEnabledMenusDuringNetworkRequest(t *testing.T) {
 	if strings.Contains(busy, theme.menuMnemonic.Render("S")) {
 		t.Fatal("blocked menu still highlights its mnemonic")
 	}
-	if got := renderMenuHint(theme, true); got != theme.menuHintBlocked.Render("F10 = Menu") {
+	if renderMenuHint(theme, true) != theme.menuHintBlocked.Render(menuHintText) {
 		t.Fatal("F10 hint is not visually blocked")
 	}
 
@@ -48,7 +48,7 @@ func TestRenderMenuBar_BlocksEnabledMenusDuringNetworkRequest(t *testing.T) {
 	if !strings.Contains(idle, theme.menuMnemonic.Render("S")) {
 		t.Fatal("enabled menu did not restore its normal mnemonic after the request")
 	}
-	if got := renderMenuHint(theme, false); got != theme.menuHint.Render("F10 = Menu") {
+	if renderMenuHint(theme, false) != theme.menuHint.Render(menuHintText) {
 		t.Fatal("F10 hint did not restore its normal style after the request")
 	}
 }

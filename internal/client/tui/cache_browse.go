@@ -207,7 +207,7 @@ func (m model) activateCacheBrowse() (tea.Model, tea.Cmd) {
 		m.cacheFeature.form.password.setValue("")
 		m.closeRecordWorkspace()
 
-		requestCtx, requestID := m.operations.begin(m.ctx, operationOpenCache)
+		requestCtx, requestID := m.operations.begin(m.operationDone, operationOpenCache)
 		return m, m.operationCommand(
 			operationOpenCache,
 			cacheOpenCommand(requestCtx, m.backend, requestID, login, password),

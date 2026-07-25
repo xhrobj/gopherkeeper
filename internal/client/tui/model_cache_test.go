@@ -196,7 +196,7 @@ func TestRenderCachedBinaryRecord_KeepsReadOnlySaveAction(t *testing.T) {
 		},
 	}
 
-	plain := ansi.Strip(renderRecordViewWindow(newTheme(), 72, 18, state, 1, false, false, ""))
+	plain := ansi.Strip(renderRecordViewWindow(newTheme(), newRecordViewWindowOptions(72, 18, state, 1, false, false, "")))
 	for _, part := range []string{"Record Binary from Cache: alice", "backup.bin", "< Save As... >", "< Close >"} {
 		if !strings.Contains(plain, part) {
 			t.Fatalf("cached binary view does not contain %q: %q", part, plain)

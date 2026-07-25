@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/xhrobj/gopherkeeper/internal/client/config"
 )
 
 func (m model) updateConfig(key string) (tea.Model, tea.Cmd) {
@@ -67,48 +68,62 @@ func (m model) openConfigPathPicker(target pathPickerTarget) (tea.Model, tea.Cmd
 func (m model) updatePathPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case pathPickerReadMsg:
-		m.pathPicker.applyReadResult(msg)
-		if m.pathPicker.focus == pathPickerSelect && !m.pathPicker.selectEnabled() {
-			m.pathPicker.focusTree()
-		}
-		return m, nil
+		return m.handlePathPickerRead(msg)
 	case pathPickerMouseOpenMsg:
-		if m.menuFocused || m.dropdownOpen || m.alert != alertNone ||
-			!m.pathPicker.acceptsMouseOpen(msg) {
-			return m, nil
-		}
-		m.pathPicker.clearMouseClick()
-		m.pathPicker.selected = msg.entryIndex
-		m.pathPicker.focusTree()
-		entry, ok := m.pathPicker.highlighted()
-		if !ok || !entry.directory {
-			return m, nil
-		}
-		return m, m.pathPicker.openHighlightedDirectory()
+		return m.handlePathPickerMouseOpen(msg)
 	case tea.KeyPressMsg:
-		m.pathPicker.clearMouseClick()
-		switch msg.String() {
-		case "esc":
-			m.closePathPicker()
-			return m, nil
-		case "tab":
-			m.pathPicker.moveFocus(1)
-		case "shift+tab":
-			m.pathPicker.moveFocus(-1)
-		case "up":
-			if m.pathPicker.focus == pathPickerTree {
-				m.pathPicker.move(-1)
-			}
-		case "down":
-			if m.pathPicker.focus == pathPickerTree {
-				m.pathPicker.move(1)
-			}
-		case "enter":
-			return m.activatePathPickerFocus()
-		}
+		return m.updatePathPickerKey(msg.String())
 	}
 
 	return m, nil
+}
+
+func (m model) handlePathPickerRead(msg pathPickerReadMsg) (tea.Model, tea.Cmd) {
+	m.pathPicker.applyReadResult(msg)
+	if m.pathPicker.focus == pathPickerSelect && !m.pathPicker.selectEnabled() {
+		m.pathPicker.focusTree()
+	}
+	return m, nil
+}
+
+func (m model) handlePathPickerMouseOpen(msg pathPickerMouseOpenMsg) (tea.Model, tea.Cmd) {
+	if m.menuFocused || m.dropdownOpen || m.alert != alertNone || !m.pathPicker.acceptsMouseOpen(msg) {
+		return m, nil
+	}
+
+	m.pathPicker.clearMouseClick()
+	m.pathPicker.selected = msg.entryIndex
+	m.pathPicker.focusTree()
+	entry, ok := m.pathPicker.highlighted()
+	if !ok || !entry.directory {
+		return m, nil
+	}
+	return m, m.pathPicker.openHighlightedDirectory()
+}
+
+func (m model) updatePathPickerKey(key string) (tea.Model, tea.Cmd) {
+	m.pathPicker.clearMouseClick()
+	switch key {
+	case "esc":
+		m.closePathPicker()
+	case "tab":
+		m.pathPicker.moveFocus(1)
+	case "shift+tab":
+		m.pathPicker.moveFocus(-1)
+	case "up":
+		m.movePathPickerSelection(-1)
+	case "down":
+		m.movePathPickerSelection(1)
+	case "enter":
+		return m.activatePathPickerFocus()
+	}
+	return m, nil
+}
+
+func (m *model) movePathPickerSelection(step int) {
+	if m.pathPicker.focus == pathPickerTree {
+		m.pathPicker.move(step)
+	}
 }
 
 func (m model) activatePathPickerFocus() (tea.Model, tea.Cmd) {
@@ -190,49 +205,82 @@ func (m *model) applyPathSelection(path string) {
 func (m model) activateConfig() (tea.Model, tea.Cmd) {
 	switch m.configForm.focus {
 	case configSave:
-		if !m.configForm.canSave() {
-			return m, nil
-		}
-
-		candidate := m.configForm.config()
-		candidate.Address = strings.TrimSpace(candidate.Address)
-		candidate.CACertFile = strings.TrimSpace(candidate.CACertFile)
-		changed := candidate != m.config
-		nextBackend := m.backend
-		if changed {
-			var err error
-			nextBackend, err = createBackend(m.backendFactory, candidate)
-			if err != nil {
-				m.configForm.errorMessage = cleanFailureMessage(err, "Unable to apply config")
-				return m, nil
-			}
-		}
-		if m.configFile != "" && m.saveConfig != nil {
-			if err := m.saveConfig(m.configFile, candidate); err != nil {
-				m.configForm.errorMessage = "Unable to save config file"
-				return m, nil
-			}
-		}
-		m.config = candidate
-		if changed {
-			m.cancelAllRequests()
-			m.clearRecordState()
-			m.clearCacheState()
-			m.clearSyncState()
-			m.backend = nextBackend
-		}
-		m.dialog = dialogNone
-		m.configForm = newConfigForm(m.config)
-		if changed {
-			m.statusState = serverStatusIdle
-			m.statusValue = ""
-			m.statusFailure = serverStatusFailure{}
-			return m, m.beginCurrentUserCheck(currentUserCheckRestore)
-		}
+		return m.applyConfigForm()
 	case configCancel:
-		m.dialog = dialogNone
-		m.configForm = newConfigForm(m.config)
+		m.closeConfigForm()
 	}
 
 	return m, nil
+}
+
+func (m model) applyConfigForm() (tea.Model, tea.Cmd) {
+	if !m.configForm.canSave() {
+		return m, nil
+	}
+
+	candidate := normalizedClientConfig(m.configForm.config())
+	changed := candidate != m.config
+
+	nextBackend, err := m.backendForConfig(candidate, changed)
+	if err != nil {
+		m.configForm.errorMessage = cleanFailureMessage(err, "Unable to apply config")
+		return m, nil
+	}
+
+	if err := m.persistConfig(candidate); err != nil {
+		m.configForm.errorMessage = "Unable to save config file"
+		return m, nil
+	}
+
+	m.applyRuntimeConfig(candidate, nextBackend, changed)
+	if changed {
+		return m, m.beginCurrentUserCheck(currentUserCheckRestore)
+	}
+
+	return m, nil
+}
+
+func normalizedClientConfig(candidate config.Config) config.Config {
+	candidate.Address = strings.TrimSpace(candidate.Address)
+	candidate.CACertFile = strings.TrimSpace(candidate.CACertFile)
+
+	return candidate
+}
+
+func (m model) backendForConfig(candidate config.Config, changed bool) (Backend, error) {
+	if !changed {
+		return m.backend, nil
+	}
+
+	return createBackend(m.backendFactory, candidate)
+}
+
+func (m model) persistConfig(candidate config.Config) error {
+	if m.configFile == "" || m.saveConfig == nil {
+		return nil
+	}
+
+	return m.saveConfig(m.configFile, candidate)
+}
+
+func (m *model) applyRuntimeConfig(candidate config.Config, nextBackend Backend, changed bool) {
+	m.config = candidate
+
+	if changed {
+		m.cancelAllRequests()
+		m.clearRecordState()
+		m.clearCacheState()
+		m.clearSyncState()
+		m.backend = nextBackend
+		m.statusState = serverStatusIdle
+		m.statusValue = ""
+		m.statusFailure = serverStatusFailure{}
+	}
+
+	m.closeConfigForm()
+}
+
+func (m *model) closeConfigForm() {
+	m.dialog = dialogNone
+	m.configForm = newConfigForm(m.config)
 }

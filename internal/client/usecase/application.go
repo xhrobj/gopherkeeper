@@ -10,7 +10,7 @@ import (
 // Application выполняет клиентские online- и offline-сценарии поверх удалённых
 // gateway, provider'ов локальной online-сессии и зашифрованного кеша.
 type Application struct {
-	health        HealthGateway
+	health        HealthChecker
 	users         UserGateway
 	records       RecordGateway
 	sessions      SessionStorageProvider
@@ -19,8 +19,8 @@ type Application struct {
 	serverAddress string
 }
 
-// HealthGateway описывает удалённую проверку доступности Сервера.
-type HealthGateway interface {
+// HealthChecker описывает удалённую проверку доступности Сервера.
+type HealthChecker interface {
 	Health(ctx context.Context) (string, error)
 }
 
@@ -43,7 +43,7 @@ type SessionStorageProvider func() (SessionStorage, error)
 
 // New создаёт application-приложение из готовых зависимостей.
 func New(
-	health HealthGateway,
+	health HealthChecker,
 	users UserGateway,
 	records RecordGateway,
 	sessions SessionStorageProvider,
