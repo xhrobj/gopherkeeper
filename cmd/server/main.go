@@ -14,12 +14,12 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/logger"
 	"github.com/xhrobj/gopherkeeper/internal/server/auth"
 	"github.com/xhrobj/gopherkeeper/internal/server/config"
-	"github.com/xhrobj/gopherkeeper/internal/server/httpserver"
-	"github.com/xhrobj/gopherkeeper/internal/server/middleware"
 	"github.com/xhrobj/gopherkeeper/internal/server/migration"
 	"github.com/xhrobj/gopherkeeper/internal/server/postgres"
 	"github.com/xhrobj/gopherkeeper/internal/server/recordcrypto"
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
+	httpserver "github.com/xhrobj/gopherkeeper/internal/server/transport/http"
+	"github.com/xhrobj/gopherkeeper/internal/server/transport/http/middleware"
 	"go.uber.org/zap"
 )
 

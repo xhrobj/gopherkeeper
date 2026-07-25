@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	serverauth "github.com/xhrobj/gopherkeeper/internal/server/auth"
-	"github.com/xhrobj/gopherkeeper/internal/server/httperror"
+	"github.com/xhrobj/gopherkeeper/internal/server/transport/http/httperror"
 )
 
 type tokenValidatorFunc func(context.Context, string) (int64, error)

@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
-	"github.com/xhrobj/gopherkeeper/internal/server/middleware"
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
+	"github.com/xhrobj/gopherkeeper/internal/server/transport/http/middleware"
 )
 
 const (

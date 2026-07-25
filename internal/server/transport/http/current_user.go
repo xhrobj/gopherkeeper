@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
-	"github.com/xhrobj/gopherkeeper/internal/server/middleware"
+	"github.com/xhrobj/gopherkeeper/internal/server/transport/http/middleware"
 )
 
 func currentUserHandler(users CurrentUserReader) http.Handler {

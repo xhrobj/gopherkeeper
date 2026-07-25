@@ -15,8 +15,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	clientcli "github.com/xhrobj/gopherkeeper/internal/client/cli"
-	"github.com/xhrobj/gopherkeeper/internal/server/middleware"
 	"github.com/xhrobj/gopherkeeper/internal/server/migration"
+	"github.com/xhrobj/gopherkeeper/internal/server/transport/http/middleware"
 )
 
 var createdTextRecordPattern = regexp.MustCompile(`^Created text record ([0-9a-f-]+) with revision ([0-9]+)\.$`)

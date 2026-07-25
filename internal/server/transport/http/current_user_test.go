@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
-	"github.com/xhrobj/gopherkeeper/internal/server/middleware"
+	"github.com/xhrobj/gopherkeeper/internal/server/transport/http/middleware"
 )
 
 type currentUserReaderFunc func(context.Context, int64) (model.User, error)

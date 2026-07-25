@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
-	"github.com/xhrobj/gopherkeeper/internal/server/middleware"
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
+	"github.com/xhrobj/gopherkeeper/internal/server/transport/http/middleware"
 )
 
 const testRecordID = "7b4c2d7d-0e2f-4c4b-8d4b-8f4f7c4d3a21"

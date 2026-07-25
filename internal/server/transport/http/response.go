@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/xhrobj/gopherkeeper/internal/server/httperror"
+	"github.com/xhrobj/gopherkeeper/internal/server/transport/http/httperror"
 )
 
 type userResponse struct {

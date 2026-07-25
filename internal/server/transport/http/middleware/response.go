@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/xhrobj/gopherkeeper/internal/server/httperror"
+	"github.com/xhrobj/gopherkeeper/internal/server/transport/http/httperror"
 )
 
 const (

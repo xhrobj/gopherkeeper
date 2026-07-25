@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
-	"github.com/xhrobj/gopherkeeper/internal/server/httperror"
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
+	"github.com/xhrobj/gopherkeeper/internal/server/transport/http/httperror"
 )
 
 const testRegistrationPassword = "correct-horse-battery-staple"
