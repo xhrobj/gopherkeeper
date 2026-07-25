@@ -73,11 +73,8 @@ func recordEditCommand(
 	input recordFormInput,
 ) tea.Cmd {
 	return func() tea.Msg {
-		payload, err := input.payload(readBinary, record.Payload)
+		payload, err := input.buildPayload(readBinary, record.Payload)
 		if err != nil {
-			return recordEditResultMsg{requestID: requestID, err: err}
-		}
-		if err := payload.Validate(); err != nil {
 			return recordEditResultMsg{requestID: requestID, err: err}
 		}
 

@@ -8,7 +8,7 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-func TestValidateCredentials(t *testing.T) {
+func TestValidateRegistrationCredentials(t *testing.T) {
 	allowedLogin := "king.of-andals_1st-men"
 	maxLogin := strings.Repeat("b", model.MaxLoginLength)
 	tooLongLogin := strings.Repeat("e", model.MaxLoginLength+1)
@@ -28,7 +28,7 @@ func TestValidateCredentials(t *testing.T) {
 
 		{name: "minimum password length", login: "alice", password: strings.Repeat("z", minPasswordLength), wantLogin: "alice"},
 		{name: "maximum password length", login: "bob", password: strings.Repeat("z", maxPasswordLength), wantLogin: "bob"},
-		{name: "password with boundary printable ASCII symbols", login: "bob", password: "!A0~", wantLogin: "bob"},
+		{name: "password with boundary printable ASCII symbols", login: "bob", password: "!A0~xyZ9", wantLogin: "bob"},
 
 		{name: "login too short", login: "ev", password: testRegistrationPassword, wantErr: ErrInvalidLogin},
 		{name: "login too long", login: tooLongLogin, password: testRegistrationPassword, wantErr: ErrInvalidLogin},
@@ -54,10 +54,10 @@ func TestValidateCredentials(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotLogin, err := validateCredentials(tt.login, tt.password)
+			gotLogin, err := validateRegistrationCredentials(tt.login, tt.password)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf(
-					"validateCredentials() error = %v, want %v",
+					"validateRegistrationCredentials() error = %v, want %v",
 					err,
 					tt.wantErr,
 				)
@@ -65,7 +65,7 @@ func TestValidateCredentials(t *testing.T) {
 
 			if gotLogin != tt.wantLogin {
 				t.Errorf(
-					"validateCredentials() login = %q, want %q",
+					"validateRegistrationCredentials() login = %q, want %q",
 					gotLogin,
 					tt.wantLogin,
 				)
@@ -74,7 +74,7 @@ func TestValidateCredentials(t *testing.T) {
 	}
 }
 
-func TestValidateCredentials_DoesNotExposePassword(t *testing.T) {
+func TestValidateRegistrationCredentials_DoesNotExposePassword(t *testing.T) {
 	tests := []struct {
 		name     string
 		password string
@@ -87,9 +87,9 @@ func TestValidateCredentials_DoesNotExposePassword(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := validateCredentials("eve", tt.password)
+			_, err := validateRegistrationCredentials("eve", tt.password)
 			if err == nil {
-				t.Fatal("validateCredentials() error = nil")
+				t.Fatal("validateRegistrationCredentials() error = nil")
 			}
 
 			if strings.Contains(err.Error(), tt.password) {

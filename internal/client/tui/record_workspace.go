@@ -6,6 +6,14 @@ import (
 	recordmodel "github.com/xhrobj/gopherkeeper/internal/model"
 )
 
+type recordSource int
+
+const (
+	recordSourceServer recordSource = iota
+	recordSourceCache
+	recordSourceNone
+)
+
 type recordListState int
 
 const (
@@ -18,6 +26,8 @@ const (
 )
 
 type recordWorkspace struct {
+	source         recordSource
+	login          string
 	open           bool
 	state          recordListState
 	records        []recordmodel.RecordMetadata
@@ -30,12 +40,27 @@ type recordWorkspace struct {
 }
 
 func (workspace *recordWorkspace) beginServer() {
+	workspace.login = ""
+	alreadyReady := workspace.source == recordSourceServer && workspace.state == recordListReady
+	workspace.source = recordSourceServer
 	workspace.open = true
 	workspace.clearClick()
-	if workspace.state == recordListReady {
+	if alreadyReady {
 		return
 	}
 
+	workspace.state = recordListLoading
+	workspace.records = nil
+	workspace.selected = 0
+	workspace.offset = 0
+	workspace.failure = ""
+}
+
+func (workspace *recordWorkspace) beginCache(login string) {
+	workspace.source = recordSourceCache
+	workspace.login = login
+	workspace.open = true
+	workspace.clearClick()
 	workspace.state = recordListLoading
 	workspace.records = nil
 	workspace.selected = 0
@@ -75,7 +100,10 @@ func (workspace *recordWorkspace) apply(records []recordmodel.RecordMetadata, pa
 }
 
 func (workspace *recordWorkspace) prepend(metadata recordmodel.RecordMetadata, pageSize int) {
+	workspace.source = recordSourceServer
+	workspace.login = ""
 	workspace.open = true
+
 	if workspace.state != recordListReady {
 		workspace.records = []recordmodel.RecordMetadata{metadata}
 		workspace.state = recordListReady
@@ -139,6 +167,8 @@ func (workspace *recordWorkspace) fail(message string) {
 }
 
 func (workspace *recordWorkspace) clear() {
+	workspace.source = recordSourceNone
+	workspace.login = ""
 	workspace.open = false
 	workspace.state = recordListIdle
 	workspace.records = nil

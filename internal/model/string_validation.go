@@ -22,18 +22,6 @@ func validateOptionalSingleLine(value string, maxRunes int) bool {
 	return true
 }
 
-func validateOptionalMultiline(value string, maxRunes int) bool {
-	if !utf8.ValidString(value) || utf8.RuneCountInString(value) > maxRunes {
-		return false
-	}
-	for _, symbol := range value {
-		if unicode.IsControl(symbol) && symbol != '\t' && symbol != '\n' && symbol != '\r' {
-			return false
-		}
-	}
-	return true
-}
-
 func validateRequiredMultilineBytes(value string, maxBytes int) (bool, bool) {
 	if value == "" || !utf8.ValidString(value) {
 		return false, false

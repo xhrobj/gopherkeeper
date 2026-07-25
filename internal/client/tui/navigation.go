@@ -22,6 +22,10 @@ func (m model) activateDialogButton() (tea.Model, tea.Cmd) {
 		return m.activateBinarySave()
 	case dialogRecordDelete:
 		return m.activateRecordDelete()
+	case dialogSync:
+		return m.activateSync()
+	case dialogSyncResult:
+		m.closeSync()
 	case dialogAbout:
 		if m.activeButton == 0 {
 			return m, openURLCommand(m.openURL, aboutURL)
@@ -131,17 +135,28 @@ func (m *model) openCurrentMenu(definitions []menuDefinition) {
 func (m model) activate(action actionID) (tea.Model, tea.Cmd) {
 	m.closeMenu()
 
-	if action == m.currentAction() && action != actionBrowseRecords {
+	if action == m.currentAction() && action != actionBrowseRecords && action != actionBrowseCache {
 		return m, nil
 	}
+
 	viewTarget, hasViewTarget := m.recordViewTarget()
+
 	if action == actionViewRecord && !hasViewTarget {
 		return m, nil
 	}
+
+	cachedViewTarget, hasCachedViewTarget := m.cachedRecordViewTarget()
+
+	if action == actionViewCachedRecord && !hasCachedViewTarget {
+		return m, nil
+	}
+
 	deleteTarget, hasDeleteTarget := m.recordDeleteTarget()
+
 	if action == actionDeleteRecord && !hasDeleteTarget {
 		return m, nil
 	}
+
 	m.prepareDialogChange(action)
 
 	switch action {
@@ -171,13 +186,30 @@ func (m model) activate(action actionID) (tea.Model, tea.Cmd) {
 			m.dialog = dialogNone
 			return m, m.beginOnlineRecordList()
 		}
+	case actionBrowseCache:
+		if m.backend != nil {
+			login := m.cacheFeature.form.login.value
+			if m.authentication.session.authenticated() {
+				login = m.authentication.session.login
+			}
+			m.dialog = dialogCacheBrowse
+			m.cacheFeature.form = newCacheBrowseForm(login)
+			m.activeButton = 0
+		}
 	case actionNewRecord:
 		if m.authentication.session.authenticated() && m.recordCreateAvailable() {
+			if m.recordFeature.workspace.source == recordSourceCache {
+				m.closeRecordWorkspace()
+			}
 			return m, m.openRecordTypePicker()
 		}
 	case actionViewRecord:
 		if hasViewTarget && m.authentication.session.authenticated() && m.recordsAvailable() {
 			return m, m.beginRecordView(viewTarget)
+		}
+	case actionViewCachedRecord:
+		if hasCachedViewTarget && m.backend != nil {
+			return m, m.beginRecordView(cachedViewTarget)
 		}
 	case actionEditRecord:
 		if m.authentication.session.authenticated() && m.recordEditAvailable() {
@@ -186,6 +218,15 @@ func (m model) activate(action actionID) (tea.Model, tea.Cmd) {
 	case actionDeleteRecord:
 		if hasDeleteTarget && m.authentication.session.authenticated() && m.recordDeleteAvailable() {
 			m.openRecordDelete(deleteTarget)
+		}
+	case actionSynchronize:
+		if m.authentication.session.authenticated() {
+			if m.recordFeature.workspace.source == recordSourceCache {
+				m.closeRecordWorkspace()
+			}
+			m.dialog = dialogSync
+			m.syncFeature = syncFeatureState{form: newSyncForm()}
+			m.activeButton = 0
 		}
 	case actionControls:
 		m.dialog = dialogControls
@@ -235,6 +276,12 @@ func (m *model) closeActiveDialog() {
 	case dialogRecordDelete:
 		m.closeRecordDelete()
 		return
+	case dialogCacheBrowse:
+		m.closeCacheBrowse()
+		return
+	case dialogSync, dialogSyncResult:
+		m.closeSync()
+		return
 	}
 	m.dialog = dialogNone
 	m.activeButton = 0
@@ -283,6 +330,12 @@ func (m *model) prepareDialogChange(action actionID) {
 	}
 	if m.dialog == dialogRecordDelete && action != actionDeleteRecord {
 		m.closeRecordDelete()
+	}
+	if m.dialog == dialogCacheBrowse && action != actionBrowseCache {
+		m.closeCacheBrowse()
+	}
+	if (m.dialog == dialogSync || m.dialog == dialogSyncResult) && action != actionSynchronize {
+		m.closeSync()
 	}
 }
 
@@ -341,6 +394,10 @@ func currentDialogAction(dialog dialogID) actionID {
 		return actionEditRecord
 	case dialogRecordDelete:
 		return actionDeleteRecord
+	case dialogCacheBrowse:
+		return actionBrowseCache
+	case dialogSync, dialogSyncResult:
+		return actionSynchronize
 	default:
 		return actionNone
 	}

@@ -36,6 +36,9 @@ const (
 	dialogRecordCreate
 	dialogRecordEdit
 	dialogRecordDelete
+	dialogCacheBrowse
+	dialogSync
+	dialogSyncResult
 )
 
 type alertState int
@@ -77,6 +80,8 @@ type model struct {
 	startupCmd        tea.Cmd
 	authentication    authFeatureState
 	recordFeature     recordFeatureState
+	cacheFeature      cacheFeatureState
+	syncFeature       syncFeatureState
 	readBinaryFile    binaryFileReader
 	writeBinaryFile   binaryFileWriter
 	alert             alertState
@@ -128,6 +133,8 @@ func newModel(
 			registerForm: newRegisterForm(),
 		},
 		recordFeature:     recordFeatureState{binarySaveForm: newBinarySaveForm("")},
+		cacheFeature:      cacheFeatureState{form: newCacheBrowseForm("")},
+		syncFeature:       syncFeatureState{form: newSyncForm()},
 		configForm:        newConfigForm(cfg),
 		readBinaryFile:    binaryfile.Read,
 		writeBinaryFile:   binaryfile.Write,
@@ -191,4 +198,15 @@ type recordFeatureState struct {
 	createForm     recordForm
 	edit           recordEditState
 	deletion       recordDeleteState
+}
+
+// cacheFeatureState хранит форму открытия локального кеша.
+type cacheFeatureState struct {
+	form cacheBrowseForm
+}
+
+// syncFeatureState объединяет состояние формы и результата синхронизации.
+type syncFeatureState struct {
+	form   syncForm
+	result SyncSummary
 }

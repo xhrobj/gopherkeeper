@@ -39,9 +39,23 @@ func Run(ctx context.Context, options Options) error {
 		tea.WithOutput(options.Output),
 	)
 
-	if _, err := program.Run(); err != nil {
-		return fmt.Errorf("run Bubble Tea program: %w", err)
+	finalModel, runErr := program.Run()
+	closeFinalCache(finalModel, model.backend)
+	if runErr != nil {
+		return fmt.Errorf("run Bubble Tea program: %w", runErr)
 	}
 
 	return nil
+}
+
+func closeFinalCache(finalModel tea.Model, fallback Backend) {
+	backend := fallback
+
+	if final, ok := finalModel.(model); ok && final.backend != nil {
+		backend = final.backend
+	}
+
+	if backend != nil {
+		backend.CloseCache()
+	}
 }

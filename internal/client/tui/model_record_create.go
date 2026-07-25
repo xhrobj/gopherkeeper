@@ -98,10 +98,6 @@ func (m model) activateRecordCreate() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		input := recordFormInputFrom(m.recordFeature.createForm)
-		if err := input.validate(); err != nil {
-			m.showAlert(alertError, "Invalid record", cleanRecordCreateError(err), dialogRecordCreate)
-			return m, nil
-		}
 		if m.backend == nil {
 			return m, nil
 		}

@@ -8,11 +8,18 @@ func (m model) recordEditAvailable() bool {
 
 func (m model) recordEditTarget() (string, bool) {
 	if m.dialog == dialogRecordView && m.recordFeature.view.status == recordViewReady {
+		if m.recordFeature.view.source != recordSourceServer {
+			return "", false
+		}
 		return m.recordFeature.view.record.Metadata.ID, true
 	}
 
 	if m.dialog == dialogRecordEdit && m.recordFeature.edit.status == recordEditReady {
 		return m.recordFeature.edit.record.Metadata.ID, true
+	}
+
+	if m.recordFeature.workspace.source != recordSourceServer {
+		return "", false
 	}
 
 	metadata, ok := m.recordFeature.workspace.selectedRecord()
@@ -133,10 +140,6 @@ func (m model) activateRecordEdit() (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		input := recordFormInputFrom(m.recordFeature.edit.form)
-		if err := input.validate(); err != nil {
-			m.showAlert(alertError, "Invalid record", cleanRecordEditError(err), dialogRecordEdit)
-			return m, nil
-		}
 		if m.backend == nil {
 			return m, nil
 		}

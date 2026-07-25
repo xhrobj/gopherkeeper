@@ -28,7 +28,14 @@ func (m model) recordDeleteTarget() (recordmodel.RecordMetadata, bool) {
 	}
 
 	if m.dialog == dialogRecordView && m.recordFeature.view.status == recordViewReady {
+		if m.recordFeature.view.source != recordSourceServer {
+			return recordmodel.RecordMetadata{}, false
+		}
 		return m.recordFeature.view.record.Metadata, true
+	}
+
+	if m.recordFeature.workspace.source != recordSourceServer {
+		return recordmodel.RecordMetadata{}, false
 	}
 
 	return m.recordFeature.workspace.selectedRecord()

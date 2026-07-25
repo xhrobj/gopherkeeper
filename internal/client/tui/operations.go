@@ -18,12 +18,15 @@ const (
 	operationLogout
 	operationServerStatus
 	operationListRecords
+	operationOpenCache
 	operationViewRecord
+	operationViewCachedRecord
 	operationLoadRecordForEdit
 	operationCreateRecord
 	operationEditRecord
 	operationDeleteRecord
 	operationBinarySave
+	operationSync
 	operationCount
 )
 
@@ -134,6 +137,8 @@ type networkBusyState struct {
 }
 
 var networkOperationPriority = [...]operationKind{
+	operationSync,
+	operationOpenCache,
 	operationCreateRecord,
 	operationEditRecord,
 	operationDeleteRecord,
@@ -143,6 +148,7 @@ var networkOperationPriority = [...]operationKind{
 	operationServerStatus,
 	operationListRecords,
 	operationViewRecord,
+	operationViewCachedRecord,
 	operationLoadRecordForEdit,
 }
 
@@ -152,11 +158,14 @@ var networkBusyStates = [operationCount]networkBusyState{
 	operationRegister:          {operation: operationRegister, message: "Registering", inline: true},
 	operationServerStatus:      {operation: operationServerStatus, message: "Checking server", inline: true},
 	operationListRecords:       {operation: operationListRecords, message: "Loading records", inline: true},
+	operationOpenCache:         {operation: operationOpenCache, message: "Opening local cache", inline: true},
 	operationViewRecord:        {operation: operationViewRecord, message: "Loading record", inline: true},
+	operationViewCachedRecord:  {operation: operationViewCachedRecord, message: "Loading cached record", inline: true},
 	operationLoadRecordForEdit: {operation: operationLoadRecordForEdit, message: "Loading record", inline: true},
 	operationCreateRecord:      {operation: operationCreateRecord, message: "Creating record", inline: true},
 	operationEditRecord:        {operation: operationEditRecord, message: "Saving record", inline: true},
 	operationDeleteRecord:      {operation: operationDeleteRecord, message: "Deleting record", inline: true},
+	operationSync:              {operation: operationSync, message: "Synchronizing local cache", inline: true},
 }
 
 func (m model) currentNetworkBusyState() networkBusyState {

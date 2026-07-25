@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	recordmodel "github.com/xhrobj/gopherkeeper/internal/model"
 )
 
@@ -17,6 +18,8 @@ const (
 )
 
 type recordViewState struct {
+	source   recordSource
+	login    string
 	status   recordViewStatus
 	record   recordmodel.Record
 	offset   int
@@ -24,7 +27,13 @@ type recordViewState struct {
 	textArea readOnlyTextArea
 }
 
-func (state *recordViewState) begin(metadata recordmodel.RecordMetadata) {
+func (state *recordViewState) begin(metadata recordmodel.RecordMetadata, sources ...recordSource) {
+	source := recordSourceServer
+	if len(sources) > 0 {
+		source = sources[0]
+	}
+	state.source = source
+	state.login = ""
 	state.status = recordViewLoading
 	state.record = recordmodel.Record{Metadata: metadata}
 	state.offset = 0
@@ -66,7 +75,22 @@ type recordViewResultMsg struct {
 }
 
 func (m model) recordViewTarget() (string, bool) {
-	if m.dialog != dialogNone || !m.recordFeature.workspace.open {
+	if m.dialog != dialogNone || !m.recordFeature.workspace.open ||
+		m.recordFeature.workspace.source != recordSourceServer {
+		return "", false
+	}
+
+	metadata, ok := m.recordFeature.workspace.selectedRecord()
+	if !ok {
+		return "", false
+	}
+
+	return metadata.ID, true
+}
+
+func (m model) cachedRecordViewTarget() (string, bool) {
+	if m.dialog != dialogNone || !m.recordFeature.workspace.open ||
+		m.recordFeature.workspace.source != recordSourceCache {
 		return "", false
 	}
 
@@ -83,12 +107,26 @@ func (m *model) beginRecordView(recordID string) tea.Cmd {
 		return nil
 	}
 
-	requestCtx, requestID := m.operations.begin(m.ctx, operationViewRecord)
+	source := m.recordFeature.workspace.source
 	metadata := m.recordMetadataByID(recordID)
 
-	m.recordFeature.view.begin(metadata)
+	m.recordFeature.view.begin(metadata, source)
+	if source == recordSourceCache {
+		m.recordFeature.view.login = m.recordFeature.workspace.login
+	}
 	m.dialog = dialogRecordView
 	m.activeButton = recordViewDefaultButton(m.recordFeature.view.record)
+
+	if source == recordSourceCache {
+		requestCtx, requestID := m.operations.begin(m.ctx, operationViewCachedRecord)
+
+		return m.operationCommand(
+			operationViewCachedRecord,
+			cachedRecordViewCommand(requestCtx, m.backend, requestID, recordID),
+		)
+	}
+
+	requestCtx, requestID := m.operations.begin(m.ctx, operationViewRecord)
 
 	return m.operationCommand(operationViewRecord, recordViewCommand(requestCtx, m.backend, requestID, recordID))
 }
@@ -107,6 +145,24 @@ func recordViewCommand(ctx context.Context, backend Backend, requestID uint64, r
 	return func() tea.Msg {
 		record, err := backend.GetRecord(ctx, recordID)
 		return recordViewResultMsg{requestID: requestID, record: record, err: err}
+	}
+}
+
+type cachedRecordViewResultMsg struct {
+	requestID uint64
+	record    recordmodel.Record
+	err       error
+}
+
+func cachedRecordViewCommand(
+	ctx context.Context,
+	backend Backend,
+	requestID uint64,
+	recordID string,
+) tea.Cmd {
+	return func() tea.Msg {
+		record, err := backend.GetCachedRecord(ctx, recordID)
+		return cachedRecordViewResultMsg{requestID: requestID, record: record, err: err}
 	}
 }
 
@@ -137,6 +193,32 @@ func (m model) handleRecordViewResult(msg recordViewResultMsg) (tea.Model, tea.C
 	return m, nil
 }
 
+func (m model) handleCachedRecordViewResult(msg cachedRecordViewResultMsg) (tea.Model, tea.Cmd) {
+	if !m.operations.accepts(operationViewCachedRecord, msg.requestID) {
+		return m, nil
+	}
+
+	m.operations.finish(operationViewCachedRecord)
+	if msg.err != nil {
+		m.leaveRecordView()
+		m.dialog = dialogNone
+		m.showAlert(alertError, "Unable to load cached record", cleanCachedRecordViewError(msg.err), dialogNone)
+		return m, nil
+	}
+
+	if m.dialog != dialogRecordView || m.recordFeature.workspace.source != recordSourceCache {
+		m.leaveRecordView()
+		return m, nil
+	}
+
+	m.recordFeature.view.apply(msg.record, m.width, m.height)
+	m.recordFeature.view.source = recordSourceCache
+
+	m.returnToRecordView()
+
+	return m, nil
+}
+
 func recordViewDefaultButton(record recordmodel.Record) int {
 	if record.Metadata.Type == recordmodel.RecordTypeBinary || recordViewIsBinary(record) {
 		return 1
@@ -151,6 +233,7 @@ func (m *model) returnToRecordView() {
 
 func (m *model) leaveRecordView() {
 	m.operations.cancel(operationViewRecord)
+	m.operations.cancel(operationViewCachedRecord)
 	m.operations.cancel(operationBinarySave)
 	m.recordFeature.binarySaveForm = newBinarySaveForm("")
 	m.recordFeature.view.clear()
@@ -298,4 +381,20 @@ func cleanRecordViewError(err error) string {
 	}
 
 	return cleanFailureMessage(err, "Unable to load record from Server")
+}
+
+func cleanCachedRecordViewError(err error) string {
+	if err == nil {
+		return "Unknown cached record error"
+	}
+
+	if errors.Is(err, context.Canceled) {
+		return "Cached record loading canceled"
+	}
+
+	if errors.Is(err, usecase.ErrLocalCacheRecordsUnreadable) {
+		return "This cached record is damaged or incompatible.\nRun Cache/Sync... to restore it from the Server."
+	}
+
+	return cleanFailureMessage(err, "Unable to load record from Cache")
 }

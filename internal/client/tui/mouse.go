@@ -34,6 +34,10 @@ func (m model) updateMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 		return m.updatePathPickerMouse(msg)
 	case dialogConfig:
 		return m.updateConfigMouse(msg)
+	case dialogCacheBrowse:
+		return m.updateCacheBrowseMouse(msg)
+	case dialogSync:
+		return m.updateSyncMouse(msg)
 	}
 
 	if updated, command, handled := m.updateRecordMouse(msg); handled {
@@ -155,6 +159,56 @@ func (m model) updateRegisterMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m model) updateCacheBrowseMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
+	if !m.operations.pending(operationOpenCache) {
+		for index, bounds := range m.cacheBrowseFieldBounds() {
+			if bounds.contains(msg.X, msg.Y) {
+				m.cacheFeature.form.setFocus(cacheBrowseFocus(index), false)
+				return m, nil
+			}
+		}
+	}
+
+	for index, bounds := range m.dialogButtonBounds() {
+		if !bounds.contains(msg.X, msg.Y) {
+			continue
+		}
+		focus := cacheBrowseFocus(int(cacheBrowseSubmit) + index)
+		submitDisabled := !m.cacheFeature.form.canSubmit()
+		if submitDisabled && focus == cacheBrowseSubmit {
+			return m, nil
+		}
+		m.cacheFeature.form.setFocus(focus, submitDisabled)
+		return m.activateCacheBrowse()
+	}
+
+	return m, nil
+}
+
+func (m model) updateSyncMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
+	for _, bounds := range m.syncFieldBounds() {
+		if bounds.contains(msg.X, msg.Y) {
+			m.syncFeature.form.setFocus(syncPassword, false)
+			return m, nil
+		}
+	}
+
+	for index, bounds := range m.dialogButtonBounds() {
+		if !bounds.contains(msg.X, msg.Y) {
+			continue
+		}
+		focus := syncFocus(int(syncSubmit) + index)
+		submitDisabled := !m.syncFeature.form.canSubmit()
+		if submitDisabled && focus == syncSubmit {
+			return m, nil
+		}
+		m.syncFeature.form.setFocus(focus, submitDisabled)
+		return m.activateSync()
+	}
+
+	return m, nil
+}
+
 func (m model) updatePathPickerMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 	for index, bounds := range m.pathPickerButtonBounds() {
 		if !bounds.contains(msg.X, msg.Y) {
@@ -268,14 +322,18 @@ func (m model) dialogButtonBounds() []layoutBounds {
 		if !ok {
 			return nil
 		}
+
 		bodyStyle := m.theme.aboutBody
 		buttonStyle := m.theme.aboutButtonActive
+
 		if m.alert == alertError {
 			bodyStyle = m.theme.errorBody
 			buttonStyle = m.theme.errorButton
 		}
+
 		layout := singleStyledButtonLayout(bodyStyle, buttonStyle, window.width-4, "< OK >").
 			positioned(2, alertButtonRow(m.alertMessage, m.alertHighlight))
+
 		return window.screenBounds(layout.bounds)
 	}
 
@@ -348,6 +406,24 @@ func (m model) dialogButtonBounds() []layoutBounds {
 	case dialogControls:
 		layout = controlsButtonLayout(m.theme, contentWidth, "< OK >").
 			positioned(2, controlsButtonRow)
+	case dialogCacheBrowse:
+		layout = cacheBrowseButtonsLayout(
+			m.theme,
+			contentWidth,
+			m.cacheFeature.form.focus,
+			!m.cacheFeature.form.canSubmit(),
+			blocked,
+		).positioned(2, cacheBrowseButtonRow)
+	case dialogSync:
+		layout = syncButtonsLayout(
+			m.theme,
+			contentWidth,
+			m.syncFeature.form.focus,
+			!m.syncFeature.form.canSubmit(),
+			blocked,
+		).positioned(2, syncButtonRow)
+	case dialogSyncResult:
+		layout = syncResultButtonLayout(m.theme, contentWidth, blocked).positioned(2, syncResultButtonRow)
 	case dialogServerStatus:
 		layout = serverStatusButtonsLayout(
 			m.theme,
@@ -380,6 +456,38 @@ func (m model) loginFieldBounds() []layoutBounds {
 	)
 
 	return window.screenBounds(layout.bounds)
+}
+
+func (m model) cacheBrowseFieldBounds() []layoutBounds {
+	window, ok := m.dialogPlacement()
+	if !ok || m.dialog != dialogCacheBrowse {
+		return nil
+	}
+
+	layout := newLabeledFieldColumnLayout(
+		window.width,
+		cacheBrowseLabelWidth,
+		16,
+		2,
+		cacheBrowseFirstFieldRow,
+		cacheBrowseFieldRowStep,
+	)
+
+	return window.screenBounds(layout.bounds)
+}
+
+func (m model) syncFieldBounds() []layoutBounds {
+	window, ok := m.dialogPlacement()
+	if !ok || m.dialog != dialogSync {
+		return nil
+	}
+
+	contentWidth := max(1, window.width-4)
+	inputWidth := max(16, contentWidth-syncLabelWidth-2)
+
+	return window.screenBounds([]layoutBounds{{
+		x: 2 + syncLabelWidth + 2, y: syncPasswordRow, width: inputWidth, height: 1,
+	}})
 }
 
 func (m model) registerFieldBounds() []layoutBounds {

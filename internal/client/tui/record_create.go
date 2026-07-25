@@ -24,11 +24,8 @@ func recordCreateCommand(
 	input recordFormInput,
 ) tea.Cmd {
 	return func() tea.Msg {
-		payload, err := input.payload(readBinary, nil)
+		payload, err := input.buildPayload(readBinary, nil)
 		if err != nil {
-			return recordCreateResultMsg{requestID: requestID, err: err}
-		}
-		if err := payload.Validate(); err != nil {
 			return recordCreateResultMsg{requestID: requestID, err: err}
 		}
 

@@ -37,9 +37,11 @@ func (a *Application) Sync(ctx context.Context, request SyncRequest) (result Syn
 	if err != nil {
 		return SyncResult{}, err
 	}
+
+	syncCompleted := false
 	defer func() {
 		closeErr := repository.Close()
-		if closeErr == nil {
+		if closeErr == nil || syncCompleted {
 			return
 		}
 
@@ -67,22 +69,35 @@ func (a *Application) Sync(ctx context.Context, request SyncRequest) (result Syn
 		return SyncResult{}, fmt.Errorf("build synchronization plan: %w", err)
 	}
 
+	loadPlan := plan
+	if err := repository.ValidateRecords(ctx); err != nil {
+		if !errors.Is(err, ErrLocalCacheRecordsUnreadable) {
+			return SyncResult{}, newUserError("failed to read encrypted local cache", err)
+		}
+
+		loadPlan = syncPlan{newRecords: append([]model.RecordMetadata(nil), serverRecords...)}
+	}
+
 	upserts, err := a.loadSyncRecords(
 		ctx,
 		authentication.AccessToken,
-		plan,
-		request.RefreshStale,
+		loadPlan,
 	)
 	if err != nil {
 		return SyncResult{}, err
 	}
 
 	deleteIDs := syncDeleteIDs(plan.removed)
+
 	if err := repository.ApplyChanges(ctx, upserts, deleteIDs); err != nil {
 		return SyncResult{}, newUserError("failed to update encrypted local cache", err)
 	}
 
-	return syncResult(plan, request.RefreshStale), nil
+	// После успешного атомарного ApplyChanges синхронизация завершена. Ошибка
+	// закрытия репозитория не должна превращать уже применённый результат в ошибку.
+	syncCompleted = true
+
+	return syncResult(plan), nil
 }
 
 func (a *Application) authenticateSync(
@@ -108,6 +123,7 @@ func (a *Application) authenticateSync(
 	if err != nil {
 		return nil, model.Authentication{}, mapLoginGatewayError(err)
 	}
+
 	if currentUser.ID != authentication.User.ID || currentUser.Login != authentication.User.Login {
 		return nil, model.Authentication{}, errSyncUserMismatch
 	}
@@ -137,14 +153,11 @@ func (a *Application) loadSyncRecords(
 	ctx context.Context,
 	accessToken string,
 	plan syncPlan,
-	refreshStale bool,
 ) ([]model.Record, error) {
-	metadata := make([]model.RecordMetadata, 0, len(plan.newRecords)+len(plan.stale))
+	metadata := make([]model.RecordMetadata, 0, len(plan.newRecords)+len(plan.updated))
 	metadata = append(metadata, plan.newRecords...)
-	if refreshStale {
-		for _, change := range plan.stale {
-			metadata = append(metadata, change.Metadata)
-		}
+	for _, change := range plan.updated {
+		metadata = append(metadata, change.Metadata)
 	}
 
 	records := make([]model.Record, 0, len(metadata))
@@ -166,6 +179,7 @@ func validateSyncRecord(expected model.RecordMetadata, record model.Record) erro
 	if err := record.Validate(); err != nil {
 		return fmt.Errorf("validate synchronized record: %w", err)
 	}
+
 	if record.Metadata.ID != expected.ID ||
 		record.Metadata.Type != expected.Type ||
 		record.Metadata.Revision != expected.Revision {
@@ -191,6 +205,7 @@ func mapSyncGetRecordError(err error) error {
 
 func syncDeleteIDs(records []RecordState) []string {
 	ids := make([]string, 0, len(records))
+
 	for _, record := range records {
 		ids = append(ids, record.ID)
 	}
@@ -198,17 +213,11 @@ func syncDeleteIDs(records []RecordState) []string {
 	return ids
 }
 
-func syncResult(plan syncPlan, refreshStale bool) SyncResult {
-	result := SyncResult{
+func syncResult(plan syncPlan) SyncResult {
+	return SyncResult{
 		Added:     append([]model.RecordMetadata(nil), plan.newRecords...),
+		Updated:   append([]RevisionChange(nil), plan.updated...),
 		Removed:   append([]RecordState(nil), plan.removed...),
 		Unchanged: plan.unchanged,
 	}
-	if refreshStale {
-		result.Updated = append([]RevisionChange(nil), plan.stale...)
-	} else {
-		result.Stale = append([]RevisionChange(nil), plan.stale...)
-	}
-
-	return result
 }

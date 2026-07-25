@@ -67,7 +67,7 @@ func TestTextPayload_Validate(t *testing.T) {
 			name: "allowed multiline controls",
 			payload: TextPayload{
 				Text:     "first\tline\r\nsecond",
-				Metadata: "note\ncontinued",
+				Metadata: "note continued",
 			},
 		},
 		{

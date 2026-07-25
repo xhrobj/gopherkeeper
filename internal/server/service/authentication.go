@@ -68,7 +68,7 @@ func (s *AuthenticationService) Authenticate(
 	login string,
 	password string,
 ) (AuthenticationResult, error) {
-	canonicalLogin, err := validateCredentials(login, password)
+	canonicalLogin, err := model.CanonicalizeLogin(login)
 	if err != nil {
 		return AuthenticationResult{}, ErrInvalidCredentials
 	}

@@ -44,11 +44,17 @@ func cleanRecordListError(err error) string {
 // clearRecordState отменяет все операции с записями и удаляет приватные данные из модели TUI.
 func (m *model) clearRecordState() {
 	m.operations.cancel(operationListRecords)
+	m.operations.cancel(operationOpenCache)
 	m.operations.cancel(operationViewRecord)
+	m.operations.cancel(operationViewCachedRecord)
 	m.operations.cancel(operationBinarySave)
 	m.operations.cancel(operationCreateRecord)
 	m.cancelRecordEditRequests()
 	m.operations.cancel(operationDeleteRecord)
+
+	if m.recordFeature.workspace.source == recordSourceCache && m.backend != nil {
+		m.backend.CloseCache()
+	}
 
 	m.recordFeature.workspace.clear()
 	m.recordFeature.view.clear()
@@ -67,6 +73,9 @@ func (m *model) beginOnlineRecordList() tea.Cmd {
 	if m.backend == nil || !m.authentication.session.authenticated() {
 		return nil
 	}
+	if m.recordFeature.workspace.source == recordSourceCache {
+		m.closeRecordWorkspace()
+	}
 
 	requestCtx, requestID := m.operations.begin(m.ctx, operationListRecords)
 	m.recordFeature.workspace.beginServer()
@@ -75,6 +84,13 @@ func (m *model) beginOnlineRecordList() tea.Cmd {
 
 func (m *model) closeRecordWorkspace() {
 	m.operations.cancel(operationListRecords)
+	m.operations.cancel(operationOpenCache)
+	m.operations.cancel(operationViewCachedRecord)
+
+	if m.recordFeature.workspace.source == recordSourceCache && m.backend != nil {
+		m.backend.CloseCache()
+	}
+
 	m.recordFeature.workspace.clear()
 }
 
@@ -125,6 +141,9 @@ func (m model) updateRecordWorkspace(key string) (tea.Model, tea.Cmd) {
 			return m, m.beginRecordView(metadata.ID)
 		}
 	case "delete":
+		if m.recordFeature.workspace.source != recordSourceServer {
+			return m, nil
+		}
 		metadata, ok := m.recordFeature.workspace.selectedRecord()
 		if ok && m.authentication.session.authenticated() && m.recordDeleteAvailable() {
 			m.openRecordDelete(metadata)

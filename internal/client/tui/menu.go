@@ -18,7 +18,7 @@ const (
 	menuSystem menuID = iota
 	menuAccount
 	menuRecord
-	menuSync
+	menuCache
 	menuWindow
 	menuHelp
 )
@@ -56,6 +56,8 @@ const (
 	actionViewRecord
 	actionEditRecord
 	actionDeleteRecord
+	actionBrowseCache
+	actionViewCachedRecord
 	actionSynchronize
 	actionCloseWindow
 	actionControls
@@ -98,11 +100,14 @@ var menus = []menuDefinition{
 		},
 	},
 	{
-		name:     "Sync",
-		mnemonic: 'y',
-		disabled: true,
+		name:     "Cache",
+		mnemonic: 'C',
 		items: []menuItem{
-			{label: "Synchronize...", action: actionSynchronize, disabled: true},
+			{label: "Browse...", mnemonic: 'b', action: actionBrowseCache},
+			{separator: true},
+			{label: "View", mnemonic: 'v', action: actionViewCachedRecord, disabled: true},
+			{separator: true},
+			{label: "Sync...", mnemonic: 'y', action: actionSynchronize, disabled: true},
 		},
 	},
 	{
@@ -167,6 +172,13 @@ func (m model) currentMenuDefinitions() []menuDefinition {
 	setMenuActionDisabled(recordMenu, actionDeleteRecord, !loggedIn || !m.recordDeleteAvailable() || !deleteSelected)
 	recordMenu.disabled = !hasEnabledMenuItem(*recordMenu)
 
+	cacheMenu := &definitions[menuCache]
+	setMenuActionDisabled(cacheMenu, actionBrowseCache, m.backend == nil)
+	_, cachedViewSelected := m.cachedRecordViewTarget()
+	setMenuActionDisabled(cacheMenu, actionViewCachedRecord, !cachedViewSelected)
+	setMenuActionDisabled(cacheMenu, actionSynchronize, !loggedIn)
+	cacheMenu.disabled = !hasEnabledMenuItem(*cacheMenu)
+
 	if m.dialog == dialogNone && m.recordFeature.workspace.open {
 		setMenuActionDisabled(&definitions[menuWindow], actionCloseWindow, false)
 		definitions[menuWindow].disabled = false
@@ -179,6 +191,9 @@ func (m model) currentAction() actionID {
 	if m.dialog == dialogPathPicker {
 		switch m.pathPicker.target {
 		case pathPickerBinarySaveDirectory:
+			if m.recordFeature.view.source == recordSourceCache {
+				return actionBrowseCache
+			}
 			return actionBrowseRecords
 		case pathPickerBinaryCreateFile:
 			return actionNewRecord
@@ -188,11 +203,18 @@ func (m model) currentAction() actionID {
 	}
 
 	if m.dialog != dialogNone {
+		if (m.dialog == dialogRecordView || m.dialog == dialogBinarySave) &&
+			m.recordFeature.view.source == recordSourceCache {
+			return actionBrowseCache
+		}
 		return currentDialogAction(m.dialog)
 	}
 
 	if !m.recordFeature.workspace.open {
 		return actionNone
+	}
+	if m.recordFeature.workspace.source == recordSourceCache {
+		return actionBrowseCache
 	}
 
 	return actionBrowseRecords

@@ -54,13 +54,13 @@ func cleanRecordValidationError(err error) string {
 	case errors.Is(err, recordmodel.ErrInvalidRecordTitle):
 		return "Invalid record title"
 	case errors.Is(err, recordmodel.ErrInvalidTextPayload):
-		return "Text or metadata is invalid; metadata must not exceed 255 characters"
+		return "Text or metadata is invalid; metadata must be single-line and no longer than 255 characters"
 	case errors.Is(err, recordmodel.ErrInvalidCredentialsPayload):
-		return "Login and password are required; credentials fields must not exceed 255 characters"
+		return "Login and password are required; credentials fields and metadata must be single-line and no longer than 255 characters"
 	case errors.Is(err, recordmodel.ErrInvalidCardPayload):
 		return "Card fields are invalid: use 12–20 digits, MM/YY, and an optional 3-digit CVV"
 	case errors.Is(err, recordmodel.ErrInvalidBinaryPayload):
-		return "Invalid filename, metadata, or binary data"
+		return "Invalid filename, single-line metadata, or binary data"
 	default:
 		return ""
 	}

@@ -53,29 +53,27 @@ const (
 )
 
 type recordForm struct {
-	editing          bool
-	recordType       recordmodel.RecordType
-	recordMetadata   recordmodel.RecordMetadata
-	title            textField
-	text             textArea
-	textOriginal     string
-	textDirty        bool
-	metadataOriginal string
-	metadataDirty    bool
-	login            textField
-	password         textField
-	url              textField
-	number           textField
-	cardholder       textField
-	expiryMonth      textField
-	expiryYear       textField
-	cvv              textField
-	filename         string
-	filePath         textField
-	metadata         textField
-	binaryExisting   bool
-	focus            int
-	revealed         bool
+	editing        bool
+	recordType     recordmodel.RecordType
+	recordMetadata recordmodel.RecordMetadata
+	title          textField
+	text           textArea
+	textOriginal   string
+	textDirty      bool
+	login          textField
+	password       textField
+	url            textField
+	number         textField
+	cardholder     textField
+	expiryMonth    textField
+	expiryYear     textField
+	cvv            textField
+	filename       string
+	filePath       textField
+	metadata       textField
+	binaryExisting bool
+	focus          int
+	revealed       bool
 }
 
 func newRecordCreateForm(recordType recordmodel.RecordType) recordForm {
@@ -107,7 +105,6 @@ func newRecordEditForm(record recordmodel.Record) recordForm {
 		if payload != nil {
 			form.text.setValue(payload.Text)
 			form.textOriginal = payload.Text
-			form.metadataOriginal = payload.Metadata
 			form.metadata.setValue(payload.Metadata)
 		}
 	case *recordmodel.CredentialsPayload:
@@ -115,7 +112,6 @@ func newRecordEditForm(record recordmodel.Record) recordForm {
 			form.login.setValue(payload.Login)
 			form.password.setValue(payload.Password)
 			form.url.setValue(payload.URL)
-			form.metadataOriginal = payload.Metadata
 			form.metadata.setValue(payload.Metadata)
 		}
 	case *recordmodel.CardPayload:
@@ -133,13 +129,11 @@ func newRecordEditForm(record recordmodel.Record) recordForm {
 				}
 			}
 			form.cvv.setValue(payload.CVV)
-			form.metadataOriginal = payload.Metadata
 			form.metadata.setValue(payload.Metadata)
 		}
 	case *recordmodel.BinaryPayload:
 		if payload != nil {
 			form.filename = payload.Filename
-			form.metadataOriginal = payload.Metadata
 			form.metadata.setValue(payload.Metadata)
 			form.binaryExisting = payload.Data != nil
 		}
@@ -266,9 +260,7 @@ func (form *recordForm) insert(value string) {
 	}
 
 	if field := form.activeField(); field != nil {
-		before := field.value
 		field.insert(value)
-		form.markMetadataDirty(before, field.value)
 	}
 }
 
@@ -280,10 +272,7 @@ func (form *recordForm) insertKey(key string) bool {
 	}
 
 	if field := form.activeField(); field != nil {
-		before := field.value
-		changed := field.insertKey(key)
-		form.markMetadataDirty(before, field.value)
-		return changed
+		return field.insertKey(key)
 	}
 
 	return false
@@ -296,9 +285,7 @@ func (form *recordForm) backspace() {
 	}
 
 	if field := form.activeField(); field != nil {
-		before := field.value
 		field.backspace()
-		form.markMetadataDirty(before, field.value)
 	}
 }
 
@@ -309,9 +296,7 @@ func (form *recordForm) delete() {
 	}
 
 	if field := form.activeField(); field != nil {
-		before := field.value
 		field.delete()
-		form.markMetadataDirty(before, field.value)
 	}
 }
 
@@ -330,12 +315,6 @@ func (form *recordForm) mutateText(change func()) {
 
 	if form.editing && form.text.value != before {
 		form.textDirty = true
-	}
-}
-
-func (form *recordForm) markMetadataDirty(before, after string) {
-	if form.editing && form.activeControl() == recordFormMetadata && before != after {
-		form.metadataDirty = true
 	}
 }
 
@@ -463,11 +442,6 @@ func recordFormInputFrom(form recordForm) recordFormInput {
 		text = form.textOriginal
 	}
 
-	metadata := form.metadata.value
-	if form.editing && !form.metadataDirty {
-		metadata = form.metadataOriginal
-	}
-
 	return recordFormInput{
 		recordType:     form.recordType,
 		title:          strings.TrimSpace(form.title.value),
@@ -482,70 +456,48 @@ func recordFormInputFrom(form recordForm) recordFormInput {
 		cvv:            form.cvv.value,
 		filename:       form.filename,
 		filePath:       strings.TrimSpace(form.filePath.value),
-		metadata:       metadata,
+		metadata:       form.metadata.value,
 		binaryExisting: form.binaryExisting,
 		editing:        form.editing,
 	}
 }
 
-func (input recordFormInput) validate() error {
+func (input recordFormInput) buildPayload(
+	readBinary binaryFileReader,
+	existing recordmodel.RecordPayload,
+) (recordmodel.RecordPayload, error) {
 	if err := recordmodel.ValidateRecordTitle(input.title); err != nil {
-		return errors.New("title must be non-empty and no longer than 255 Unicode characters")
+		return nil, err
 	}
+
+	var payload recordmodel.RecordPayload
 
 	switch input.recordType {
 	case recordmodel.RecordTypeText:
-		payload := &recordmodel.TextPayload{Text: input.text, Metadata: input.metadata}
-		return payload.Validate()
+		payload = &recordmodel.TextPayload{Text: input.text, Metadata: input.metadata}
 	case recordmodel.RecordTypeCredentials:
-		payload := &recordmodel.CredentialsPayload{
+		payload = &recordmodel.CredentialsPayload{
 			Login: input.login, Password: input.password, URL: input.url, Metadata: input.metadata,
 		}
-		return payload.Validate()
-	case recordmodel.RecordTypeCard:
-		month, year, err := parseRecordCardExpiry(input.expiryMonth, input.expiryYear)
-		if err != nil {
-			return err
-		}
-		payload := &recordmodel.CardPayload{
-			Number: input.number, Cardholder: input.cardholder,
-			ExpiryMonth: month, ExpiryYear: year, CVV: input.cvv, Metadata: input.metadata,
-		}
-		return payload.Validate()
-	case recordmodel.RecordTypeBinary:
-		if input.editing {
-			if input.filePath == "" && !input.binaryExisting {
-				return errors.New("binary payload is required")
-			}
-			return nil
-		}
-		if input.filePath == "" {
-			return errors.New("binary file path is required")
-		}
-		return nil
-	default:
-		return recordmodel.ErrRecordTypeUnsupported
-	}
-}
-
-func (input recordFormInput) payload(readBinary binaryFileReader, existing recordmodel.RecordPayload) (recordmodel.RecordPayload, error) {
-	switch input.recordType {
-	case recordmodel.RecordTypeText:
-		return &recordmodel.TextPayload{Text: input.text, Metadata: input.metadata}, nil
-	case recordmodel.RecordTypeCredentials:
-		return &recordmodel.CredentialsPayload{
-			Login: input.login, Password: input.password, URL: input.url, Metadata: input.metadata,
-		}, nil
 	case recordmodel.RecordTypeCard:
 		month, year, err := parseRecordCardExpiry(input.expiryMonth, input.expiryYear)
 		if err != nil {
 			return nil, err
 		}
-		return &recordmodel.CardPayload{
+
+		payload = &recordmodel.CardPayload{
 			Number: input.number, Cardholder: input.cardholder,
 			ExpiryMonth: month, ExpiryYear: year, CVV: input.cvv, Metadata: input.metadata,
-		}, nil
+		}
 	case recordmodel.RecordTypeBinary:
+		if input.editing {
+			if input.filePath == "" && !input.binaryExisting {
+				return nil, errors.New("binary payload is required")
+			}
+		} else if input.filePath == "" {
+			return nil, errors.New("binary file path is required")
+		}
+
 		filename := input.filename
 		var data []byte
 		if input.filePath != "" {
@@ -555,15 +507,21 @@ func (input recordFormInput) payload(readBinary binaryFileReader, existing recor
 			}
 			filename = readFilename
 			data = readData
-		} else if payload, ok := existing.(*recordmodel.BinaryPayload); ok && payload != nil {
-			data = cloneBinaryData(payload.Data)
+		} else if existingPayload, ok := existing.(*recordmodel.BinaryPayload); ok && existingPayload != nil {
+			data = cloneBinaryData(existingPayload.Data)
 		}
-		return &recordmodel.BinaryPayload{
+		payload = &recordmodel.BinaryPayload{
 			Filename: filename, Data: data, Metadata: input.metadata,
-		}, nil
+		}
 	default:
 		return nil, recordmodel.ErrRecordTypeUnsupported
 	}
+
+	if err := payload.Validate(); err != nil {
+		return nil, err
+	}
+
+	return payload, nil
 }
 
 func cloneBinaryData(data []byte) []byte {

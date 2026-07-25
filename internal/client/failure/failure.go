@@ -174,40 +174,21 @@ func Message(err error) string {
 	if errors.As(err, &provider) {
 		return strings.TrimSpace(provider.UserMessage())
 	}
-	return stripLegacyOperationPrefixes(err.Error())
+	return strings.TrimSpace(err.Error())
 }
 
-var legacyOperationPrefixes = [...]string{
-	"login user:",
-	"register user:",
-	"get current user:",
-	"load online session:",
-	"delete online session:",
-	"create client application:",
-	"list records:",
-	"get record:",
-	"delete record:",
-	"create text record:",
-	"create credentials record:",
-	"create card record:",
-	"create binary record:",
-	"update text record:",
-	"update credentials record:",
-	"update card record:",
-	"update binary record:",
-}
-
-func stripLegacyOperationPrefixes(message string) string {
-	message = strings.TrimSpace(message)
-	for {
-		previous := message
-		for _, prefix := range legacyOperationPrefixes {
-			message = strings.TrimSpace(strings.TrimPrefix(message, prefix))
-		}
-		if message == previous {
-			return message
-		}
+// Context добавляет диагностический контекст, не включая его в сообщение для пользователя.
+func Context(operation string, err error) error {
+	if err == nil {
+		return nil
 	}
+
+	operation = strings.TrimSpace(operation)
+	if operation == "" {
+		return err
+	}
+
+	return Wrap(KindOf(err), operation, Message(err), err)
 }
 
 // Network преобразует сетевую ошибку в типизированную форму, сохраняя

@@ -7,13 +7,11 @@ import (
 )
 
 const (
-	// NOTE: с большей минимальной длиной будет неудобно тестировать,
-	// а тестирование пока самый вероятный сценарий использования этого продукта (^_-)
-	minPasswordLength = 3
+	// Минимальная длина пользовательского пароля.
+	minPasswordLength = 8
 
 	// NOTE: пароль ограничен печатными ASCII-символами без пробела.
-	// Это делает длину в символах равной длине в байтах и исключает необходимость
-	// Unicode-нормализации
+	// Это делает длину в символах равной длине в байтах и исключает необходимость Unicode-нормализации.
 	maxPasswordLength = 64
 )
 
@@ -31,20 +29,20 @@ var (
 	ErrPasswordTooLong = errors.New("password too long")
 )
 
-func validateCredentials(login, password string) (string, error) {
+func validateRegistrationCredentials(login, password string) (string, error) {
 	canonicalLogin, err := model.CanonicalizeLogin(login)
 	if err != nil {
 		return "", ErrInvalidLogin
 	}
 
-	if err := validatePassword(password); err != nil {
+	if err := validateRegistrationPassword(password); err != nil {
 		return "", err
 	}
 
 	return canonicalLogin, nil
 }
 
-func validatePassword(password string) error {
+func validateRegistrationPassword(password string) error {
 	if len(password) < minPasswordLength {
 		return ErrPasswordTooShort
 	}

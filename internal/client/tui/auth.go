@@ -351,6 +351,8 @@ func (m *model) handleSessionExpired() {
 	m.cancelAllRequests()
 	m.closeMenu()
 	m.clearRecordState()
+	m.clearCacheState()
+	m.clearSyncState()
 
 	m.dialog = dialogNone
 	m.authentication.session = authSession{state: authGuest}

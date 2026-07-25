@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/xhrobj/gopherkeeper/internal/client/cachecrypto"
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
@@ -43,17 +44,38 @@ ORDER BY id`
 	return states, nil
 }
 
-// ListMetadata возвращает metadata всех локальных записей после расшифрования
-// и строгой проверки полного формата каждой записи.
-func (repository *Repository) ListMetadata(ctx context.Context) ([]model.RecordMetadata, error) {
-	records, err := repository.List(ctx)
-	if err != nil {
-		return nil, err
-	}
+// ListMetadata возвращает metadata всех локальных записей после расшифрования,
+// не разбирая приватные payload остальных записей.
+func (repository *Repository) ListMetadata(ctx context.Context) (metadata []model.RecordMetadata, err error) {
+	const query = `
+SELECT id, revision, crypto_version, nonce, ciphertext
+FROM cached_records
+ORDER BY id`
 
-	metadata := make([]model.RecordMetadata, len(records))
-	for index := range records {
-		metadata[index] = records[index].Metadata
+	rows, err := repository.database.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("list local cache record metadata: %w", err)
+	}
+	defer func() {
+		err = errors.Join(err, rows.Close())
+	}()
+
+	metadata = make([]model.RecordMetadata, 0)
+	for rows.Next() {
+		row, err := scanEncryptedRecord(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan local cache record metadata: %w", err)
+		}
+
+		item, err := repository.decodeRecordMetadataRow(row)
+		if err != nil {
+			return nil, err
+		}
+
+		metadata = append(metadata, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate local cache record metadata: %w", err)
 	}
 
 	return metadata, nil
@@ -93,4 +115,47 @@ ORDER BY id`
 	}
 
 	return records, nil
+}
+
+// ValidateRecords потоково проверяет, что все зашифрованные записи локального
+// кеша расшифровываются и соответствуют текущему формату клиента.
+func (repository *Repository) ValidateRecords(ctx context.Context) (err error) {
+	const query = `
+SELECT id, revision, crypto_version, nonce, ciphertext
+FROM cached_records
+ORDER BY id`
+
+	rows, err := repository.database.db.QueryContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("validate local cache records: %w", err)
+	}
+	defer func() {
+		err = errors.Join(err, rows.Close())
+	}()
+
+	for rows.Next() {
+		row, scanErr := scanEncryptedRecord(rows)
+		if scanErr != nil {
+			return fmt.Errorf("scan local cache record for validation: %w", scanErr)
+		}
+
+		if _, decodeErr := repository.decodeRecordRow(row); decodeErr != nil {
+			return markUnreadableRecordError(decodeErr)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate local cache records for validation: %w", err)
+	}
+
+	return nil
+}
+
+func markUnreadableRecordError(err error) error {
+	if errors.Is(err, ErrCorruptedCacheRecord) ||
+		errors.Is(err, ErrUnsupportedCacheCryptoVersion) ||
+		errors.Is(err, cachecrypto.ErrUnsupportedRecordFormatVersion) {
+		return errors.Join(usecase.ErrLocalCacheRecordsUnreadable, err)
+	}
+
+	return err
 }

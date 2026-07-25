@@ -149,6 +149,15 @@ func renderRecordViewWindow(
 		title = "Record " + recordTypeTitle(state.record.Metadata.Type)
 	}
 
+	if state.source == recordSourceCache {
+		title += " from Cache"
+		if state.login != "" {
+			title += ": " + state.login
+		}
+	} else {
+		title += " Online"
+	}
+
 	titleLine := renderWindowTitle(t.windowTitle, width, fitSingleLine(title, width), spinnerFrame, pending)
 	body := t.windowBody.Width(width).Height(bodyHeight).Padding(1, 2).Render(strings.Join(rows, "\n"))
 

@@ -154,6 +154,7 @@ func (m *model) closePathPicker() {
 func (m *model) applyPathSelection(path string) {
 	target := m.pathPicker.target
 	rootDirectory := m.pathPicker.rootDirectory
+
 	value := selectedPathValue(rootDirectory, path)
 
 	switch target {
@@ -178,6 +179,7 @@ func (m *model) applyPathSelection(path string) {
 	}
 
 	fieldIndex := configTargetFieldIndex(target)
+
 	m.configForm.fields[fieldIndex].setValue(value)
 	m.configForm.setFocus(configTargetFieldFocus(target))
 	m.configForm.errorMessage = ""
@@ -214,8 +216,9 @@ func (m model) activateConfig() (tea.Model, tea.Cmd) {
 		m.config = candidate
 		if changed {
 			m.cancelAllRequests()
-			m.leaveRecordView()
-			m.recordFeature.workspace.clear()
+			m.clearRecordState()
+			m.clearCacheState()
+			m.clearSyncState()
 			m.backend = nextBackend
 		}
 		m.dialog = dialogNone

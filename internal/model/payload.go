@@ -31,7 +31,7 @@ func NewRecordPayload(recordType RecordType) (RecordPayload, error) {
 }
 
 func validatePayloadMetadata(metadata string, invalidPayloadError error) error {
-	if !validateOptionalMultiline(metadata, MetadataMaxSize) {
+	if !validateOptionalSingleLine(metadata, MetadataMaxSize) {
 		return invalidPayloadError
 	}
 

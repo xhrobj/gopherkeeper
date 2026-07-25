@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 
 	urfavecli "github.com/urfave/cli/v3"
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/client/app"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
+	"github.com/xhrobj/gopherkeeper/internal/client/failure"
 	"github.com/xhrobj/gopherkeeper/internal/client/tui"
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
@@ -28,7 +30,9 @@ type tuiRunner interface {
 type defaultTUIRunner struct{}
 
 type tuiBackend struct {
-	application *usecase.Application
+	application  *usecase.Application
+	cacheMu      sync.Mutex
+	cacheSession *usecase.CacheSession
 }
 
 var _ tui.Backend = (*tuiBackend)(nil)
@@ -36,7 +40,7 @@ var _ tui.Backend = (*tuiBackend)(nil)
 func newTUIBackend(cfg config.Config) (tui.Backend, error) {
 	application, err := app.New(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("create client application: %w", err)
+		return nil, failure.Context("create client application", err)
 	}
 
 	return &tuiBackend{application: application}, nil
@@ -85,6 +89,64 @@ func (backend *tuiBackend) GetRecord(ctx context.Context, recordID string) (mode
 	return backend.application.GetRecord(ctx, recordID)
 }
 
+func (backend *tuiBackend) OpenCache(
+	ctx context.Context,
+	login string,
+	password string,
+) ([]model.RecordMetadata, error) {
+	backend.cacheMu.Lock()
+	defer backend.cacheMu.Unlock()
+
+	backend.closeCacheLocked()
+
+	session, err := backend.application.OpenCacheSession(ctx, usecase.OfflineReadRequest{
+		Login: login, Password: password,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	records, err := session.ListRecords(ctx)
+	if err != nil {
+		_ = session.Close()
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		_ = session.Close()
+		return nil, err
+	}
+
+	backend.cacheSession = session
+	return records, nil
+}
+
+func (backend *tuiBackend) GetCachedRecord(ctx context.Context, recordID string) (model.Record, error) {
+	backend.cacheMu.Lock()
+	defer backend.cacheMu.Unlock()
+
+	if backend.cacheSession == nil {
+		return model.Record{}, fmt.Errorf("local cache is not open")
+	}
+
+	return backend.cacheSession.GetRecord(ctx, recordID)
+}
+
+func (backend *tuiBackend) CloseCache() {
+	backend.cacheMu.Lock()
+	defer backend.cacheMu.Unlock()
+
+	backend.closeCacheLocked()
+}
+
+func (backend *tuiBackend) closeCacheLocked() {
+	if backend.cacheSession == nil {
+		return
+	}
+
+	_ = backend.cacheSession.Close()
+	backend.cacheSession = nil
+}
+
 func (backend *tuiBackend) CreateRecord(ctx context.Context, title string, payload model.RecordPayload) (model.Record, error) {
 	return backend.application.CreateRecord(ctx, usecase.CreateRecordRequest{Title: title, Payload: payload})
 }
@@ -105,6 +167,20 @@ func (backend *tuiBackend) DeleteRecord(ctx context.Context, recordID string, ex
 	return backend.application.DeleteRecord(ctx, usecase.DeleteRecordRequest{
 		RecordID: recordID, ExpectedRevision: expectedRevision,
 	})
+}
+
+func (backend *tuiBackend) Sync(ctx context.Context, password string) (tui.SyncSummary, error) {
+	result, err := backend.application.Sync(ctx, usecase.SyncRequest{Password: password})
+	if err != nil {
+		return tui.SyncSummary{}, err
+	}
+
+	return tui.SyncSummary{
+		Added:     len(result.Added),
+		Updated:   len(result.Updated),
+		Removed:   len(result.Removed),
+		Unchanged: result.Unchanged,
+	}, nil
 }
 
 func (defaultTUIRunner) Run(

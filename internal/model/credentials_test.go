@@ -24,7 +24,7 @@ func TestCredentialsPayload_Validate(t *testing.T) {
 			value.Login = "алиса"
 			value.Password = "секретный пароль"
 			value.URL = "https://пример.рф"
-			value.Metadata = "личный\nаккаунт"
+			value.Metadata = "личный аккаунт"
 		}},
 		{name: "optional fields empty", mutate: func(value *CredentialsPayload) {
 			value.URL = ""
@@ -60,7 +60,7 @@ func TestCredentialsPayload_Validate(t *testing.T) {
 		{name: "control in login", mutate: func(value *CredentialsPayload) { value.Login = "alice\twork" }, wantErr: ErrInvalidCredentialsPayload},
 		{name: "control in password", mutate: func(value *CredentialsPayload) { value.Password = "secret\nvalue" }, wantErr: ErrInvalidCredentialsPayload},
 		{name: "control in URL", mutate: func(value *CredentialsPayload) { value.URL = "https://example.com\x1b" }, wantErr: ErrInvalidCredentialsPayload},
-		{name: "forbidden control in metadata", mutate: func(value *CredentialsPayload) { value.Metadata = "note\x00" }, wantErr: ErrInvalidCredentialsPayload},
+		{name: "forbidden control in metadata", mutate: func(value *CredentialsPayload) { value.Metadata = "note\ncontinued" }, wantErr: ErrInvalidCredentialsPayload},
 		{name: "invalid UTF-8 login", mutate: func(value *CredentialsPayload) { value.Login = string([]byte{0xff}) }, wantErr: ErrInvalidCredentialsPayload},
 		{name: "invalid UTF-8 password", mutate: func(value *CredentialsPayload) { value.Password = string([]byte{0xff}) }, wantErr: ErrInvalidCredentialsPayload},
 		{name: "invalid UTF-8 URL", mutate: func(value *CredentialsPayload) { value.URL = string([]byte{0xff}) }, wantErr: ErrInvalidCredentialsPayload},

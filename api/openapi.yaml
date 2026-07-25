@@ -51,7 +51,7 @@ paths:
       description: >-
         Создаёт нового пользователя. Перед проверкой login очищается от пробельных символов по краям,
         ASCII-буквы A-Z переводятся в нижний регистр. После канонизации login должен содержать от 3 до 32
-        ASCII-символов. Password должен содержать от 3 до 64 печатных ASCII-символов от ! до ~ без пробелов.
+        ASCII-символов. Password должен содержать от 8 до 64 печатных ASCII-символов от ! до ~ без пробелов.
         Password не возвращается в ответе. Максимальный размер тела запроса — 4 MiB.
       operationId: registerUser
       tags:
@@ -820,7 +820,7 @@ components:
         login:
           $ref: '#/components/schemas/LoginField'
         password:
-          $ref: '#/components/schemas/PasswordField'
+          $ref: '#/components/schemas/RegistrationPasswordField'
 
     LoginRequest:
       type: object
@@ -832,7 +832,7 @@ components:
         login:
           $ref: '#/components/schemas/LoginField'
         password:
-          $ref: '#/components/schemas/PasswordField'
+          $ref: '#/components/schemas/LoginPasswordField'
 
     LoginResponse:
       type: object
@@ -893,16 +893,25 @@ components:
       pattern: '^[a-z0-9][a-z0-9._-]{2,31}$'
       example: alice
 
-    PasswordField:
+    RegistrationPasswordField:
       type: string
       format: password
       writeOnly: true
-      minLength: 3
+      minLength: 8
       maxLength: 64
-      pattern: '^[!-~]{3,64}$'
+      pattern: '^[!-~]{8,64}$'
       description: >-
-        Password длиной от 3 до 64 символов. Разрешены печатные ASCII-символы от ! до ~; пробелы и другие
-        Unicode-символы запрещены.
+        Password нового пользователя длиной от 8 до 64 символов. Разрешены печатные ASCII-символы от ! до ~;
+        пробелы и другие Unicode-символы запрещены. Политика применяется при регистрации.
+      example: correct-horse-battery-staple
+
+    LoginPasswordField:
+      type: string
+      format: password
+      writeOnly: true
+      description: >-
+        Password зарегистрированного пользователя. Сервер не применяет текущую регистрационную политику длины
+        повторно, поэтому ранее созданные учётные записи с более коротким password продолжают работать.
       example: correct-horse-battery-staple
 
 
@@ -929,8 +938,8 @@ components:
       type: string
       maxLength: 255
       description: >-
-        Необязательная приватная метаинформация длиной не более 255 Unicode-символов.
-        Хранится внутри encrypted payload. Разрешены tab, CR и LF; остальные управляющие символы запрещены.
+        Необязательная приватная однострочная метаинформация длиной не более 255 Unicode-символов.
+        Хранится внутри encrypted payload. Управляющие Unicode-символы запрещены.
       example: private metadata
 
     TextPayload:

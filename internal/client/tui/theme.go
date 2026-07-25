@@ -317,7 +317,7 @@ func newTheme() theme {
 			Bold(true),
 
 		warning: lipgloss.NewStyle().
-			Foreground(yellow).
+			Foreground(brightWhite).
 			Background(blue).
 			Bold(true),
 

@@ -160,7 +160,7 @@ func (m model) renderDialog() string {
 			recordViewWindowHeightForState(m.theme, m.width, m.height, m.recordFeature.view),
 			m.recordFeature.view,
 			m.activeButton,
-			m.operations.pending(operationViewRecord),
+			m.operations.pending(operationViewRecord) || m.operations.pending(operationViewCachedRecord),
 			blocked,
 			spinnerFrame,
 		)
@@ -194,6 +194,27 @@ func (m model) renderDialog() string {
 			blocked,
 			spinnerFrame,
 		)
+	case dialogCacheBrowse:
+		return renderCacheBrowseWindow(
+			m.theme,
+			cacheBrowseWindowWidth(m.width),
+			m.cacheFeature.form,
+			m.operations.pending(operationOpenCache),
+			blocked,
+			spinnerFrame,
+		)
+	case dialogSync:
+		return renderSyncWindow(
+			m.theme,
+			syncWindowWidth(m.width),
+			m.authentication.session.login,
+			m.syncFeature.form,
+			m.operations.pending(operationSync),
+			blocked,
+			spinnerFrame,
+		)
+	case dialogSyncResult:
+		return renderSyncResultWindow(m.theme, syncResultWindowWidth(m.width), m.syncFeature.result, blocked)
 	case dialogRecordDelete:
 		return renderRecordDeleteWindow(
 			m.theme,

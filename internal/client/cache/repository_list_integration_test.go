@@ -57,6 +57,10 @@ func TestIntegration_RepositoryListAndReopen(t *testing.T) {
 		t.Fatalf("ListState() = %#v, want %#v", states, wantStates)
 	}
 
+	if err := reopened.ValidateRecords(ctx); err != nil {
+		t.Fatalf("ValidateRecords() error = %v", err)
+	}
+
 	got, err := reopened.List(ctx)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
@@ -102,6 +106,10 @@ func TestIntegration_RepositoryRejectsRevisionMismatch(t *testing.T) {
 		t.Fatalf("ListState() = %#v, want %#v", states, wantStates)
 	}
 
+	if err := repository.ValidateRecords(ctx); !errors.Is(err, usecase.ErrLocalCacheRecordsUnreadable) {
+		t.Fatalf("ValidateRecords() error = %v, want ErrLocalCacheRecordsUnreadable", err)
+	}
+
 	got, err := repository.List(ctx)
 	if !errors.Is(err, ErrCorruptedCacheRecord) {
 		t.Fatalf("List() error = %v, want ErrCorruptedCacheRecord", err)
@@ -110,8 +118,9 @@ func TestIntegration_RepositoryRejectsRevisionMismatch(t *testing.T) {
 		t.Fatalf("List() returned partial records = %#v", got)
 	}
 
-	if _, err := repository.Get(ctx, record.Metadata.ID); !errors.Is(err, ErrCorruptedCacheRecord) {
-		t.Fatalf("Get() error = %v, want ErrCorruptedCacheRecord", err)
+	if _, err := repository.Get(ctx, record.Metadata.ID); !errors.Is(err, ErrCorruptedCacheRecord) ||
+		!errors.Is(err, usecase.ErrLocalCacheRecordsUnreadable) {
+		t.Fatalf("Get() error = %v, want corrupted and unreadable record markers", err)
 	}
 }
 

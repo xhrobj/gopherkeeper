@@ -52,8 +52,14 @@ func (m model) updateResultMessage(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 	case recordListResultMsg:
 		updated, command := m.handleRecordListResult(typed)
 		return updated, command, true
+	case cacheOpenResultMsg:
+		updated, command := m.handleCacheOpenResult(typed)
+		return updated, command, true
 	case recordViewResultMsg:
 		updated, command := m.handleRecordViewResult(typed)
+		return updated, command, true
+	case cachedRecordViewResultMsg:
+		updated, command := m.handleCachedRecordViewResult(typed)
 		return updated, command, true
 	case binarySaveResultMsg:
 		updated, command := m.handleBinarySaveResult(typed)
@@ -69,6 +75,9 @@ func (m model) updateResultMessage(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		return updated, command, true
 	case recordDeleteResultMsg:
 		updated, command := m.handleRecordDeleteResult(typed)
+		return updated, command, true
+	case syncResultMsg:
+		updated, command := m.handleSyncResult(typed)
 		return updated, command, true
 	case serverStatusResultMsg:
 		updated, command := m.handleServerStatusResult(typed)
@@ -211,6 +220,8 @@ func (m model) handleLogoutResult(msg logoutResultMsg) (tea.Model, tea.Cmd) {
 	}
 
 	m.clearRecordState()
+	m.clearCacheState()
+	m.clearSyncState()
 	m.authentication.session = authSession{state: authGuest}
 	m.showAlert(alertNotice, "Logged out", "You are now logged out", dialogNone)
 
@@ -253,6 +264,10 @@ func (m model) updatePaste(msg tea.PasteMsg) (tea.Model, tea.Cmd) {
 		m.recordFeature.createForm.insert(msg.Content)
 	case m.dialog == dialogRecordEdit && m.recordFeature.edit.status == recordEditReady && !m.operations.pending(operationEditRecord):
 		m.recordFeature.edit.form.insert(msg.Content)
+	case m.dialog == dialogCacheBrowse && !m.operations.pending(operationOpenCache):
+		m.cacheFeature.form.insert(msg.Content)
+	case m.dialog == dialogSync && !m.operations.pending(operationSync):
+		m.syncFeature.form.insert(msg.Content)
 	}
 
 	return m, nil
@@ -351,6 +366,17 @@ func (m model) updateDialogKey(msg tea.KeyPressMsg, key string) (tea.Model, tea.
 	case dialogRecordDelete:
 		updated, command := m.updateRecordDelete(key)
 		return updated, command, true
+	case dialogCacheBrowse:
+		updated, command := m.updateCacheBrowse(key)
+		return updated, command, true
+	case dialogSync:
+		updated, command := m.updateSync(key)
+		return updated, command, true
+	case dialogSyncResult:
+		if key == "enter" || key == "esc" {
+			m.closeSync()
+		}
+		return m, nil, true
 	default:
 		return m, nil, false
 	}

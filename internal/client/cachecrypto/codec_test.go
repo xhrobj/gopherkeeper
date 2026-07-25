@@ -55,6 +55,34 @@ func TestRecordCodec_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestDecodeRecordMetadata_DoesNotValidatePayload(t *testing.T) {
+	encoded := []byte(`{
+		"format_version":1,
+		"id":"550e8400-e29b-41d4-a716-446655440000",
+		"type":"text",
+		"title":"Cached note",
+		"revision":2,
+		"created_at":"2026-07-24T12:00:00Z",
+		"updated_at":"2026-07-24T12:05:00Z",
+		"payload":{"text":""}
+	}`)
+
+	metadata, err := DecodeRecordMetadata(encoded)
+	if err != nil {
+		t.Fatalf("DecodeRecordMetadata() error = %v", err)
+	}
+	if metadata.ID != "550e8400-e29b-41d4-a716-446655440000" ||
+		metadata.Type != model.RecordTypeText ||
+		metadata.Title != "Cached note" ||
+		metadata.Revision != 2 {
+		t.Fatalf("DecodeRecordMetadata() = %#v", metadata)
+	}
+
+	if _, err := DecodeRecord(encoded); !errors.Is(err, ErrInvalidRecordFormat) {
+		t.Fatalf("DecodeRecord() error = %v, want ErrInvalidRecordFormat", err)
+	}
+}
+
 func TestDecodeRecord_RejectsUnsupportedOrInvalidFormat(t *testing.T) {
 	tests := []struct {
 		name string

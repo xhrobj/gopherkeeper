@@ -88,7 +88,16 @@ func renderRecordWorkspace(
 	if !active {
 		titleStyle = t.windowTitleInactive
 	}
-	titleLine := renderWindowTitle(titleStyle, width, "Records", spinnerFrame, pending)
+
+	title := "Records Online"
+	if workspace.source == recordSourceCache {
+		title = "Records from Cache"
+		if workspace.login != "" {
+			title += ": " + workspace.login
+		}
+	}
+
+	titleLine := renderWindowTitle(titleStyle, width, title, spinnerFrame, pending)
 	body := t.windowBody.
 		Width(width).
 		Height(max(1, height-1)).
@@ -126,7 +135,7 @@ func renderRecordRows(t theme, width, pageSize int, workspace recordWorkspace) [
 		}
 		rows = append(rows, t.recordMessage.Width(width).AlignHorizontal(lipgloss.Center).Render(fitSingleLine(message, width)))
 	} else if workspace.state == recordListReady && len(workspace.records) == 0 {
-		rows = append(rows, t.recordMessage.Width(width).AlignHorizontal(lipgloss.Center).Render("No records found"))
+		rows = append(rows, t.recordInfo.Width(width).AlignHorizontal(lipgloss.Center).Render(`¯\_(ツ)_/¯ no records found`))
 	} else {
 		end := min(len(workspace.records), workspace.offset+pageSize)
 		for index := workspace.offset; index < end; index++ {

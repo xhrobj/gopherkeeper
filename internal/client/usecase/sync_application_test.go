@@ -14,15 +14,16 @@ import (
 
 const (
 	syncNewRecordID       = "550e8400-e29b-41d4-a716-446655440001"
-	syncStaleRecordID     = "550e8400-e29b-41d4-a716-446655440002"
+	syncUpdatedRecordID   = "550e8400-e29b-41d4-a716-446655440002"
 	syncUnchangedRecordID = "550e8400-e29b-41d4-a716-446655440003"
 	syncRemovedRecordID   = "550e8400-e29b-41d4-a716-446655440004"
 )
 
 type cacheRepositoryStub struct {
-	listState    func(context.Context) ([]RecordState, error)
-	applyChanges func(context.Context, []model.Record, []string) error
-	close        func() error
+	listState       func(context.Context) ([]RecordState, error)
+	validateRecords func(context.Context) error
+	applyChanges    func(context.Context, []model.Record, []string) error
+	close           func() error
 }
 
 func (s cacheRepositoryStub) ListState(ctx context.Context) ([]RecordState, error) {
@@ -30,6 +31,13 @@ func (s cacheRepositoryStub) ListState(ctx context.Context) ([]RecordState, erro
 		return nil, nil
 	}
 	return s.listState(ctx)
+}
+
+func (s cacheRepositoryStub) ValidateRecords(ctx context.Context) error {
+	if s.validateRecords == nil {
+		return nil
+	}
+	return s.validateRecords(ctx)
 }
 
 func (s cacheRepositoryStub) ApplyChanges(
@@ -52,26 +60,26 @@ func (s cacheRepositoryStub) Close() error {
 
 func TestApplication_Sync(t *testing.T) {
 	newRecord := syncTextRecord(syncNewRecordID, "New note", 1)
-	staleRecord := syncTextRecord(syncStaleRecordID, "Changed note", 2)
+	updatedRecord := syncTextRecord(syncUpdatedRecordID, "Changed note", 2)
 	unchangedRecord := syncTextRecord(syncUnchangedRecordID, "Stable note", 3)
 	serverRecords := []model.RecordMetadata{
 		unchangedRecord.Metadata,
-		staleRecord.Metadata,
+		updatedRecord.Metadata,
 		newRecord.Metadata,
 	}
 	localRecords := []RecordState{
 		{ID: syncRemovedRecordID, Revision: 4},
 		{ID: syncUnchangedRecordID, Revision: 3},
-		{ID: syncStaleRecordID, Revision: 1},
+		{ID: syncUpdatedRecordID, Revision: 1},
 	}
 
 	var savedSession session.Session
 	cacheClosed := false
 	application := newSyncTestApplication(syncTestDependencies{
 		users:              successfulSyncUsers(t),
-		records:            successfulSyncRecords(t, serverRecords, newRecord),
+		records:            successfulSyncRecords(t, serverRecords, newRecord, updatedRecord),
 		sessions:           successfulSyncSessionsSaving(t, &savedSession),
-		cache:              successfulSyncCache(t, localRecords, newRecord, &cacheClosed),
+		cache:              successfulSyncCache(t, localRecords, []model.Record{newRecord, updatedRecord}, &cacheClosed),
 		cacheProviderCheck: successfulSyncCacheProviderCheck(t),
 	})
 
@@ -84,60 +92,127 @@ func TestApplication_Sync(t *testing.T) {
 	if !cacheClosed {
 		t.Error("cache repository was not closed")
 	}
-	assertSuccessfulSyncResult(t, result, newRecord.Metadata, staleRecord.Metadata)
+	assertSuccessfulSyncResult(t, result, newRecord.Metadata, updatedRecord.Metadata)
 }
 
-func TestApplication_SyncRefreshesStaleRecords(t *testing.T) {
-	staleRecord := syncTextRecord(syncStaleRecordID, "Changed note", 2)
-	getCalls := 0
+func TestApplication_SyncRepairsUnreadableUnchangedRecords(t *testing.T) {
+	record := syncTextRecord(syncUnchangedRecordID, "Stable note", 3)
+	validationCalls := 0
+	applyCalls := 0
+
 	application := newSyncTestApplication(syncTestDependencies{
-		users: successfulSyncUsers(t),
+		users:    successfulSyncUsers(t),
+		sessions: successfulSyncSessions(),
 		records: recordGatewayStub{
 			list: func(context.Context, string) ([]model.RecordMetadata, error) {
-				return []model.RecordMetadata{staleRecord.Metadata}, nil
+				return []model.RecordMetadata{record.Metadata}, nil
 			},
 			get: func(_ context.Context, _ string, recordID string) (model.Record, error) {
-				getCalls++
-				if recordID != syncStaleRecordID {
-					t.Errorf("GetRecord() ID = %q, want %q", recordID, syncStaleRecordID)
+				if recordID != record.Metadata.ID {
+					t.Fatalf("GetRecord() ID = %q, want %q", recordID, record.Metadata.ID)
 				}
-				return staleRecord, nil
+				return record, nil
 			},
 		},
-		sessions: successfulSyncSessions(),
 		cache: cacheRepositoryStub{
 			listState: func(context.Context) ([]RecordState, error) {
-				return []RecordState{{ID: syncStaleRecordID, Revision: 1}}, nil
+				return []RecordState{{ID: record.Metadata.ID, Revision: record.Metadata.Revision}}, nil
+			},
+			validateRecords: func(context.Context) error {
+				validationCalls++
+				if validationCalls == 1 {
+					return ErrLocalCacheRecordsUnreadable
+				}
+				return nil
 			},
 			applyChanges: func(_ context.Context, upserts []model.Record, deleteIDs []string) error {
-				if !reflect.DeepEqual(upserts, []model.Record{staleRecord}) {
-					t.Errorf("cache upserts = %#v, want stale server record", upserts)
+				applyCalls++
+				if !reflect.DeepEqual(upserts, []model.Record{record}) {
+					t.Fatalf("cache repair upserts = %#v, want unchanged server record", upserts)
 				}
 				if len(deleteIDs) != 0 {
-					t.Errorf("cache deletes = %#v, want empty", deleteIDs)
+					t.Fatalf("cache repair deletes = %#v, want none", deleteIDs)
 				}
 				return nil
 			},
 		},
 	})
 
-	result, err := application.Sync(context.Background(), SyncRequest{
-		Password:     testPassword,
-		RefreshStale: true,
-	})
+	result, err := application.Sync(context.Background(), SyncRequest{Password: testPassword})
 	if err != nil {
 		t.Fatalf("Sync() error = %v", err)
 	}
-	if getCalls != 1 {
-		t.Errorf("GetRecord() calls = %d, want 1", getCalls)
+	if result.Unchanged != 1 || len(result.Added) != 0 || len(result.Updated) != 0 || len(result.Removed) != 0 {
+		t.Fatalf("Sync() result = %#v, want one logically unchanged repaired record", result)
+	}
+	if validationCalls != 1 {
+		t.Errorf("ValidateRecords() calls = %d, want 1", validationCalls)
+	}
+	if applyCalls != 1 {
+		t.Errorf("ApplyChanges() calls = %d, want 1", applyCalls)
+	}
+}
+
+func TestApplication_SyncUpdatesChangedRecords(t *testing.T) {
+	updatedRecord := syncTextRecord(syncUpdatedRecordID, "Changed note", 2)
+	tests := []struct {
+		name          string
+		localRevision int64
+	}{
+		{name: "server revision is newer", localRevision: 1},
+		{name: "local revision is newer", localRevision: 3},
 	}
 
-	wantUpdated := []RevisionChange{{Metadata: staleRecord.Metadata, LocalRevision: 1}}
-	if !reflect.DeepEqual(result.Updated, wantUpdated) {
-		t.Errorf("updated = %#v, want %#v", result.Updated, wantUpdated)
-	}
-	if len(result.Stale) != 0 {
-		t.Errorf("stale = %#v, want empty after refresh", result.Stale)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			getCalls := 0
+			application := newSyncTestApplication(syncTestDependencies{
+				users: successfulSyncUsers(t),
+				records: recordGatewayStub{
+					list: func(context.Context, string) ([]model.RecordMetadata, error) {
+						return []model.RecordMetadata{updatedRecord.Metadata}, nil
+					},
+					get: func(_ context.Context, _ string, recordID string) (model.Record, error) {
+						getCalls++
+						if recordID != syncUpdatedRecordID {
+							t.Errorf("GetRecord() ID = %q, want %q", recordID, syncUpdatedRecordID)
+						}
+						return updatedRecord, nil
+					},
+				},
+				sessions: successfulSyncSessions(),
+				cache: cacheRepositoryStub{
+					listState: func(context.Context) ([]RecordState, error) {
+						return []RecordState{{ID: syncUpdatedRecordID, Revision: tt.localRevision}}, nil
+					},
+					applyChanges: func(_ context.Context, upserts []model.Record, deleteIDs []string) error {
+						if !reflect.DeepEqual(upserts, []model.Record{updatedRecord}) {
+							t.Errorf("cache upserts = %#v, want updated server record", upserts)
+						}
+						if len(deleteIDs) != 0 {
+							t.Errorf("cache deletes = %#v, want empty", deleteIDs)
+						}
+						return nil
+					},
+				},
+			})
+
+			result, err := application.Sync(context.Background(), SyncRequest{Password: testPassword})
+			if err != nil {
+				t.Fatalf("Sync() error = %v", err)
+			}
+			if getCalls != 1 {
+				t.Errorf("GetRecord() calls = %d, want 1", getCalls)
+			}
+
+			wantUpdated := []RevisionChange{{
+				Metadata:      updatedRecord.Metadata,
+				LocalRevision: tt.localRevision,
+			}}
+			if !reflect.DeepEqual(result.Updated, wantUpdated) {
+				t.Errorf("updated = %#v, want %#v", result.Updated, wantUpdated)
+			}
+		})
 	}
 }
 
@@ -222,7 +297,7 @@ func TestApplication_SyncRejectsDifferentAuthenticatedUser(t *testing.T) {
 
 func TestApplication_SyncDoesNotApplyPartialChangesAfterGetError(t *testing.T) {
 	firstRecord := syncTextRecord(syncNewRecordID, "First note", 1)
-	secondRecord := syncTextRecord(syncStaleRecordID, "Second note", 1)
+	secondRecord := syncTextRecord(syncUpdatedRecordID, "Second note", 1)
 	getError := errors.New("connection reset")
 	getCalls := 0
 	applyCalled := false
@@ -431,8 +506,10 @@ func TestApplication_SyncReturnsInfrastructureErrorsAndClosesCache(t *testing.T)
 	}
 }
 
-func TestApplication_SyncReturnsCloseError(t *testing.T) {
+func TestApplication_SyncDoesNotReportCloseErrorAfterSuccessfulApply(t *testing.T) {
 	closeError := errors.New("close failed")
+	closeCalls := 0
+	applyCalls := 0
 	application := newSyncTestApplication(syncTestDependencies{
 		users:    successfulSyncUsers(t),
 		sessions: successfulSyncSessions(),
@@ -440,19 +517,29 @@ func TestApplication_SyncReturnsCloseError(t *testing.T) {
 			list: func(context.Context, string) ([]model.RecordMetadata, error) { return nil, nil },
 		},
 		cache: cacheRepositoryStub{
-			close: func() error { return closeError },
+			applyChanges: func(context.Context, []model.Record, []string) error {
+				applyCalls++
+				return nil
+			},
+			close: func() error {
+				closeCalls++
+				return closeError
+			},
 		},
 	})
 
 	result, err := application.Sync(context.Background(), SyncRequest{Password: testPassword})
-	if !errors.Is(err, closeError) {
-		t.Fatalf("Sync() error = %v, want close error", err)
-	}
-	if err.Error() != "failed to close encrypted local cache" {
-		t.Errorf("Sync() error = %q, want safe close error", err)
+	if err != nil {
+		t.Fatalf("Sync() error = %v, want successful result after applied changes", err)
 	}
 	if !reflect.DeepEqual(result, SyncResult{}) {
-		t.Errorf("Sync() result = %#v, want zero result after close error", result)
+		t.Errorf("Sync() result = %#v, want empty successful result", result)
+	}
+	if applyCalls != 1 {
+		t.Errorf("ApplyChanges() calls = %d, want 1", applyCalls)
+	}
+	if closeCalls != 1 {
+		t.Errorf("Close() calls = %d, want 1", closeCalls)
 	}
 }
 
@@ -625,6 +712,7 @@ func successfulSyncRecords(
 	t *testing.T,
 	serverRecords []model.RecordMetadata,
 	newRecord model.Record,
+	updatedRecord model.Record,
 ) RecordGateway {
 	t.Helper()
 	return recordGatewayStub{
@@ -638,10 +726,15 @@ func successfulSyncRecords(
 			if accessToken != "new.jwt.token" {
 				t.Errorf("get access token = %q, want new.jwt.token", accessToken)
 			}
-			if recordID != syncNewRecordID {
-				t.Fatalf("GetRecord() ID = %q, want only new record %q", recordID, syncNewRecordID)
+			switch recordID {
+			case syncNewRecordID:
+				return newRecord, nil
+			case syncUpdatedRecordID:
+				return updatedRecord, nil
+			default:
+				t.Fatalf("GetRecord() ID = %q, want synchronized record ID", recordID)
+				return model.Record{}, nil
 			}
-			return newRecord, nil
 		},
 	}
 }
@@ -665,7 +758,7 @@ func successfulSyncSessionsSaving(t *testing.T, savedSession *session.Session) S
 func successfulSyncCache(
 	t *testing.T,
 	localRecords []RecordState,
-	newRecord model.Record,
+	wantUpserts []model.Record,
 	closed *bool,
 ) SyncCacheRepository {
 	t.Helper()
@@ -674,8 +767,8 @@ func successfulSyncCache(
 			return localRecords, nil
 		},
 		applyChanges: func(_ context.Context, upserts []model.Record, deleteIDs []string) error {
-			if !reflect.DeepEqual(upserts, []model.Record{newRecord}) {
-				t.Errorf("cache upserts = %#v, want new record", upserts)
+			if !reflect.DeepEqual(upserts, wantUpserts) {
+				t.Errorf("cache upserts = %#v, want %#v", upserts, wantUpserts)
 			}
 			if !reflect.DeepEqual(deleteIDs, []string{syncRemovedRecordID}) {
 				t.Errorf("cache deletes = %#v, want removed record", deleteIDs)
@@ -716,16 +809,16 @@ func assertSuccessfulSyncSession(t *testing.T, got session.Session) {
 func assertSuccessfulSyncResult(
 	t *testing.T,
 	got SyncResult,
-	newRecord, staleRecord model.RecordMetadata,
+	newRecord, updatedRecord model.RecordMetadata,
 ) {
 	t.Helper()
 	want := SyncResult{
-		Added:   []model.RecordMetadata{newRecord},
-		Removed: []RecordState{{ID: syncRemovedRecordID, Revision: 4}},
-		Stale: []RevisionChange{{
-			Metadata:      staleRecord,
+		Added: []model.RecordMetadata{newRecord},
+		Updated: []RevisionChange{{
+			Metadata:      updatedRecord,
 			LocalRevision: 1,
 		}},
+		Removed:   []RecordState{{ID: syncRemovedRecordID, Revision: 4}},
 		Unchanged: 1,
 	}
 	if !reflect.DeepEqual(got, want) {

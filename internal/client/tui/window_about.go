@@ -7,9 +7,8 @@ import (
 )
 
 const (
-	aboutWindowHeight = 20
-	aboutButtonRow    = 18
-	aboutButtonGap    = 3
+	aboutButtonRow = 18
+	aboutButtonGap = 3
 )
 
 func aboutWindowWidth(screenWidth int) int {

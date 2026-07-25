@@ -30,7 +30,7 @@ type RevisionChange struct {
 
 type syncPlan struct {
 	newRecords []model.RecordMetadata
-	stale      []RevisionChange
+	updated    []RevisionChange
 	removed    []RecordState
 	unchanged  int
 }
@@ -40,6 +40,7 @@ func buildSyncPlan(serverRecords []model.RecordMetadata, localRecords []RecordSt
 	if err != nil {
 		return syncPlan{}, err
 	}
+
 	localByID, err := indexLocalRecords(localRecords)
 	if err != nil {
 		return syncPlan{}, err
@@ -47,13 +48,14 @@ func buildSyncPlan(serverRecords []model.RecordMetadata, localRecords []RecordSt
 
 	plan := syncPlan{
 		newRecords: make([]model.RecordMetadata, 0),
-		stale:      make([]RevisionChange, 0),
+		updated:    make([]RevisionChange, 0),
 		removed:    make([]RecordState, 0),
 	}
 
 	for _, id := range sortedKeys(serverByID) {
 		metadata := serverByID[id]
 		local, exists := localByID[id]
+
 		if !exists {
 			plan.newRecords = append(plan.newRecords, metadata)
 			continue
@@ -64,7 +66,7 @@ func buildSyncPlan(serverRecords []model.RecordMetadata, localRecords []RecordSt
 			continue
 		}
 
-		plan.stale = append(plan.stale, RevisionChange{
+		plan.updated = append(plan.updated, RevisionChange{
 			Metadata:      metadata,
 			LocalRevision: local.Revision,
 		})
@@ -81,6 +83,7 @@ func buildSyncPlan(serverRecords []model.RecordMetadata, localRecords []RecordSt
 
 func indexServerRecords(records []model.RecordMetadata) (map[string]model.RecordMetadata, error) {
 	indexed := make(map[string]model.RecordMetadata, len(records))
+
 	for index, metadata := range records {
 		if err := metadata.Validate(); err != nil {
 			return nil, fmt.Errorf("validate server record %d: %w", index, err)
@@ -96,6 +99,7 @@ func indexServerRecords(records []model.RecordMetadata) (map[string]model.Record
 
 func indexLocalRecords(records []RecordState) (map[string]RecordState, error) {
 	indexed := make(map[string]RecordState, len(records))
+
 	for index, state := range records {
 		if err := model.ValidateRecordID(state.ID); err != nil {
 			return nil, fmt.Errorf("validate local record %d: %w", index, err)

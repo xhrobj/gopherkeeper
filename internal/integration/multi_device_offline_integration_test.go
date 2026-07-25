@@ -29,8 +29,8 @@ func TestIntegration_CLITwoDeviceOfflineAndConflictFlow(t *testing.T) {
 
 	flow.stopServerAndReadOffline(recordID)
 	flow.restartServerAndCreateConflict(recordID)
-	flow.assertStaleCacheIsNotReplaced(recordID)
-	flow.refreshSecondClient(recordID)
+	flow.assertOfflineCacheRemainsOldUntilSync(recordID)
+	flow.synchronizeSecondClient(recordID)
 	flow.assertIndependentCaches(recordID)
 }
 
@@ -134,8 +134,8 @@ func (flow *multiDeviceOfflineFlow) createAndSynchronizeRecord() string {
 		flow.t.Fatalf("created shared record revision = %d, want 1", revision)
 	}
 
-	flow.assertSync(flow.first, false, "Added: 1", "Updated: 0", "Stale: 0")
-	flow.assertSync(flow.second, false, "Added: 1", "Updated: 0", "Stale: 0")
+	flow.assertSync(flow.first, "Added: 1", "Updated: 0")
+	flow.assertSync(flow.second, "Added: 1", "Updated: 0")
 
 	firstLocation := flow.cacheLocation(flow.first)
 	secondLocation := flow.cacheLocation(flow.second)
@@ -249,45 +249,28 @@ func (flow *multiDeviceOfflineFlow) restartServerAndCreateConflict(recordID stri
 	}
 }
 
-func (flow *multiDeviceOfflineFlow) assertStaleCacheIsNotReplaced(recordID string) {
+func (flow *multiDeviceOfflineFlow) assertOfflineCacheRemainsOldUntilSync(recordID string) {
 	flow.t.Helper()
-
-	output := flow.assertSync(
-		flow.second,
-		false,
-		"Added: 0",
-		"Updated: 0",
-		"Stale: 1",
-		"LOCAL REVISION",
-		"SERVER REVISION",
-		"Run `gkeep sync --refresh` to update stale records.",
-	)
-	for _, want := range []string{recordID, "Updated shared note", "1", "2"} {
-		if !strings.Contains(output, want) {
-			flow.t.Errorf("stale synchronization output = %q, want %q", output, want)
-		}
-	}
 
 	flow.assertOfflineRecord(flow.second, recordID, 1, multiDeviceInitialText, multiDeviceUpdatedText)
 }
 
-func (flow *multiDeviceOfflineFlow) refreshSecondClient(recordID string) {
+func (flow *multiDeviceOfflineFlow) synchronizeSecondClient(recordID string) {
 	flow.t.Helper()
 
-	flow.assertSync(flow.second, true, "Added: 0", "Updated: 1", "Stale: 0")
+	flow.assertSync(flow.second, "Added: 0", "Updated: 1", "Removed: 0")
 	flow.assertOfflineRecord(flow.second, recordID, 2, multiDeviceUpdatedText, multiDeviceInitialText)
 }
 
 func (flow *multiDeviceOfflineFlow) assertIndependentCaches(recordID string) {
 	flow.t.Helper()
 
-	// Refreshing Client B must not mutate Client A's independent local cache.
+	// Synchronizing Client B must not mutate Client A's independent local cache.
 	flow.assertOfflineRecord(flow.first, recordID, 1, multiDeviceInitialText, multiDeviceUpdatedText)
 }
 
 func (flow *multiDeviceOfflineFlow) assertSync(
 	client multiDeviceCLIClient,
-	refresh bool,
 	want ...string,
 ) string {
 	flow.t.Helper()
@@ -298,10 +281,9 @@ func (flow *multiDeviceOfflineFlow) assertSync(
 		flow.caCertFile,
 		client,
 		testRegistrationPassword,
-		refresh,
 	)
 	if err != nil {
-		flow.t.Fatalf("synchronize Client refresh=%t: %v", refresh, err)
+		flow.t.Fatalf("synchronize Client: %v", err)
 	}
 	if stderr != "" {
 		flow.t.Errorf("synchronize Client stderr = %q, want empty output", stderr)
@@ -396,7 +378,6 @@ func runMultiDeviceSync(
 	caCertFile string,
 	client multiDeviceCLIClient,
 	password string,
-	refresh bool,
 ) (string, string, error) {
 	args := []string{
 		"gkeep",
@@ -406,10 +387,6 @@ func runMultiDeviceSync(
 		"--cache-dir", client.cacheDir,
 		"sync",
 	}
-	if refresh {
-		args = append(args, "--refresh")
-	}
-
 	return runClientCommandWithInput(ctx, args, password+"\n")
 }
 
