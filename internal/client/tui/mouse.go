@@ -21,8 +21,6 @@ func (m model) updateMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 
 	if updated, command, handled := m.updateMenuMouse(msg); handled {
 		return updated, command
-	} else {
-		m = updated.(model)
 	}
 
 	switch m.dialog {
@@ -57,7 +55,7 @@ func (m model) updateAlertMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) updateMenuMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd, bool) {
+func (m *model) updateMenuMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd, bool) {
 	definitions := m.currentMenuDefinitions()
 
 	if msg.Y == menuBarY {
@@ -72,18 +70,18 @@ func (m model) updateMenuMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd, bool)
 		index, ok := menuIndexAtX(menuLayout.bounds, msg.X)
 		if !ok || definitions[index].disabled {
 			m.closeMenu()
-			return m, nil, true
+			return *m, nil, true
 		}
 		if m.dropdownOpen && m.activeMenu == index {
 			m.closeMenu()
-			return m, nil, true
+			return *m, nil, true
 		}
 		updated, command := m.openMenu(index)
 		return updated, command, true
 	}
 
 	if !m.dropdownOpen {
-		return m, nil, false
+		return *m, nil, false
 	}
 
 	dropdownLayout := buildDropdownMenuLayout(m.width, m.activeMenu, definitions[m.activeMenu])
@@ -91,7 +89,7 @@ func (m model) updateMenuMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd, bool)
 	if dropdownLayout.bounds.contains(msg.X, msg.Y) {
 		selected, item, ok := dropdownLayout.itemAt(msg.X, msg.Y)
 		if !ok || item.disabled {
-			return m, nil, true
+			return *m, nil, true
 		}
 		m.selectedItem = selected
 		updated, command := m.activate(item.action)
@@ -100,7 +98,7 @@ func (m model) updateMenuMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd, bool)
 
 	m.closeMenu()
 
-	return m, nil, false
+	return *m, nil, false
 }
 
 func (m model) updateLoginMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
