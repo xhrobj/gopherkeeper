@@ -23,7 +23,7 @@ func TestParse(t *testing.T) {
 		want Config
 	}{
 		{
-			name: "default address, JWT TTL and record key ID",
+			name: "default transport addresses, JWT TTL and record key ID",
 			env: Config{
 				DatabaseDSN:     "postgres://env",
 				TLSCertFile:     "env-server.pem",
@@ -32,7 +32,8 @@ func TestParse(t *testing.T) {
 				RecordMasterKey: testRecordMasterKey,
 			},
 			want: Config{
-				Address:         defaultAddress,
+				HTTPAddress:     defaultHTTPAddress,
+				GRPCAddress:     defaultGRPCAddress,
 				DatabaseDSN:     "postgres://env",
 				TLSCertFile:     "env-server.pem",
 				TLSKeyFile:      "env-server-key.pem",
@@ -45,7 +46,8 @@ func TestParse(t *testing.T) {
 		{
 			name: "environment",
 			env: Config{
-				Address:         "localhost:8081",
+				HTTPAddress:     "localhost:8081",
+				GRPCAddress:     "localhost:50052",
 				DatabaseDSN:     "postgres://env",
 				TLSCertFile:     "env-server.pem",
 				TLSKeyFile:      "env-server-key.pem",
@@ -55,7 +57,8 @@ func TestParse(t *testing.T) {
 				RecordKeyID:     "records-v1",
 			},
 			want: Config{
-				Address:         "localhost:8081",
+				HTTPAddress:     "localhost:8081",
+				GRPCAddress:     "localhost:50052",
 				DatabaseDSN:     "postgres://env",
 				TLSCertFile:     "env-server.pem",
 				TLSKeyFile:      "env-server-key.pem",
@@ -73,13 +76,15 @@ func TestParse(t *testing.T) {
 			},
 			args: []string{
 				"-a", "localhost:8082",
+				"-g", "localhost:50053",
 				"--database-dsn", "postgres://flag",
 				"--tls-cert", "flag-server.pem",
 				"--tls-key", "flag-server-key.pem",
 				"--jwt-ttl", "45m",
 			},
 			want: Config{
-				Address:         "localhost:8082",
+				HTTPAddress:     "localhost:8082",
+				GRPCAddress:     "localhost:50053",
 				DatabaseDSN:     "postgres://flag",
 				TLSCertFile:     "flag-server.pem",
 				TLSKeyFile:      "flag-server-key.pem",
@@ -92,7 +97,8 @@ func TestParse(t *testing.T) {
 		{
 			name: "flags > environment",
 			env: Config{
-				Address:         "localhost:8081",
+				HTTPAddress:     "localhost:8081",
+				GRPCAddress:     "localhost:50052",
 				DatabaseDSN:     "postgres://env",
 				TLSCertFile:     "env-server.pem",
 				TLSKeyFile:      "env-server-key.pem",
@@ -102,14 +108,16 @@ func TestParse(t *testing.T) {
 				RecordKeyID:     "records-v1",
 			},
 			args: []string{
-				"-a", "localhost:8082",
+				"--address", "localhost:8082",
+				"--grpc-address", "localhost:50053",
 				"--database-dsn", "postgres://flag",
 				"--tls-cert", "flag-server.pem",
 				"--tls-key", "flag-server-key.pem",
 				"--jwt-ttl", "45m",
 			},
 			want: Config{
-				Address:         "localhost:8082",
+				HTTPAddress:     "localhost:8082",
+				GRPCAddress:     "localhost:50053",
 				DatabaseDSN:     "postgres://flag",
 				TLSCertFile:     "flag-server.pem",
 				TLSKeyFile:      "flag-server-key.pem",
@@ -376,6 +384,54 @@ func TestParse_ReturnsInvalidJWTTLError(t *testing.T) {
 	}
 }
 
+func TestParse_ReturnsInvalidTransportAddressError(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		wantError string
+	}{
+		{
+			name:      "empty HTTPS address",
+			args:      []string{"-a", " "},
+			wantError: "HTTPS address must not be empty",
+		},
+		{
+			name:      "empty gRPC address",
+			args:      []string{"-g", " "},
+			wantError: "gRPC address must not be empty",
+		},
+		{
+			name: "same HTTPS and gRPC address",
+			args: []string{
+				"-a", "localhost:8080",
+				"--grpc-address", "localhost:8080",
+			},
+			wantError: "HTTPS and gRPC addresses must differ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setEnvironment(t, Config{
+				DatabaseDSN:     "postgres://test",
+				TLSCertFile:     "server.pem",
+				TLSKeyFile:      "server-key.pem",
+				JWTSecret:       testJWTSecret,
+				RecordMasterKey: testRecordMasterKey,
+			})
+
+			_, err := Parse(tt.args)
+			if err == nil {
+				t.Fatal("Parse() error = nil, want transport address error")
+			}
+
+			if !strings.Contains(err.Error(), tt.wantError) {
+				t.Fatalf("Parse() error = %q, want substring %q", err, tt.wantError)
+			}
+		})
+	}
+}
+
 func TestParse_ReturnsFlagError(t *testing.T) {
 	setEnvironment(t, Config{})
 
@@ -388,7 +444,8 @@ func TestParse_ReturnsFlagError(t *testing.T) {
 func setEnvironment(t *testing.T, cfg Config) {
 	t.Helper()
 
-	t.Setenv("ADDRESS", cfg.Address)
+	t.Setenv("ADDRESS", cfg.HTTPAddress)
+	t.Setenv("GRPC_ADDRESS", cfg.GRPCAddress)
 	t.Setenv("DATABASE_DSN", cfg.DatabaseDSN)
 	t.Setenv("TLS_CERT_FILE", cfg.TLSCertFile)
 	t.Setenv("TLS_KEY_FILE", cfg.TLSKeyFile)

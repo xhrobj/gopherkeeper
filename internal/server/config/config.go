@@ -14,15 +14,19 @@ import (
 )
 
 const (
-	defaultAddress = "localhost:8080"
-	defaultJWTTTL  = 15 * time.Minute
-	jwtSecretSize  = 32
+	defaultHTTPAddress = "localhost:8080"
+	defaultGRPCAddress = "localhost:50051"
+	defaultJWTTTL      = 15 * time.Minute
+	jwtSecretSize      = 32
 )
 
 // Config содержит конфигурацию Сервера.
 type Config struct {
-	// Address задаёт address HTTPS listener'а Сервера.
-	Address string
+	// HTTPAddress задаёт address HTTPS listener'а Сервера.
+	HTTPAddress string
+
+	// GRPCAddress задаёт address gRPC listener'а Сервера.
+	GRPCAddress string
 
 	// DatabaseDSN задаёт PostgreSQL DSN для подключения Сервера к базе данных.
 	DatabaseDSN string
@@ -50,7 +54,8 @@ type Config struct {
 // и аргументов командной строки.
 func Parse(args []string) (Config, error) {
 	cfg := Config{
-		Address:     defaultAddress,
+		HTTPAddress: defaultHTTPAddress,
+		GRPCAddress: defaultGRPCAddress,
 		DatabaseDSN: os.Getenv("DATABASE_DSN"),
 		TLSCertFile: os.Getenv("TLS_CERT_FILE"),
 		TLSKeyFile:  os.Getenv("TLS_KEY_FILE"),
@@ -61,7 +66,11 @@ func Parse(args []string) (Config, error) {
 	recordMasterKeyRaw := os.Getenv("RECORD_MASTER_KEY")
 
 	if address := os.Getenv("ADDRESS"); address != "" {
-		cfg.Address = address
+		cfg.HTTPAddress = address
+	}
+
+	if grpcAddress := os.Getenv("GRPC_ADDRESS"); grpcAddress != "" {
+		cfg.GRPCAddress = grpcAddress
 	}
 
 	if jwtTTL := os.Getenv("JWT_TTL"); jwtTTL != "" {
@@ -80,7 +89,10 @@ func Parse(args []string) (Config, error) {
 	flags := flag.NewFlagSet("server", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 
-	flags.StringVar(&cfg.Address, "a", cfg.Address, "server listen address")
+	flags.StringVar(&cfg.HTTPAddress, "a", cfg.HTTPAddress, "HTTPS listen address")
+	flags.StringVar(&cfg.HTTPAddress, "address", cfg.HTTPAddress, "HTTPS listen address")
+	flags.StringVar(&cfg.GRPCAddress, "g", cfg.GRPCAddress, "gRPC listen address")
+	flags.StringVar(&cfg.GRPCAddress, "grpc-address", cfg.GRPCAddress, "gRPC listen address")
 	flags.StringVar(&cfg.DatabaseDSN, "database-dsn", cfg.DatabaseDSN, "PostgreSQL connection string")
 	flags.StringVar(&cfg.TLSCertFile, "tls-cert", cfg.TLSCertFile, "path to TLS certificate file")
 	flags.StringVar(&cfg.TLSKeyFile, "tls-key", cfg.TLSKeyFile, "path to TLS private key file")
@@ -88,6 +100,20 @@ func Parse(args []string) (Config, error) {
 
 	if err := flags.Parse(args); err != nil {
 		return Config{}, fmt.Errorf("parse server flags: %w", err)
+	}
+
+	cfg.HTTPAddress = strings.TrimSpace(cfg.HTTPAddress)
+	if cfg.HTTPAddress == "" {
+		return Config{}, errors.New("HTTPS address must not be empty")
+	}
+
+	cfg.GRPCAddress = strings.TrimSpace(cfg.GRPCAddress)
+	if cfg.GRPCAddress == "" {
+		return Config{}, errors.New("gRPC address must not be empty")
+	}
+
+	if cfg.GRPCAddress == cfg.HTTPAddress {
+		return Config{}, errors.New("HTTPS and gRPC addresses must differ")
 	}
 
 	if cfg.DatabaseDSN == "" {

@@ -29,7 +29,7 @@ PROTO_FILE := api/gopherkeeper.proto
 export LOG_LEVEL
 
 # данные о сборке подставляются в бинарники Клиента и Сервера через ldflags
-BUILD_VERSION ?= v0.9.1
+BUILD_VERSION ?= v1.0.0
 BUILD_DATE ?= $(shell date +%Y-%m-%d)
 BUILD_COMMIT ?= $(shell git rev-parse --short HEAD)
 
@@ -71,6 +71,7 @@ COMPOSE := docker compose --env-file $(ENV_FILE)
 
 # параметры локального запуска Сервера и Клиента
 ADDRESS ?= localhost:8080
+GRPC_ADDRESS ?= localhost:50051
 DATABASE_DSN ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
 
 # !!!: строка подключения к локальному PostgreSQL собирается из POSTGRES_* и передается Серверу через окружение
@@ -184,6 +185,7 @@ db-erase:
 run-server: db-up gen-tls-certs build-server
 	$(SERVER) \
 		-a $(ADDRESS) \
+		-g $(GRPC_ADDRESS) \
 		--tls-cert $(TLS_SERVER_CERT) \
 		--tls-key $(TLS_SERVER_KEY)
 

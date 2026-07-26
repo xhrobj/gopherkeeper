@@ -25,6 +25,10 @@ func NewServer(
 	deps Dependencies,
 	logger *zap.Logger,
 ) (*grpc.Server, error) {
+	if err := deps.validate(); err != nil {
+		return nil, err
+	}
+
 	certificate, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		return nil, fmt.Errorf("load gRPC TLS credentials: %w", err)

@@ -2,6 +2,7 @@ package grpcserver
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/xhrobj/gopherkeeper/internal/model"
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
@@ -65,4 +66,21 @@ type Dependencies struct {
 
 	// Records выполняет сценарии приватных записей.
 	Records RecordManager
+}
+
+func (deps Dependencies) validate() error {
+	switch {
+	case deps.Registerer == nil:
+		return fmt.Errorf("%w: registerer is required", errInvalidDependencies)
+	case deps.Authenticator == nil:
+		return fmt.Errorf("%w: authenticator is required", errInvalidDependencies)
+	case deps.TokenValidator == nil:
+		return fmt.Errorf("%w: token validator is required", errInvalidDependencies)
+	case deps.CurrentUserReader == nil:
+		return fmt.Errorf("%w: current user reader is required", errInvalidDependencies)
+	case deps.Records == nil:
+		return fmt.Errorf("%w: record manager is required", errInvalidDependencies)
+	default:
+		return nil
+	}
 }
