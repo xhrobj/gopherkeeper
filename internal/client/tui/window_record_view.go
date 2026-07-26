@@ -477,6 +477,7 @@ func wrapRecordViewParagraph(paragraph string, width int) []string {
 
 	runes := []rune(paragraph)
 	lines := make([]string, 0, (len(runes)+width-1)/width)
+
 	for len(runes) > 0 {
 		end := recordViewTextChunkEnd(runes, width)
 		lines = append(lines, string(runes[:end]))
@@ -504,6 +505,7 @@ func recordViewTextChunkEnd(runes []rune, width int) int {
 
 func recordTypeTitle(recordType recordmodel.RecordType) string {
 	value := string(recordType)
+
 	if value == "" {
 		return ""
 	}
@@ -542,6 +544,7 @@ func visibleCVV(value string, reveal bool) string {
 
 func formattedVisibleCardNumber(value string, reveal bool) string {
 	clean := cardDigits(value)
+
 	if clean == "" {
 		return ""
 	}
@@ -684,7 +687,7 @@ func recordViewButtonLabels(state recordViewState) []string {
 	}
 
 	if state.record.Metadata.Type == recordmodel.RecordTypeBinary {
-		return []string{"< Save As... >", "< Close >"}
+		return []string{"< Save As... >", closeButtonLabel}
 	}
 
 	if state.record.Metadata.Type == recordmodel.RecordTypeCredentials ||
@@ -694,8 +697,8 @@ func recordViewButtonLabels(state recordViewState) []string {
 		if state.revealed {
 			label = "< Hide >"
 		}
-		return []string{label, "< Close >"}
+		return []string{label, closeButtonLabel}
 	}
 
-	return []string{"< Close >"}
+	return []string{closeButtonLabel}
 }

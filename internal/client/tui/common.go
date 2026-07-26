@@ -7,8 +7,9 @@ import (
 )
 
 const (
-	okButtonLabel = "< OK >"
-	menuHintText  = "F10 = Menu"
+	okButtonLabel    = "< OK >"
+	closeButtonLabel = "< Close >"
+	menuHintText     = "F10 = Menu"
 )
 
 func clamp(value, minimum, maximum int) int {

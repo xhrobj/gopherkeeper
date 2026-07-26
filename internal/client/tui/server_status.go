@@ -69,12 +69,22 @@ func describeServerStatusError(err error) serverStatusFailure {
 	kind := failure.KindOf(err)
 	switch kind {
 	case failure.Unavailable, failure.HostNotFound, failure.NetworkUnreachable, failure.Timeout:
-		return serverStatusFailure{status: "Unreachable", reason: failure.Reason(kind)}
+		return serverStatusFailure{status: "Unreachable", reason: serverStatusReason(err, kind)}
 	case failure.TLSCertificate, failure.TLSHandshake, failure.HTTPSRequired:
 		return serverStatusFailure{status: "TLS error", reason: failure.Reason(kind)}
 	default:
 		return serverStatusFailure{status: "Connection error", reason: cleanServerStatusReason(err)}
 	}
+}
+
+func serverStatusReason(err error, kind failure.Kind) string {
+	message := failure.Message(err)
+
+	if message == "" || message == failure.Reason(failure.Unknown) {
+		return failure.Reason(kind)
+	}
+
+	return message
 }
 
 func cleanServerStatusReason(err error) string {

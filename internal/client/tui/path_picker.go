@@ -729,7 +729,7 @@ func configTargetFieldIndex(target pathPickerTarget) int {
 	return target.mode().configIndex
 }
 
-func selectedPathValue(rootDirectory string, path string) string {
+func selectedPathValue(rootDirectory, path string) string {
 	rootDirectory = filepath.Clean(rootDirectory)
 	path = filepath.Clean(path)
 

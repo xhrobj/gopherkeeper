@@ -605,7 +605,15 @@ func TestRecordFormLayout_LeavesOneBlankRowBeforeButtons(t *testing.T) {
 
 func TestRenderRecordForms_KeepOneBlankRowAroundButtonsAndHidePendingStatus(t *testing.T) {
 	theme := newTheme()
-	records := []recordmodel.Record{
+	for _, record := range recordFormRenderTestRecords() {
+		t.Run(string(record.Metadata.Type), func(t *testing.T) {
+			assertRecordFormPendingLayout(t, theme, record)
+		})
+	}
+}
+
+func recordFormRenderTestRecords() []recordmodel.Record {
+	return []recordmodel.Record{
 		{
 			Metadata: recordmodel.RecordMetadata{ID: "credentials-id", Type: recordmodel.RecordTypeCredentials, Title: "Account", Revision: 1},
 			Payload:  &recordmodel.CredentialsPayload{Login: "alice", Password: "secret"},
@@ -623,41 +631,57 @@ func TestRenderRecordForms_KeepOneBlankRowAroundButtonsAndHidePendingStatus(t *t
 			Payload:  &recordmodel.BinaryPayload{Filename: "backup.bin"},
 		},
 	}
+}
 
-	for _, record := range records {
-		t.Run(string(record.Metadata.Type), func(t *testing.T) {
-			windows := map[string]string{
-				"create": renderRecordCreateWindow(theme, 72, newRecordCreateForm(record.Metadata.Type), true, true, "⠋"),
-				"edit":   renderRecordEditWindow(theme, 72, newRecordEditForm(record), true, true, "⠋"),
-			}
-			for mode, window := range windows {
-				plain := ansi.Strip(window)
-				if strings.Contains(plain, "Creating record") || strings.Contains(plain, "Saving record") {
-					t.Fatalf("%s %s form still contains pending status:\n%s", record.Metadata.Type, mode, plain)
-				}
-				buttonLabel := "< Create >"
-				if mode == "edit" {
-					buttonLabel = "< Save >"
-				}
-				lines := strings.Split(plain, "\n")
-				buttonRow := lineIndexContaining(lines, buttonLabel)
-				if buttonRow <= 0 || buttonRow+1 >= len(lines) {
-					t.Fatalf("%s %s button row = %d:\n%s", record.Metadata.Type, mode, buttonRow, plain)
-				}
-				if strings.TrimSpace(lines[buttonRow-1]) != "" {
-					t.Fatalf("%s %s form has no blank row above buttons:\n%s", record.Metadata.Type, mode, plain)
-				}
-				if buttonRow < 2 || strings.TrimSpace(lines[buttonRow-2]) == "" {
-					t.Fatalf("%s %s form has more than one blank row above buttons:\n%s", record.Metadata.Type, mode, plain)
-				}
-				if strings.TrimSpace(lines[buttonRow+1]) != "" {
-					t.Fatalf("%s %s form has no blank row below buttons:\n%s", record.Metadata.Type, mode, plain)
-				}
-				if buttonRow+2 != len(lines) {
-					t.Fatalf("%s %s form has more than one row below buttons:\n%s", record.Metadata.Type, mode, plain)
-				}
-			}
-		})
+func assertRecordFormPendingLayout(t *testing.T, theme theme, record recordmodel.Record) {
+	t.Helper()
+	assertRecordFormPendingWindow(t, record.Metadata.Type, "create", "< Create >",
+		renderRecordCreateWindow(theme, 72, newRecordCreateForm(record.Metadata.Type), true, true, "⠋"))
+	assertRecordFormPendingWindow(t, record.Metadata.Type, "edit", "< Save >",
+		renderRecordEditWindow(theme, 72, newRecordEditForm(record), true, true, "⠋"))
+}
+
+func assertRecordFormPendingWindow(
+	t *testing.T,
+	recordType recordmodel.RecordType,
+	mode,
+	buttonLabel,
+	window string,
+) {
+	t.Helper()
+	plain := ansi.Strip(window)
+	if strings.Contains(plain, "Creating record") || strings.Contains(plain, "Saving record") {
+		t.Fatalf("%s %s form still contains pending status:\n%s", recordType, mode, plain)
+	}
+
+	lines := strings.Split(plain, "\n")
+	buttonRow := lineIndexContaining(lines, buttonLabel)
+	assertRecordFormButtonRows(t, recordType, mode, plain, lines, buttonRow)
+}
+
+func assertRecordFormButtonRows(
+	t *testing.T,
+	recordType recordmodel.RecordType,
+	mode,
+	plain string,
+	lines []string,
+	buttonRow int,
+) {
+	t.Helper()
+	if buttonRow <= 0 || buttonRow+1 >= len(lines) {
+		t.Fatalf("%s %s button row = %d:\n%s", recordType, mode, buttonRow, plain)
+	}
+	if strings.TrimSpace(lines[buttonRow-1]) != "" {
+		t.Fatalf("%s %s form has no blank row above buttons:\n%s", recordType, mode, plain)
+	}
+	if buttonRow < 2 || strings.TrimSpace(lines[buttonRow-2]) == "" {
+		t.Fatalf("%s %s form has more than one blank row above buttons:\n%s", recordType, mode, plain)
+	}
+	if strings.TrimSpace(lines[buttonRow+1]) != "" {
+		t.Fatalf("%s %s form has no blank row below buttons:\n%s", recordType, mode, plain)
+	}
+	if buttonRow+2 != len(lines) {
+		t.Fatalf("%s %s form has more than one row below buttons:\n%s", recordType, mode, plain)
 	}
 }
 

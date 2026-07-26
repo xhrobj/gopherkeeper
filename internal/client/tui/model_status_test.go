@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
+	"github.com/xhrobj/gopherkeeper/internal/client/failure"
 )
 
 func TestServerStatusCmd_ReturnsBackendResult(t *testing.T) {
@@ -140,6 +141,20 @@ func TestDescribeServerStatusError(t *testing.T) {
 				t.Fatalf("failure = %#v, want status %q reason %q", got, test.wantStatus, test.wantReason)
 			}
 		})
+	}
+}
+
+func TestDescribeServerStatusError_UsesSafeTypedHealthMessage(t *testing.T) {
+	err := failure.Wrap(
+		failure.Unavailable,
+		"health request returned status 503 Service Unavailable",
+		"Server health check failed",
+		nil,
+	)
+
+	got := describeServerStatusError(err)
+	if got.status != "Unreachable" || got.reason != "Server health check failed" {
+		t.Fatalf("failure = %#v, want status %q reason %q", got, "Unreachable", "Server health check failed")
 	}
 }
 
