@@ -4,6 +4,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/xhrobj/gopherkeeper/internal/client/config"
 )
 
 func (m model) updateMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
@@ -264,9 +265,24 @@ func (m model) updatePathPickerMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd)
 }
 
 func (m model) updateConfigMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
+	for index, bounds := range m.configTransportBounds() {
+		if !bounds.contains(msg.X, msg.Y) {
+			continue
+		}
+
+		m.configForm.setFocus(configTransport)
+		if index == 0 {
+			m.configForm.selectTransport(config.TransportHTTPS)
+		} else {
+			m.configForm.selectTransport(config.TransportGRPC)
+		}
+		return m, nil
+	}
+
+	layout := m.configLayout()
 	for index, bounds := range m.configFieldBounds() {
 		if bounds.contains(msg.X, msg.Y) {
-			m.configForm.setFocus(configFieldFocus(index))
+			m.configForm.setFocus(layout.fieldFocus[index])
 			return m, nil
 		}
 	}
@@ -506,13 +522,31 @@ func (m model) registerFieldBounds() []layoutBounds {
 	return window.screenBounds(layout.bounds)
 }
 
+func (m model) configLayout() configWindowLayout {
+	window, ok := m.dialogPlacement()
+	if !ok {
+		return configWindowLayout{}
+	}
+
+	return newConfigWindowLayout(m.theme, window.width)
+}
+
+func (m model) configTransportBounds() []layoutBounds {
+	window, ok := m.dialogPlacement()
+	if !ok {
+		return nil
+	}
+
+	return window.screenBounds(m.configLayout().transportBounds)
+}
+
 func (m model) configFieldBounds() []layoutBounds {
 	window, ok := m.dialogPlacement()
 	if !ok {
 		return nil
 	}
 
-	return window.screenBounds(newConfigWindowLayout(m.theme, window.width).fieldBounds)
+	return window.screenBounds(m.configLayout().fieldBounds)
 }
 
 func (m model) configBrowseButtonBounds() []layoutBounds {

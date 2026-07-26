@@ -49,13 +49,9 @@ func TestOfflineApplication_ListCachedRecords(t *testing.T) {
 	closed := false
 	application := newOfflineTestApplication(t, func(
 		_ context.Context,
-		serverAddress string,
 		canonicalLogin string,
 		password []byte,
 	) (OfflineCacheRepository, error) {
-		if serverAddress != "localhost:8080" {
-			t.Errorf("server address = %q, want localhost:8080", serverAddress)
-		}
 		if canonicalLogin != "alice" {
 			t.Errorf("canonical login = %q, want alice", canonicalLogin)
 		}
@@ -111,7 +107,6 @@ func TestOfflineApplication_GetCachedRecord(t *testing.T) {
 	closed := false
 	application := newOfflineTestApplication(t, func(
 		context.Context,
-		string,
 		string,
 		[]byte,
 	) (OfflineCacheRepository, error) {
@@ -188,7 +183,6 @@ func TestOfflineApplication_OfflineReadRejectsInvalidInputBeforeOpeningCache(t *
 			application := newOfflineTestApplication(t, func(
 				context.Context,
 				string,
-				string,
 				[]byte,
 			) (OfflineCacheRepository, error) {
 				cacheOpened = true
@@ -232,7 +226,6 @@ func TestOfflineApplication_OfflineReadMapsCacheOpenErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			application := newOfflineTestApplication(t, func(
 				context.Context,
-				string,
 				string,
 				[]byte,
 			) (OfflineCacheRepository, error) {
@@ -328,7 +321,6 @@ func TestOfflineApplication_OfflineReadMapsRepositoryErrorsAndClosesCache(t *tes
 			application := newOfflineTestApplication(t, func(
 				context.Context,
 				string,
-				string,
 				[]byte,
 			) (OfflineCacheRepository, error) {
 				return repository, nil
@@ -352,7 +344,6 @@ func TestOfflineApplication_OfflineReadReturnsCloseErrorWithoutPartialResult(t *
 	closeError := errors.New("close failed")
 	application := newOfflineTestApplication(t, func(
 		context.Context,
-		string,
 		string,
 		[]byte,
 	) (OfflineCacheRepository, error) {
@@ -385,7 +376,6 @@ func TestOfflineApplication_GetCachedRecordPreservesOperationAndCloseErrors(t *t
 	application := newOfflineTestApplication(t, func(
 		context.Context,
 		string,
-		string,
 		[]byte,
 	) (OfflineCacheRepository, error) {
 		return offlineCacheRepositoryStub{
@@ -417,6 +407,5 @@ func newOfflineTestApplication(
 
 	return &OfflineApplication{
 		offlineCaches: provider,
-		serverAddress: "localhost:8080",
 	}
 }

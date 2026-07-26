@@ -25,13 +25,12 @@ func TestApplication_OpenCacheSessionReusesRepositoryUntilClose(t *testing.T) {
 	closeCalls := 0
 	application := newOfflineTestApplication(t, func(
 		_ context.Context,
-		serverAddress string,
 		canonicalLogin string,
 		password []byte,
 	) (OfflineCacheRepository, error) {
 		openCalls++
-		if serverAddress != "localhost:8080" || canonicalLogin != "alice" || string(password) != testPassword {
-			t.Fatalf("cache open arguments = %q %q %q", serverAddress, canonicalLogin, password)
+		if canonicalLogin != "alice" || string(password) != testPassword {
+			t.Fatalf("cache open arguments = %q %q", canonicalLogin, password)
 		}
 
 		return offlineCacheRepositoryStub{
@@ -93,7 +92,6 @@ func TestCacheSessionRejectsReadsAfterClose(t *testing.T) {
 	application := newOfflineTestApplication(t, func(
 		context.Context,
 		string,
-		string,
 		[]byte,
 	) (OfflineCacheRepository, error) {
 		return offlineCacheRepositoryStub{}, nil
@@ -122,7 +120,6 @@ func TestCacheSessionMapsRepositoryErrors(t *testing.T) {
 	readErr := errors.New("cache read failed")
 	application := newOfflineTestApplication(t, func(
 		context.Context,
-		string,
 		string,
 		[]byte,
 	) (OfflineCacheRepository, error) {
@@ -156,7 +153,6 @@ func TestCacheSessionMapsRepositoryErrors(t *testing.T) {
 func TestCacheSessionPreservesUnreadableRecordMarker(t *testing.T) {
 	application := newOfflineTestApplication(t, func(
 		context.Context,
-		string,
 		string,
 		[]byte,
 	) (OfflineCacheRepository, error) {

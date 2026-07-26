@@ -365,7 +365,7 @@ func (flow *multiDeviceOfflineFlow) runOfflineList(client multiDeviceCLIClient) 
 func (flow *multiDeviceOfflineFlow) cacheLocation(client multiDeviceCLIClient) cache.Location {
 	flow.t.Helper()
 
-	location, err := cache.ResolveLocation(client.cacheDir, flow.address, "alice")
+	location, err := cache.ResolveLocation(client.cacheDir, "alice")
 	if err != nil {
 		flow.t.Fatalf("resolve local cache location: %v", err)
 	}

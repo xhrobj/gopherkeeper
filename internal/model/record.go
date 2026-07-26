@@ -20,9 +20,6 @@ const (
 	// MetadataMaxSize содержит максимальную длину приватной метаинформации в Unicode-символах.
 	MetadataMaxSize = 255
 
-	// HTTPRequestBodyMaxSize содержит максимальный размер HTTP request body в байтах.
-	HTTPRequestBodyMaxSize int64 = 4 * mebibyte
-
 	// RecordTitleMaxSize содержит максимальную длину открытого названия записи в Unicode-символах.
 	RecordTitleMaxSize = 255
 

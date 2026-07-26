@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -117,10 +118,15 @@ func TestRun_HealthCommandOutputDoesNotContainBanner(t *testing.T) {
 	isolateClientConfig(t)
 
 	factory := newClientFactoryStub(t)
-	factory.newHealthClient = func(config.Config) (healthChecker, error) {
-		return healthCheckerStub{health: func(context.Context) (string, error) {
-			return "ok", nil
-		}}, nil
+	app := newApplicationStub(t)
+	app.health = func(context.Context) (string, error) { return "ok", nil }
+	closeCalls := 0
+	app.close = func() error {
+		closeCalls++
+		return nil
+	}
+	factory.newApplication = func(config.Config) (application, error) {
+		return app, nil
 	}
 
 	var output bytes.Buffer
@@ -138,12 +144,17 @@ func TestRun_HealthCommandOutputDoesNotContainBanner(t *testing.T) {
 	if got := output.String(); got != "Server status: ok\n" {
 		t.Errorf("health output = %q, want %q", got, "Server status: ok\n")
 	}
+	if closeCalls != 1 {
+		t.Fatalf("application Close() calls = %d, want 1", closeCalls)
+	}
 }
 
 func TestRun_HealthCommandConfiguration(t *testing.T) {
 	tests := []struct {
 		name          string
+		envTransport  string
 		envAddress    string
+		envGRPC       string
 		envCACert     string
 		envSessionDir string
 		envCacheDir   string
@@ -154,31 +165,50 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 		{
 			name: "defaults",
 			args: []string{"gopherkeeper", "health"},
-			want: config.Config{Address: "localhost:8080"},
+			want: config.Config{
+				Transport:   config.TransportHTTPS,
+				Address:     "localhost:8080",
+				GRPCAddress: "localhost:50051",
+			},
+		},
+		{
+			name: "gRPC flags",
+			args: []string{"gopherkeeper", "-t", "grpc", "-g", "localhost:9090", "health"},
+			want: config.Config{
+				Transport:   config.TransportGRPC,
+				Address:     "localhost:8080",
+				GRPCAddress: "localhost:9090",
+			},
 		},
 		{
 			name:      "config file",
 			envConfig: writeClientConfig(t, `{"address":"localhost:8081","ca_cert_file":"file-ca.pem","session_dir":"file-session","cache_dir":"file-cache"}`),
 			args:      []string{"gopherkeeper", "health"},
 			want: config.Config{
-				Address:    "localhost:8081",
-				CACertFile: "file-ca.pem",
-				SessionDir: "file-session",
-				CacheDir:   "file-cache",
+				Transport:   config.TransportHTTPS,
+				GRPCAddress: "localhost:50051",
+				Address:     "localhost:8081",
+				CACertFile:  "file-ca.pem",
+				SessionDir:  "file-session",
+				CacheDir:    "file-cache",
 			},
 		},
 		{
 			name:          "environment",
+			envTransport:  "grpc",
 			envAddress:    "localhost:8081",
+			envGRPC:       "localhost:9090",
 			envCACert:     "env-ca.pem",
 			envSessionDir: "env-session",
 			envCacheDir:   "env-cache",
 			args:          []string{"gopherkeeper", "health"},
 			want: config.Config{
-				Address:    "localhost:8081",
-				CACertFile: "env-ca.pem",
-				SessionDir: "env-session",
-				CacheDir:   "env-cache",
+				Transport:   config.TransportGRPC,
+				Address:     "localhost:8081",
+				GRPCAddress: "localhost:9090",
+				CACertFile:  "env-ca.pem",
+				SessionDir:  "env-session",
+				CacheDir:    "env-cache",
 			},
 		},
 		{
@@ -190,10 +220,12 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 			envCacheDir:   "env-cache",
 			args:          []string{"gopherkeeper", "health"},
 			want: config.Config{
-				Address:    "localhost:8082",
-				CACertFile: "env-ca.pem",
-				SessionDir: "env-session",
-				CacheDir:   "env-cache",
+				Transport:   config.TransportHTTPS,
+				GRPCAddress: "localhost:50051",
+				Address:     "localhost:8082",
+				CACertFile:  "env-ca.pem",
+				SessionDir:  "env-session",
+				CacheDir:    "env-cache",
 			},
 		},
 		{
@@ -205,7 +237,7 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 				writeClientConfig(t, `{"address":"flag-file-before:8080"}`),
 				"health",
 			},
-			want: config.Config{Address: "flag-file-before:8080"},
+			want: config.Config{Transport: config.TransportHTTPS, Address: "flag-file-before:8080", GRPCAddress: "localhost:50051"},
 		},
 		{
 			name:      "config flag after subcommand > CONFIG environment",
@@ -216,7 +248,7 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 				"-c",
 				writeClientConfig(t, `{"address":"flag-file-after:8080"}`),
 			},
-			want: config.Config{Address: "flag-file-after:8080"},
+			want: config.Config{Transport: config.TransportHTTPS, Address: "flag-file-after:8080", GRPCAddress: "localhost:50051"},
 		},
 		{
 			name:          "flags before subcommand > environment",
@@ -233,10 +265,12 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 				"health",
 			},
 			want: config.Config{
-				Address:    "localhost:8082",
-				CACertFile: "flag-ca.pem",
-				SessionDir: "flag-session",
-				CacheDir:   "flag-cache",
+				Transport:   config.TransportHTTPS,
+				GRPCAddress: "localhost:50051",
+				Address:     "localhost:8082",
+				CACertFile:  "flag-ca.pem",
+				SessionDir:  "flag-session",
+				CacheDir:    "flag-cache",
 			},
 		},
 		{
@@ -254,10 +288,12 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 				"--cache-dir", "flag-cache",
 			},
 			want: config.Config{
-				Address:    "localhost:8082",
-				CACertFile: "flag-ca.pem",
-				SessionDir: "flag-session",
-				CacheDir:   "flag-cache",
+				Transport:   config.TransportHTTPS,
+				GRPCAddress: "localhost:50051",
+				Address:     "localhost:8082",
+				CACertFile:  "flag-ca.pem",
+				SessionDir:  "flag-session",
+				CacheDir:    "flag-cache",
 			},
 		},
 		{
@@ -271,10 +307,12 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 				"--cache-dir=inline-cache",
 			},
 			want: config.Config{
-				Address:    "localhost:8083",
-				CACertFile: "inline-ca.pem",
-				SessionDir: "inline-session",
-				CacheDir:   "inline-cache",
+				Transport:   config.TransportHTTPS,
+				GRPCAddress: "localhost:50051",
+				Address:     "localhost:8083",
+				CACertFile:  "inline-ca.pem",
+				SessionDir:  "inline-session",
+				CacheDir:    "inline-cache",
 			},
 		},
 	}
@@ -282,7 +320,9 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			isolateClientConfig(t)
+			t.Setenv("TRANSPORT", tt.envTransport)
 			t.Setenv("ADDRESS", tt.envAddress)
+			t.Setenv("GRPC_ADDRESS", tt.envGRPC)
 			t.Setenv("CA_CERT_FILE", tt.envCACert)
 			t.Setenv("SESSION_DIR", tt.envSessionDir)
 			t.Setenv("CACHE_DIR", tt.envCacheDir)
@@ -290,11 +330,11 @@ func TestRun_HealthCommandConfiguration(t *testing.T) {
 
 			var got config.Config
 			factory := newClientFactoryStub(t)
-			factory.newHealthClient = func(cfg config.Config) (healthChecker, error) {
+			factory.newApplication = func(cfg config.Config) (application, error) {
 				got = cfg
-				return healthCheckerStub{health: func(context.Context) (string, error) {
-					return "ok", nil
-				}}, nil
+				application := newApplicationStub(t)
+				application.health = func(context.Context) (string, error) { return "ok", nil }
+				return application, nil
 			}
 
 			if err := runTestCommand(t, tt.args, nil, io.Discard, io.Discard, factory); err != nil {
@@ -323,7 +363,17 @@ func TestRun_ReturnsConfigurationError(t *testing.T) {
 		{
 			name:      "empty address flag",
 			args:      []string{"gopherkeeper", "health", "--address="},
-			wantError: "server address is required",
+			wantError: "HTTPS server address is required",
+		},
+		{
+			name:      "unknown transport",
+			args:      []string{"gopherkeeper", "health", "--transport=quic"},
+			wantError: "unsupported client transport",
+		},
+		{
+			name:      "empty gRPC address flag",
+			args:      []string{"gopherkeeper", "health", "--transport=grpc", "--grpc-address="},
+			wantError: "gRPC server address is required",
 		},
 	}
 
@@ -333,8 +383,8 @@ func TestRun_ReturnsConfigurationError(t *testing.T) {
 			t.Setenv("CONFIG", tt.envConfig)
 
 			factory := newClientFactoryStub(t)
-			factory.newHealthClient = func(config.Config) (healthChecker, error) {
-				t.Fatal("health client must not be created after configuration error")
+			factory.newApplication = func(config.Config) (application, error) {
+				t.Fatal("application must not be created after configuration error")
 				return nil, nil
 			}
 
@@ -353,8 +403,8 @@ func TestRun_ReturnsFlagParsingError(t *testing.T) {
 	isolateClientConfig(t)
 
 	factory := newClientFactoryStub(t)
-	factory.newHealthClient = func(config.Config) (healthChecker, error) {
-		t.Fatal("health client must not be created after flag parsing error")
+	factory.newApplication = func(config.Config) (application, error) {
+		t.Fatal("application must not be created after flag parsing error")
 		return nil, nil
 	}
 
@@ -390,4 +440,36 @@ func writeClientConfig(t *testing.T, content string) string {
 	}
 
 	return path
+}
+
+func TestRun_ClosesApplicationAfterCommandError(t *testing.T) {
+	isolateClientConfig(t)
+
+	operationErr := errors.New("health failed")
+	app := newApplicationStub(t)
+	app.health = func(context.Context) (string, error) { return "", operationErr }
+	closeCalls := 0
+	app.close = func() error {
+		closeCalls++
+		return nil
+	}
+	factory := newClientFactoryStub(t)
+	factory.newApplication = func(config.Config) (application, error) {
+		return app, nil
+	}
+
+	err := runTestCommand(
+		t,
+		[]string{"gopherkeeper", "health"},
+		nil,
+		io.Discard,
+		io.Discard,
+		factory,
+	)
+	if !errors.Is(err, operationErr) {
+		t.Fatalf("run() error = %v, want %v", err, operationErr)
+	}
+	if closeCalls != 1 {
+		t.Fatalf("application Close() calls = %d, want 1", closeCalls)
+	}
 }

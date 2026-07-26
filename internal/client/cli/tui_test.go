@@ -16,10 +16,12 @@ func TestTUICommand_RunsWithResolvedConfiguration(t *testing.T) {
 	isolateClientConfig(t)
 
 	wantConfig := config.Config{
-		Address:    "localhost:8443",
-		CACertFile: "ca.pem",
-		SessionDir: "session",
-		CacheDir:   "cache",
+		Transport:   config.TransportHTTPS,
+		GRPCAddress: "localhost:50051",
+		Address:     "localhost:8443",
+		CACertFile:  "ca.pem",
+		SessionDir:  "session",
+		CacheDir:    "cache",
 	}
 	var gotConfig config.Config
 	var gotConfigFile string
@@ -135,7 +137,12 @@ func TestNewTUIBackendBuildsIndependentRuntime(t *testing.T) {
 		t.Fatalf("newTUIBackend() error = %v", err)
 	}
 	firstBackend := firstRuntime.(*tuiBackend)
-	if firstBackend.application == nil {
+	t.Cleanup(func() {
+		if err := firstBackend.CloseTransport(); err != nil {
+			t.Errorf("close first TUI backend transport: %v", err)
+		}
+	})
+	if firstBackend.runtime == nil || firstBackend.runtime.Application == nil {
 		t.Fatal("initial runtime contains nil application")
 	}
 
@@ -148,11 +155,88 @@ func TestNewTUIBackendBuildsIndependentRuntime(t *testing.T) {
 		t.Fatalf("newTUIBackend() error = %v", err)
 	}
 	secondBackend := secondRuntime.(*tuiBackend)
+	t.Cleanup(func() {
+		if err := secondBackend.CloseTransport(); err != nil {
+			t.Errorf("close second TUI backend transport: %v", err)
+		}
+	})
 
 	if secondBackend == firstBackend {
 		t.Fatal("backend factory reused a mutable runtime")
 	}
-	if secondBackend.application == firstBackend.application {
+	if secondBackend.runtime == firstBackend.runtime {
 		t.Fatal("application runtime was reused across configurations")
+	}
+}
+
+func TestNewTUIBackendFactorySharesCacheStateAcrossRuntimes(t *testing.T) {
+	factory := newTUIBackendFactory()
+
+	first, err := factory(config.Config{Transport: config.TransportHTTPS, Address: "localhost:8080"})
+	if err != nil {
+		t.Fatalf("create HTTPS backend: %v", err)
+	}
+	second, err := factory(config.Config{Transport: config.TransportGRPC, GRPCAddress: "localhost:9090"})
+	if err != nil {
+		t.Fatalf("create gRPC backend: %v", err)
+	}
+
+	firstBackend := first.(*tuiBackend)
+	secondBackend := second.(*tuiBackend)
+	t.Cleanup(func() {
+		if err := firstBackend.CloseTransport(); err != nil {
+			t.Errorf("close first TUI backend transport: %v", err)
+		}
+	})
+	t.Cleanup(func() {
+		if err := secondBackend.CloseTransport(); err != nil {
+			t.Errorf("close second TUI backend transport: %v", err)
+		}
+	})
+
+	if firstBackend.cache != secondBackend.cache {
+		t.Fatal("TUI runtimes do not share local cache state")
+	}
+}
+
+func TestTUICommand_SupportsGRPCTransport(t *testing.T) {
+	isolateClientConfig(t)
+
+	runnerCalled := false
+	var configured config.Config
+	runner := tuiRunnerStub{run: func(
+		_ context.Context,
+		cfg config.Config,
+		_ string,
+		_ buildinfo.Info,
+		_ io.Reader,
+		_ io.Writer,
+	) error {
+		runnerCalled = true
+		configured = cfg
+		return nil
+	}}
+
+	err := run(context.Background(), []string{
+		"gopherkeeper",
+		"--transport", "grpc",
+		"tui",
+	}, runOptions{
+		input:       strings.NewReader(""),
+		output:      io.Discard,
+		errorOutput: io.Discard,
+		info:        testBuildInfo,
+		factory:     newClientFactoryStub(t),
+		passwords:   streamPasswordReader{},
+		tui:         runner,
+	})
+	if err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if !runnerCalled {
+		t.Fatal("TUI runner was not called for gRPC transport")
+	}
+	if configured.Transport != config.TransportGRPC {
+		t.Fatalf("transport = %q, want gRPC", configured.Transport)
 	}
 }

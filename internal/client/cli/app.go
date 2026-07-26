@@ -122,10 +122,22 @@ func newRootCommand(
 				Usage:   "path to JSON client config file",
 			},
 			&urfavecli.StringFlag{
+				Name:    transportFlag,
+				Aliases: []string{"t"},
+				Usage:   "client transport: https or grpc",
+				Value:   string(defaults.Transport),
+			},
+			&urfavecli.StringFlag{
 				Name:    addressFlag,
 				Aliases: []string{"a"},
-				Usage:   "Server address",
+				Usage:   "HTTPS Server address",
 				Value:   defaults.Address,
+			},
+			&urfavecli.StringFlag{
+				Name:    grpcAddressFlag,
+				Aliases: []string{"g"},
+				Usage:   "gRPC Server address",
+				Value:   defaults.GRPCAddress,
 			},
 			&urfavecli.StringFlag{
 				Name:  caCertFlag,
@@ -152,6 +164,9 @@ func newRootCommand(
 			command.Root().Metadata[clientConfigMetadataKey] = cfg
 			command.Root().Metadata[clientConfigFileMetadataKey] = configFile
 			return ctx, nil
+		},
+		After: func(_ context.Context, command *urfavecli.Command) error {
+			return closeApplicationFromCommand(command)
 		},
 		Commands: []*urfavecli.Command{
 			newTUICommand(input, output, info, tui),

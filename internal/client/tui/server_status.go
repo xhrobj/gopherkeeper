@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/xhrobj/gopherkeeper/internal/client/config"
 	"github.com/xhrobj/gopherkeeper/internal/client/failure"
 )
 
@@ -22,6 +23,7 @@ type serverStatusFailure struct {
 
 type serverStatusWindowOptions struct {
 	width        int
+	transport    config.Transport
 	address      string
 	state        serverStatusState
 	health       string
@@ -109,7 +111,7 @@ func (m *model) moveServerStatusButton() {
 }
 
 const (
-	serverStatusButtonRow = 6
+	serverStatusButtonRow = 8
 	serverStatusButtonGap = 3
 )
 
@@ -124,9 +126,10 @@ func renderServerStatusWindow(t theme, options serverStatusWindowOptions) string
 	failure := options.failure
 
 	bodyStyle := t.aboutBody
-	labelStyle := t.aboutLabel
-	statusStyle := t.aboutTitle
-	detailStyle := t.aboutValue
+	labelStyle := t.aboutText
+	valueStyle := t.aboutInspiredYellow
+	statusStyle := valueStyle
+	detailStyle := valueStyle
 
 	switch {
 	case options.pending:
@@ -146,14 +149,16 @@ func renderServerStatusWindow(t theme, options serverStatusWindowOptions) string
 		detailLabel = "Reason"
 		detailValue = failure.reason
 		bodyStyle = t.errorBody
-		labelStyle = t.errorLabel
-		statusStyle = t.errorText.Bold(true)
-		detailStyle = t.errorText
+		labelStyle = t.errorText
+		statusStyle = t.errorLabel
+		detailStyle = t.errorValue
 	}
 
 	contentWidth := max(1, options.width-4)
 	rows := []string{
+		renderServerStatusRow(bodyStyle, labelStyle, contentWidth, "Transport", serverTransportLabel(options.transport), detailStyle),
 		renderServerStatusRow(bodyStyle, labelStyle, contentWidth, "Address", options.address, detailStyle),
+		bodyStyle.Width(contentWidth).Render(""),
 		renderServerStatusRow(bodyStyle, labelStyle, contentWidth, "Status", statusValue, statusStyle),
 		renderServerStatusRow(bodyStyle, labelStyle, contentWidth, detailLabel, detailValue, detailStyle),
 		bodyStyle.Width(contentWidth).Render(""),
@@ -176,6 +181,14 @@ func renderServerStatusWindow(t theme, options serverStatusWindowOptions) string
 	return lipgloss.JoinVertical(lipgloss.Left, title, body)
 }
 
+func serverTransportLabel(transport config.Transport) string {
+	if transport == config.TransportGRPC {
+		return "gRPC"
+	}
+
+	return "HTTPS"
+}
+
 func renderServerStatusRow(
 	background lipgloss.Style,
 	labelStyle lipgloss.Style,
@@ -184,7 +197,7 @@ func renderServerStatusRow(
 	value string,
 	valueStyle lipgloss.Style,
 ) string {
-	const labelWidth = 8
+	const labelWidth = 9
 
 	labelPart := labelStyle.Width(labelWidth).Render(label)
 	gap := background.Render("  ")

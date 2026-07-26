@@ -87,6 +87,7 @@ type theme struct {
 	errorTitle                     lipgloss.Style
 	errorLabel                     lipgloss.Style
 	errorText                      lipgloss.Style
+	errorValue                     lipgloss.Style
 	errorButton                    lipgloss.Style
 	errorButtonDisabled            lipgloss.Style
 	errorButtonDisabledActive      lipgloss.Style
@@ -464,6 +465,10 @@ func newTheme() theme {
 
 		errorText: lipgloss.NewStyle().
 			Foreground(brightWhite).
+			Background(red),
+
+		errorValue: lipgloss.NewStyle().
+			Foreground(yellow).
 			Background(red),
 
 		errorButton: lipgloss.NewStyle().

@@ -8,6 +8,12 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
 )
 
+type databasePingerFunc func(context.Context) error
+
+func (fn databasePingerFunc) Ping(ctx context.Context) error {
+	return fn(ctx)
+}
+
 type tokenValidatorFunc func(context.Context, string) (int64, error)
 
 func (fn tokenValidatorFunc) Validate(ctx context.Context, token string) (int64, error) {
@@ -75,6 +81,9 @@ func (stub recordManagerStub) Delete(ctx context.Context, request service.Delete
 
 func completeDependencies() Dependencies {
 	return Dependencies{
+		Database: databasePingerFunc(func(context.Context) error {
+			return nil
+		}),
 		Registerer: userRegistererFunc(func(context.Context, string, string) (model.User, error) {
 			return model.User{}, nil
 		}),

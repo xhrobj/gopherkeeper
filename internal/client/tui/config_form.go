@@ -14,6 +14,8 @@ const (
 	configCACertFile
 	configSessionDir
 	configCacheDir
+	configTransport
+	configGRPCAddress
 	configCACertBrowse
 	configSessionBrowse
 	configCacheBrowse
@@ -23,7 +25,9 @@ const (
 )
 
 var configFocusOrder = [...]configFocus{
+	configTransport,
 	configAddress,
+	configGRPCAddress,
 	configCACertFile,
 	configCACertBrowse,
 	configSessionDir,
@@ -35,23 +39,31 @@ var configFocusOrder = [...]configFocus{
 }
 
 const (
-	configLabelWidth    = 14
-	configBrowseGap     = 1
-	configBrowseLabel   = "<...>"
-	configButtonGap     = 3
-	configFirstFieldRow = 2
-	configFieldRowStep  = 2
-	configButtonRow     = 12
-	configFileNotPassed = "not provided (in-memory only; use --config for persistence)"
+	configLabelWidth      = 15
+	configBrowseGap       = 1
+	configBrowseLabel     = "<...>"
+	configButtonGap       = 3
+	configFirstControlRow = 2
+	configControlRowStep  = 2
+	configButtonRow       = 16
+	configTransportGap    = 3
+	configFileNotPassed   = "not provided (in-memory only; use --config for persistence)"
 )
 
 type configForm struct {
 	fields       [4]textField
+	grpcAddress  textField
+	transport    config.Transport
 	focus        configFocus
 	errorMessage string
 }
 
 func newConfigForm(cfg config.Config) configForm {
+	transport := cfg.Transport
+	if transport != config.TransportGRPC {
+		transport = config.TransportHTTPS
+	}
+
 	return configForm{
 		fields: [4]textField{
 			newUnicodeTextField(cfg.Address),
@@ -59,21 +71,56 @@ func newConfigForm(cfg config.Config) configForm {
 			newUnicodeTextField(cfg.SessionDir),
 			newUnicodeTextField(cfg.CacheDir),
 		},
-		focus: configCancel,
+		grpcAddress: newUnicodeTextField(cfg.GRPCAddress),
+		transport:   transport,
+		focus:       configCancel,
 	}
 }
 
 func (form configForm) config() config.Config {
 	return config.Config{
-		Address:    form.fields[configAddress].value,
-		CACertFile: form.fields[configCACertFile].value,
-		SessionDir: form.fields[configSessionDir].value,
-		CacheDir:   form.fields[configCacheDir].value,
+		Transport:   form.transport,
+		Address:     form.fields[configAddress].value,
+		GRPCAddress: form.grpcAddress.value,
+		CACertFile:  form.fields[configCACertFile].value,
+		SessionDir:  form.fields[configSessionDir].value,
+		CacheDir:    form.fields[configCacheDir].value,
 	}
 }
 
 func (form configForm) canSave() bool {
+	if form.transport == config.TransportGRPC {
+		return strings.TrimSpace(form.grpcAddress.value) != ""
+	}
+
 	return strings.TrimSpace(form.fields[configAddress].value) != ""
+}
+
+func (form *configForm) selectTransport(transport config.Transport) {
+	if transport != config.TransportHTTPS && transport != config.TransportGRPC {
+		return
+	}
+
+	form.transport = transport
+	form.errorMessage = ""
+}
+
+func (form *configForm) moveTransport(step int) {
+	if step < 0 {
+		form.selectTransport(config.TransportHTTPS)
+		return
+	}
+
+	form.selectTransport(config.TransportGRPC)
+}
+
+func (form *configForm) toggleTransport() {
+	if form.transport == config.TransportGRPC {
+		form.selectTransport(config.TransportHTTPS)
+		return
+	}
+
+	form.selectTransport(config.TransportGRPC)
 }
 
 func (form *configForm) move(step int) {
@@ -109,28 +156,14 @@ func (form *configForm) setFocus(focus configFocus) {
 }
 
 func (form *configForm) activeField() *textField {
-	index, ok := configFieldIndex(form.focus)
-	if !ok {
+	switch form.focus {
+	case configAddress, configCACertFile, configSessionDir, configCacheDir:
+		return &form.fields[int(form.focus)]
+	case configGRPCAddress:
+		return &form.grpcAddress
+	default:
 		return nil
 	}
-
-	return &form.fields[index]
-}
-
-func configFieldIndex(focus configFocus) (int, bool) {
-	if focus < configAddress || focus > configCacheDir {
-		return 0, false
-	}
-
-	return int(focus), true
-}
-
-func configFieldFocus(index int) configFocus {
-	if index < int(configAddress) || index > int(configCacheDir) {
-		return configAddress
-	}
-
-	return configFocus(index)
 }
 
 func (form *configForm) moveCursor(step int) {
@@ -192,11 +225,13 @@ func configInputWidths(t theme, contentWidth int) (int, int) {
 }
 
 type configWindowLayout struct {
-	contentWidth   int
-	inputWidth     int
-	pathInputWidth int
-	fieldBounds    []layoutBounds
-	browseBounds   []layoutBounds
+	contentWidth    int
+	inputWidth      int
+	pathInputWidth  int
+	transportBounds []layoutBounds
+	fieldBounds     []layoutBounds
+	fieldFocus      []configFocus
+	browseBounds    []layoutBounds
 }
 
 type configPathFieldOptions struct {
@@ -213,13 +248,20 @@ func newConfigWindowLayout(t theme, windowWidth int) configWindowLayout {
 	contentWidth := max(1, windowWidth-4)
 	inputWidth, pathInputWidth := configInputWidths(t, contentWidth)
 	inputX := 2 + configLabelWidth + 2
-	widths := []int{inputWidth, pathInputWidth, pathInputWidth, pathInputWidth}
-	fields := make([]layoutBounds, len(widths))
 
-	for index, width := range widths {
+	fieldFocus := []configFocus{
+		configAddress,
+		configGRPCAddress,
+		configCACertFile,
+		configSessionDir,
+		configCacheDir,
+	}
+	fieldWidths := []int{inputWidth, inputWidth, pathInputWidth, pathInputWidth, pathInputWidth}
+	fields := make([]layoutBounds, len(fieldFocus))
+	for index, width := range fieldWidths {
 		fields[index] = layoutBounds{
 			x:      inputX,
-			y:      configFirstFieldRow + index*configFieldRowStep,
+			y:      configFirstControlRow + (index+1)*configControlRowStep,
 			width:  width,
 			height: 1,
 		}
@@ -228,22 +270,30 @@ func newConfigWindowLayout(t theme, windowWidth int) configWindowLayout {
 	browseWidth := lipgloss.Width(t.button.Render(configBrowseLabel))
 	browseX := inputX + pathInputWidth + configBrowseGap
 	browse := make([]layoutBounds, 3)
-
 	for index := range browse {
 		browse[index] = layoutBounds{
 			x:      browseX,
-			y:      configFirstFieldRow + (index+1)*configFieldRowStep,
+			y:      configFirstControlRow + (index+3)*configControlRowStep,
 			width:  browseWidth,
 			height: 1,
 		}
 	}
 
+	httpsLabel := "[ ] HTTPS"
+	grpcLabel := "[ ] gRPC"
+	transportBounds := []layoutBounds{
+		{x: inputX, y: configFirstControlRow, width: lipgloss.Width(httpsLabel), height: 1},
+		{x: inputX + lipgloss.Width(httpsLabel) + configTransportGap, y: configFirstControlRow, width: lipgloss.Width(grpcLabel), height: 1},
+	}
+
 	return configWindowLayout{
-		contentWidth:   contentWidth,
-		inputWidth:     inputWidth,
-		pathInputWidth: pathInputWidth,
-		fieldBounds:    fields,
-		browseBounds:   browse,
+		contentWidth:    contentWidth,
+		inputWidth:      inputWidth,
+		pathInputWidth:  pathInputWidth,
+		transportBounds: transportBounds,
+		fieldBounds:     fields,
+		fieldFocus:      fieldFocus,
+		browseBounds:    browse,
 	}
 }
 
@@ -254,13 +304,33 @@ func renderConfigWindow(t theme, width int, form configForm, configFile string) 
 	pathInputWidth := layout.pathInputWidth
 
 	rows := []string{
-		renderConfigField(t, "Address", true, t.configRequiredYellow, form.fields[0], inputWidth, form.focus == configAddress),
+		renderConfigTransport(t, form.transport, form.focus == configTransport),
+		t.windowBody.Width(contentWidth).Render(""),
+		renderConfigField(
+			t,
+			"HTTPS address",
+			form.transport == config.TransportHTTPS,
+			t.configRequiredYellow,
+			form.fields[configAddress],
+			inputWidth,
+			form.focus == configAddress,
+		),
+		t.windowBody.Width(contentWidth).Render(""),
+		renderConfigField(
+			t,
+			"gRPC address",
+			form.transport == config.TransportGRPC,
+			t.configRequiredYellow,
+			form.grpcAddress,
+			inputWidth,
+			form.focus == configGRPCAddress,
+		),
 		t.windowBody.Width(contentWidth).Render(""),
 		renderConfigPathField(t, configPathFieldOptions{
 			label:         "CA cert file",
 			required:      true,
 			requiredStyle: t.configRequiredYellow,
-			field:         form.fields[1],
+			field:         form.fields[configCACertFile],
 			inputWidth:    pathInputWidth,
 			fieldActive:   form.focus == configCACertFile,
 			browseActive:  form.focus == configCACertBrowse,
@@ -268,7 +338,7 @@ func renderConfigWindow(t theme, width int, form configForm, configFile string) 
 		t.windowBody.Width(contentWidth).Render(""),
 		renderConfigPathField(t, configPathFieldOptions{
 			label:        "Session dir",
-			field:        form.fields[2],
+			field:        form.fields[configSessionDir],
 			inputWidth:   pathInputWidth,
 			fieldActive:  form.focus == configSessionDir,
 			browseActive: form.focus == configSessionBrowse,
@@ -276,7 +346,7 @@ func renderConfigWindow(t theme, width int, form configForm, configFile string) 
 		t.windowBody.Width(contentWidth).Render(""),
 		renderConfigPathField(t, configPathFieldOptions{
 			label:        "Cache dir",
-			field:        form.fields[3],
+			field:        form.fields[configCacheDir],
 			inputWidth:   pathInputWidth,
 			fieldActive:  form.focus == configCacheDir,
 			browseActive: form.focus == configCacheBrowse,
@@ -294,6 +364,35 @@ func renderConfigWindow(t theme, width int, form configForm, configFile string) 
 		Render(strings.Join(rows, "\n"))
 
 	return lipgloss.JoinVertical(lipgloss.Left, title, body)
+}
+
+func renderConfigTransport(t theme, transport config.Transport, active bool) string {
+	labelPart := t.label.Width(configLabelWidth).Render("Transport")
+	gap := t.windowBody.Width(2).Render("")
+
+	https := "[ ] HTTPS"
+	grpc := "[ ] gRPC"
+
+	if transport == config.TransportGRPC {
+		grpc = "[X] gRPC"
+	} else {
+		https = "[X] HTTPS"
+	}
+
+	httpsStyle := t.windowBody
+	grpcStyle := t.windowBody
+
+	if active {
+		if transport == config.TransportGRPC {
+			grpcStyle = t.buttonActive.Padding(0, 0)
+		} else {
+			httpsStyle = t.buttonActive.Padding(0, 0)
+		}
+	}
+
+	optionsGap := t.windowBody.Width(configTransportGap).Render("")
+
+	return labelPart + gap + httpsStyle.Render(https) + optionsGap + grpcStyle.Render(grpc)
 }
 
 func renderConfigField(
@@ -387,6 +486,7 @@ func renderConfigStatus(t theme, width int, message string) string {
 func configButtonsLayout(t theme, width int, focus configFocus, canSave bool) buttonRowLayout {
 	saveStyle := t.button
 	cancelStyle := t.button
+
 	if !canSave {
 		saveStyle = t.buttonDisabled
 	} else if focus == configSave {

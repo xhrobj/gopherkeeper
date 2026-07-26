@@ -31,6 +31,7 @@ type currentUserCheckMode int
 
 const (
 	currentUserCheckRestore currentUserCheckMode = iota
+	currentUserCheckReconfigure
 	currentUserCheckManual
 )
 
@@ -53,6 +54,20 @@ func currentUserCommand(
 
 func isNotLoggedIn(err error) bool {
 	return errors.Is(err, usecase.ErrNotLoggedIn)
+}
+
+func sameAccountLogin(left, right string) bool {
+	canonicalLeft, err := domainmodel.CanonicalizeLogin(left)
+	if err != nil {
+		return false
+	}
+
+	canonicalRight, err := domainmodel.CanonicalizeLogin(right)
+	if err != nil {
+		return false
+	}
+
+	return canonicalLeft == canonicalRight
 }
 
 func cleanCurrentUserError(err error) string {

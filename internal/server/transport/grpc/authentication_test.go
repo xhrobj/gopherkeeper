@@ -34,24 +34,45 @@ func TestAuthenticationUnaryInterceptor_AllowsPublicMethod(t *testing.T) {
 	}
 }
 
-func TestAuthenticationUnaryInterceptor_AllowsHealthCheck(t *testing.T) {
-	called := false
-	interceptor := authenticationUnaryInterceptor(nil)
-
-	_, err := interceptor(
-		context.Background(),
-		&healthpb.HealthCheckRequest{},
-		&grpc.UnaryServerInfo{FullMethod: healthpb.Health_Check_FullMethodName},
-		func(context.Context, any) (any, error) {
-			called = true
-			return &healthpb.HealthCheckResponse{}, nil
+func TestAuthenticationUnaryInterceptor_AllowsHealthMethods(t *testing.T) {
+	tests := []struct {
+		name       string
+		fullMethod string
+		request    any
+	}{
+		{
+			name:       "check",
+			fullMethod: healthpb.Health_Check_FullMethodName,
+			request:    &healthpb.HealthCheckRequest{},
 		},
-	)
-	if err != nil {
-		t.Fatalf("interceptor() error = %v", err)
+		{
+			name:       "list",
+			fullMethod: healthpb.Health_List_FullMethodName,
+			request:    &healthpb.HealthListRequest{},
+		},
 	}
-	if !called {
-		t.Fatal("health handler was not called")
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			called := false
+			interceptor := authenticationUnaryInterceptor(nil)
+
+			_, err := interceptor(
+				context.Background(),
+				test.request,
+				&grpc.UnaryServerInfo{FullMethod: test.fullMethod},
+				func(context.Context, any) (any, error) {
+					called = true
+					return new(struct{}), nil
+				},
+			)
+			if err != nil {
+				t.Fatalf("interceptor() error = %v", err)
+			}
+			if !called {
+				t.Fatal("health handler was not called")
+			}
+		})
 	}
 }
 

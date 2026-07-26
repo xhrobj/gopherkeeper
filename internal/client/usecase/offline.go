@@ -28,7 +28,6 @@ type OfflineCacheRepository interface {
 // кеш конкретного аккаунта для операций чтения.
 type OfflineCacheRepositoryProvider func(
 	ctx context.Context,
-	serverAddress string,
 	canonicalLogin string,
 	password []byte,
 ) (OfflineCacheRepository, error)

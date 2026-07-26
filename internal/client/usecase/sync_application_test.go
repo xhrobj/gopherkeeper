@@ -233,14 +233,14 @@ func TestApplication_SyncRejectsWrongPasswordBeforeOpeningCache(t *testing.T) {
 			},
 		},
 		sessions: sessionStorageStub{
-			load: func(string) (session.Session, error) { return syncStoredSession(), nil },
+			load: func() (session.Session, error) { return syncStoredSession(), nil },
 			save: func(session.Session) error {
 				sessionSaved = true
 				return nil
 			},
 		},
 		cache: cacheRepositoryStub{},
-		cacheProviderCheck: func(string, string, []byte) {
+		cacheProviderCheck: func(string, []byte) {
 			cacheOpened = true
 		},
 	})
@@ -279,14 +279,14 @@ func TestApplication_SyncRejectsDifferentAuthenticatedUser(t *testing.T) {
 			},
 		},
 		sessions: sessionStorageStub{
-			load: func(string) (session.Session, error) { return syncStoredSession(), nil },
+			load: func() (session.Session, error) { return syncStoredSession(), nil },
 			save: func(session.Session) error {
 				sessionSaved = true
 				return nil
 			},
 		},
 		cache:              cacheRepositoryStub{},
-		cacheProviderCheck: func(string, string, []byte) { cacheOpened = true },
+		cacheProviderCheck: func(string, []byte) { cacheOpened = true },
 	})
 
 	_, err := application.Sync(context.Background(), SyncRequest{Password: testPassword})
@@ -567,7 +567,7 @@ func TestApplication_SyncStopsBeforeOpeningCacheOnSessionOrUserError(t *testing.
 			name: "session load",
 			dependencies: syncTestDependencies{
 				sessions: sessionStorageStub{
-					load: func(string) (session.Session, error) { return session.Session{}, loadError },
+					load: func() (session.Session, error) { return session.Session{}, loadError },
 				},
 			},
 			wantErr: loadError,
@@ -581,7 +581,7 @@ func TestApplication_SyncStopsBeforeOpeningCacheOnSessionOrUserError(t *testing.
 					},
 				},
 				sessions: sessionStorageStub{
-					load: func(string) (session.Session, error) { return syncStoredSession(), nil },
+					load: func() (session.Session, error) { return syncStoredSession(), nil },
 				},
 			},
 			wantErr: currentUserError,
@@ -591,7 +591,7 @@ func TestApplication_SyncStopsBeforeOpeningCacheOnSessionOrUserError(t *testing.
 			dependencies: syncTestDependencies{
 				users: successfulSyncUsers(t),
 				sessions: sessionStorageStub{
-					load: func(string) (session.Session, error) { return syncStoredSession(), nil },
+					load: func() (session.Session, error) { return syncStoredSession(), nil },
 					save: func(session.Session) error { return saveError },
 				},
 			},
@@ -603,7 +603,7 @@ func TestApplication_SyncStopsBeforeOpeningCacheOnSessionOrUserError(t *testing.
 		t.Run(tt.name, func(t *testing.T) {
 			cacheOpened := false
 			dependencies := tt.dependencies
-			dependencies.cacheProviderCheck = func(string, string, []byte) { cacheOpened = true }
+			dependencies.cacheProviderCheck = func(string, []byte) { cacheOpened = true }
 			application := newSyncTestApplication(dependencies)
 
 			_, err := application.Sync(context.Background(), SyncRequest{Password: testPassword})
@@ -648,14 +648,14 @@ func TestApplication_SyncSavesSessionBeforeOpeningCache(t *testing.T) {
 	application := newSyncTestApplication(syncTestDependencies{
 		users: successfulSyncUsers(t),
 		sessions: sessionStorageStub{
-			load: func(string) (session.Session, error) { return syncStoredSession(), nil },
+			load: func() (session.Session, error) { return syncStoredSession(), nil },
 			save: func(session.Session) error {
 				sessionSaved = true
 				return nil
 			},
 		},
 		cacheProviderError: openError,
-		cacheProviderCheck: func(string, string, []byte) {
+		cacheProviderCheck: func(string, []byte) {
 			if !sessionSaved {
 				t.Error("cache opened before updated session was saved")
 			}
@@ -679,7 +679,7 @@ type syncTestDependencies struct {
 	records              RecordGateway
 	sessions             SessionStorage
 	cache                SyncCacheRepository
-	cacheProviderCheck   func(string, string, []byte)
+	cacheProviderCheck   func(string, []byte)
 	cacheProviderError   error
 	sessionProviderError error
 }
@@ -696,18 +696,17 @@ func newSyncTestApplication(dependencies syncTestDependencies) *Application {
 		},
 		syncCaches: func(
 			_ context.Context,
-			serverAddress, canonicalLogin string,
+			canonicalLogin string,
 			password []byte,
 		) (SyncCacheRepository, error) {
 			if dependencies.cacheProviderCheck != nil {
-				dependencies.cacheProviderCheck(serverAddress, canonicalLogin, password)
+				dependencies.cacheProviderCheck(canonicalLogin, password)
 			}
 			if dependencies.cacheProviderError != nil {
 				return nil, dependencies.cacheProviderError
 			}
 			return dependencies.cache, nil
 		},
-		serverAddress: "localhost:8080",
 	}
 }
 
@@ -745,10 +744,7 @@ func successfulSyncRecords(
 func successfulSyncSessionsSaving(t *testing.T, savedSession *session.Session) SessionStorage {
 	t.Helper()
 	return sessionStorageStub{
-		load: func(expectedServerAddress string) (session.Session, error) {
-			if expectedServerAddress != "localhost:8080" {
-				t.Errorf("session server address = %q, want localhost:8080", expectedServerAddress)
-			}
+		load: func() (session.Session, error) {
 			return syncStoredSession(), nil
 		},
 		save: func(stored session.Session) error {
@@ -785,11 +781,11 @@ func successfulSyncCache(
 	}
 }
 
-func successfulSyncCacheProviderCheck(t *testing.T) func(string, string, []byte) {
+func successfulSyncCacheProviderCheck(t *testing.T) func(string, []byte) {
 	t.Helper()
-	return func(serverAddress, canonicalLogin string, password []byte) {
-		if serverAddress != "localhost:8080" || canonicalLogin != "alice" {
-			t.Errorf("cache identity = %q/%q, want localhost:8080/alice", serverAddress, canonicalLogin)
+	return func(canonicalLogin string, password []byte) {
+		if canonicalLogin != "alice" {
+			t.Errorf("cache identity = %q, want alice", canonicalLogin)
 		}
 		if string(password) != testPassword {
 			t.Error("cache provider received unexpected password")
@@ -800,9 +796,8 @@ func successfulSyncCacheProviderCheck(t *testing.T) func(string, string, []byte)
 func assertSuccessfulSyncSession(t *testing.T, got session.Session) {
 	t.Helper()
 	want := session.Session{
-		ServerAddress: "localhost:8080",
-		AccessToken:   "new.jwt.token",
-		ExpiresAt:     syncAuthentication().ExpiresAt,
+		AccessToken: "new.jwt.token",
+		ExpiresAt:   syncAuthentication().ExpiresAt,
 	}
 	if got != want {
 		t.Errorf("saved session = %+v, want %+v", got, want)
@@ -857,16 +852,15 @@ func successfulSyncLogin(t *testing.T) func(context.Context, string, string) (mo
 
 func successfulSyncSessions() SessionStorage {
 	return sessionStorageStub{
-		load: func(string) (session.Session, error) { return syncStoredSession(), nil },
+		load: func() (session.Session, error) { return syncStoredSession(), nil },
 		save: func(session.Session) error { return nil },
 	}
 }
 
 func syncStoredSession() session.Session {
 	return session.Session{
-		ServerAddress: "localhost:8080",
-		AccessToken:   "old.jwt.token",
-		ExpiresAt:     time.Date(2026, time.July, 15, 12, 15, 0, 0, time.UTC),
+		AccessToken: "old.jwt.token",
+		ExpiresAt:   time.Date(2026, time.July, 15, 12, 15, 0, 0, time.UTC),
 	}
 }
 

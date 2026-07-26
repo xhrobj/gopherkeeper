@@ -8,10 +8,10 @@ import (
 	"mime"
 	"net/http"
 
-	"github.com/xhrobj/gopherkeeper/internal/model"
+	"github.com/xhrobj/gopherkeeper/internal/apilimits"
 )
 
-const maxRequestBodySize = model.HTTPRequestBodyMaxSize
+const maxRequestBodySize = apilimits.RequestMaxSize
 
 var errMultipleJSONValues = errors.New("request body must contain one JSON value")
 

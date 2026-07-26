@@ -197,9 +197,15 @@ func (m model) currentNetworkBusyState() networkBusyState {
 
 		state := networkBusyStates[operation]
 
-		if operation == operationCurrentUser && m.authentication.currentUserCheck == currentUserCheckRestore {
-			state.message = "Restoring session"
-			state.inline = false
+		if operation == operationCurrentUser {
+			switch m.authentication.currentUserCheck {
+			case currentUserCheckRestore:
+				state.message = "Restoring session"
+				state.inline = false
+			case currentUserCheckReconfigure:
+				state.message = "Checking session"
+				state.inline = false
+			}
 		}
 
 		return state

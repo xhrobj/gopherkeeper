@@ -22,9 +22,8 @@ func (a *Application) Sync(ctx context.Context, request SyncRequest) (result Syn
 	}
 
 	if err := storedSessions.Save(session.Session{
-		ServerAddress: a.serverAddress,
-		AccessToken:   authentication.AccessToken,
-		ExpiresAt:     authentication.ExpiresAt,
+		AccessToken: authentication.AccessToken,
+		ExpiresAt:   authentication.ExpiresAt,
 	}); err != nil {
 		return SyncResult{}, fmt.Errorf("save online session: %w", err)
 	}
@@ -117,7 +116,7 @@ func (a *Application) authenticateSync(
 		return nil, model.Authentication{}, err
 	}
 
-	storedSession, err := storedSessions.Load(a.serverAddress)
+	storedSession, err := storedSessions.Load()
 	if err != nil {
 		return nil, model.Authentication{}, mapSessionLoadError(err)
 	}
@@ -146,7 +145,6 @@ func (a *Application) openSyncCache(
 ) (SyncCacheRepository, error) {
 	repository, err := a.syncCaches(
 		ctx,
-		a.serverAddress,
 		canonicalLogin,
 		[]byte(password),
 	)

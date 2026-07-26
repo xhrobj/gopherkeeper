@@ -113,6 +113,7 @@ func (m model) handleCurrentUserSuccess(
 	login string,
 ) (tea.Model, tea.Cmd) {
 	m.authentication.session = authSession{state: authAuthenticated, login: login}
+
 	if checkMode == currentUserCheckManual {
 		if m.recordFeature.workspace.open && previousLogin != login {
 			m.closeRecordWorkspace()
@@ -121,13 +122,28 @@ func (m model) handleCurrentUserSuccess(
 		m.activeButton = 0
 		return m, nil
 	}
+
 	if m.dialog == dialogLogin {
 		m.dialog = dialogNone
 	}
+
+	if m.recordFeature.workspace.open && m.recordFeature.workspace.source == recordSourceCache {
+		if sameAccountLogin(m.recordFeature.workspace.login, login) {
+			return m, nil
+		}
+		m.closeRecordWorkspace()
+	}
+
 	return m, m.beginOnlineRecordList()
 }
 
 func (m model) handleCurrentUserFailure(checkMode currentUserCheckMode, err error) (tea.Model, tea.Cmd) {
+	if checkMode == currentUserCheckRestore &&
+		m.recordFeature.workspace.open &&
+		m.recordFeature.workspace.source == recordSourceCache {
+		m.closeRecordWorkspace()
+	}
+
 	if isNotLoggedIn(err) {
 		if checkMode == currentUserCheckManual {
 			m.handleSessionExpired()
@@ -144,6 +160,10 @@ func (m model) handleCurrentUserFailure(checkMode currentUserCheckMode, err erro
 
 	if checkMode == currentUserCheckManual {
 		m.showAlert(alertError, "Current user check failed", cleanCurrentUserError(err), dialogNone)
+		return m, nil
+	}
+	if checkMode == currentUserCheckReconfigure {
+		m.showAlert(alertError, "Session check failed", cleanCurrentUserError(err), m.dialog)
 		return m, nil
 	}
 

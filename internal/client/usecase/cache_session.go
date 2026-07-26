@@ -19,7 +19,7 @@ func (a *Application) OpenCacheSession(
 	ctx context.Context,
 	request OfflineReadRequest,
 ) (*CacheSession, error) {
-	return openCacheSession(ctx, a.offlineCaches, a.serverAddress, request)
+	return openCacheSession(ctx, a.offlineCaches, request)
 }
 
 // OpenCacheSession открывает существующий зашифрованный кеш аккаунта и
@@ -28,16 +28,15 @@ func (a *OfflineApplication) OpenCacheSession(
 	ctx context.Context,
 	request OfflineReadRequest,
 ) (*CacheSession, error) {
-	return openCacheSession(ctx, a.offlineCaches, a.serverAddress, request)
+	return openCacheSession(ctx, a.offlineCaches, request)
 }
 
 func openCacheSession(
 	ctx context.Context,
 	offlineCaches OfflineCacheRepositoryProvider,
-	serverAddress string,
 	request OfflineReadRequest,
 ) (*CacheSession, error) {
-	repository, err := openOfflineCache(ctx, offlineCaches, serverAddress, request)
+	repository, err := openOfflineCache(ctx, offlineCaches, request)
 	if err != nil {
 		return nil, err
 	}

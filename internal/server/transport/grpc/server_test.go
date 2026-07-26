@@ -24,6 +24,7 @@ func TestNewServer_ReturnsInvalidDependenciesError(t *testing.T) {
 		change    func(*Dependencies)
 		wantError string
 	}{
+		{name: "database", change: func(deps *Dependencies) { deps.Database = nil }, wantError: "database is required"},
 		{name: "registerer", change: func(deps *Dependencies) { deps.Registerer = nil }, wantError: "registerer is required"},
 		{name: "authenticator", change: func(deps *Dependencies) { deps.Authenticator = nil }, wantError: "authenticator is required"},
 		{name: "token validator", change: func(deps *Dependencies) { deps.TokenValidator = nil }, wantError: "token validator is required"},

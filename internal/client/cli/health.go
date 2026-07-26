@@ -13,17 +13,12 @@ func newHealthCommand(factory clientFactory) *urfavecli.Command {
 		Name:  "health",
 		Usage: "check Server availability",
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
-			cfg, err := configFromCommand(command)
+			application, err := applicationFromCommand(command, factory)
 			if err != nil {
 				return err
 			}
 
-			client, err := factory.NewHealthClient(cfg)
-			if err != nil {
-				return err
-			}
-
-			return executeHealth(ctx, client, command.Root().Writer)
+			return executeHealth(ctx, application, command.Root().Writer)
 		},
 	}
 }

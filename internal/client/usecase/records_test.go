@@ -104,7 +104,6 @@ func TestApplication_CreateRecord(t *testing.T) {
 			},
 		},
 		onlineSessionStorage(),
-		"localhost:8080",
 	)
 
 	record, err := application.CreateRecord(context.Background(), CreateRecordRequest{
@@ -167,7 +166,6 @@ func TestApplication_CreateRecordRejectsInvalidRequest(t *testing.T) {
 					},
 				},
 				sessionStorageStub{},
-				"localhost:8080",
 			)
 
 			_, err := application.CreateRecord(context.Background(), tt.request)
@@ -196,7 +194,6 @@ func TestApplication_ListRecords(t *testing.T) {
 			},
 		},
 		onlineSessionStorage(),
-		"localhost:8080",
 	)
 
 	got, err := application.ListRecords(context.Background())
@@ -235,7 +232,6 @@ func TestApplication_GetRecord(t *testing.T) {
 			},
 		},
 		onlineSessionStorage(),
-		"localhost:8080",
 	)
 
 	got, err := application.GetRecord(context.Background(), testRecordID)
@@ -282,7 +278,6 @@ func TestApplication_UpdateRecord(t *testing.T) {
 			},
 		},
 		onlineSessionStorage(),
-		"localhost:8080",
 	)
 
 	record, err := application.UpdateRecord(context.Background(), UpdateRecordRequest{
@@ -312,7 +307,6 @@ func TestApplication_UpdateRecordMapsGatewayError(t *testing.T) {
 			},
 		},
 		onlineSessionStorage(),
-		"localhost:8080",
 	)
 
 	_, err := application.UpdateRecord(context.Background(), UpdateRecordRequest{
@@ -347,7 +341,6 @@ func TestApplication_DeleteRecord(t *testing.T) {
 			},
 		},
 		onlineSessionStorage(),
-		"localhost:8080",
 	)
 
 	if err := application.DeleteRecord(context.Background(), DeleteRecordRequest{
@@ -360,10 +353,7 @@ func TestApplication_DeleteRecord(t *testing.T) {
 
 func onlineSessionStorage() sessionStorageStub {
 	return sessionStorageStub{
-		load: func(expectedServerAddress string) (session.Session, error) {
-			if expectedServerAddress != "localhost:8080" {
-				return session.Session{}, errors.New("unexpected server address")
-			}
+		load: func() (session.Session, error) {
 			return testOnlineSession(), nil
 		},
 	}

@@ -102,6 +102,7 @@ func run(ctx context.Context, args []string) error {
 		cfg.TLSCertFile,
 		cfg.TLSKeyFile,
 		grpcserver.Dependencies{
+			Database:          pool,
 			Registerer:        registrationService,
 			Authenticator:     authenticationService,
 			TokenValidator:    tokenManager,

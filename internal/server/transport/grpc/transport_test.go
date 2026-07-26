@@ -2,6 +2,8 @@ package grpcserver
 
 import (
 	"context"
+	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +21,14 @@ func TestGRPCTransport_TLSAuthenticationFlow(t *testing.T) {
 	certFile, keyFile := grpcTestCertificateFiles(t)
 	createdAt := time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC)
 	deps := completeDependencies()
+	var databaseAvailable atomic.Bool
+	databaseAvailable.Store(true)
+	deps.Database = databasePingerFunc(func(context.Context) error {
+		if !databaseAvailable.Load() {
+			return errors.New("database unavailable")
+		}
+		return nil
+	})
 	deps.Registerer = userRegistererFunc(func(_ context.Context, login, password string) (model.User, error) {
 		if login != "Alice" || password != "correct-horse-battery-staple" {
 			t.Fatalf("Register() credentials = %q / %q", login, password)
@@ -98,6 +108,41 @@ func TestGRPCTransport_TLSAuthenticationFlow(t *testing.T) {
 	if serviceHealth.GetStatus() != healthpb.HealthCheckResponse_SERVING {
 		t.Fatalf("Health.Check(AuthService) status = %s", serviceHealth.GetStatus())
 	}
+
+	healthList, err := healthpb.NewHealthClient(connection).List(
+		callCtx,
+		&healthpb.HealthListRequest{},
+	)
+	if err != nil {
+		t.Fatalf("Health.List() error = %v", err)
+	}
+	if len(healthList.GetStatuses()) != len(healthServiceNames) {
+		t.Fatalf("Health.List() statuses = %d, want %d", len(healthList.GetStatuses()), len(healthServiceNames))
+	}
+
+	watch, err := healthpb.NewHealthClient(connection).Watch(
+		callCtx,
+		&healthpb.HealthCheckRequest{},
+	)
+	if err == nil {
+		_, err = watch.Recv()
+	}
+	if status.Code(err) != codes.Unimplemented {
+		t.Fatalf("Health.Watch() code = %s, want %s", status.Code(err), codes.Unimplemented)
+	}
+
+	databaseAvailable.Store(false)
+	unavailableHealth, err := healthpb.NewHealthClient(connection).Check(
+		callCtx,
+		&healthpb.HealthCheckRequest{},
+	)
+	if err != nil {
+		t.Fatalf("Health.Check() unavailable database error = %v", err)
+	}
+	if unavailableHealth.GetStatus() != healthpb.HealthCheckResponse_NOT_SERVING {
+		t.Fatalf("Health.Check() unavailable database status = %s", unavailableHealth.GetStatus())
+	}
+	databaseAvailable.Store(true)
 
 	authClient := gopherkeeperpb.NewAuthServiceClient(connection)
 	registerResponse, err := authClient.Register(

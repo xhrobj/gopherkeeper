@@ -29,29 +29,53 @@ type tuiRunner interface {
 
 type defaultTUIRunner struct{}
 
+type tuiCacheState struct {
+	mu      sync.Mutex
+	session *usecase.CacheSession
+}
+
 type tuiBackend struct {
-	application  *usecase.Application
-	cacheMu      sync.Mutex
-	cacheSession *usecase.CacheSession
+	runtime *app.Runtime
+	cache   *tuiCacheState
 }
 
 var _ tui.Backend = (*tuiBackend)(nil)
 
 func newTUIBackend(cfg config.Config) (tui.Backend, error) {
-	application, err := app.New(cfg)
+	return newTUIBackendWithCache(cfg, &tuiCacheState{})
+}
+
+func newTUIBackendFactory() tui.BackendFactory {
+	cache := &tuiCacheState{}
+
+	return func(cfg config.Config) (tui.Backend, error) {
+		return newTUIBackendWithCache(cfg, cache)
+	}
+}
+
+func newTUIBackendWithCache(cfg config.Config, cache *tuiCacheState) (tui.Backend, error) {
+	if cache == nil {
+		cache = &tuiCacheState{}
+	}
+
+	if cfg.Transport == "" {
+		cfg.Transport = config.TransportHTTPS
+	}
+
+	runtime, err := app.NewRuntime(cfg)
 	if err != nil {
 		return nil, failure.Context("create client application", err)
 	}
 
-	return &tuiBackend{application: application}, nil
+	return &tuiBackend{runtime: runtime, cache: cache}, nil
 }
 
 func (backend *tuiBackend) Health(ctx context.Context) (string, error) {
-	return backend.application.Health(ctx)
+	return backend.runtime.Health(ctx)
 }
 
 func (backend *tuiBackend) Register(ctx context.Context, login, password string) (string, error) {
-	user, err := backend.application.Register(ctx, login, password)
+	user, err := backend.runtime.Register(ctx, login, password)
 	if err != nil {
 		return "", err
 	}
@@ -60,7 +84,7 @@ func (backend *tuiBackend) Register(ctx context.Context, login, password string)
 }
 
 func (backend *tuiBackend) Login(ctx context.Context, login, password string) (string, error) {
-	user, err := backend.application.Login(ctx, login, password)
+	user, err := backend.runtime.Login(ctx, login, password)
 	if err != nil {
 		return "", err
 	}
@@ -69,7 +93,7 @@ func (backend *tuiBackend) Login(ctx context.Context, login, password string) (s
 }
 
 func (backend *tuiBackend) CurrentUser(ctx context.Context) (string, error) {
-	user, err := backend.application.Whoami(ctx)
+	user, err := backend.runtime.Whoami(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -78,15 +102,15 @@ func (backend *tuiBackend) CurrentUser(ctx context.Context) (string, error) {
 }
 
 func (backend *tuiBackend) Logout(ctx context.Context) error {
-	return backend.application.Logout(ctx)
+	return backend.runtime.Logout(ctx)
 }
 
 func (backend *tuiBackend) ListRecords(ctx context.Context) ([]model.RecordMetadata, error) {
-	return backend.application.ListRecords(ctx)
+	return backend.runtime.ListRecords(ctx)
 }
 
 func (backend *tuiBackend) GetRecord(ctx context.Context, recordID string) (model.Record, error) {
-	return backend.application.GetRecord(ctx, recordID)
+	return backend.runtime.GetRecord(ctx, recordID)
 }
 
 func (backend *tuiBackend) OpenCache(
@@ -94,12 +118,12 @@ func (backend *tuiBackend) OpenCache(
 	login string,
 	password string,
 ) ([]model.RecordMetadata, error) {
-	backend.cacheMu.Lock()
-	defer backend.cacheMu.Unlock()
+	backend.cache.mu.Lock()
+	defer backend.cache.mu.Unlock()
 
 	backend.closeCacheLocked()
 
-	session, err := backend.application.OpenCacheSession(ctx, usecase.OfflineReadRequest{
+	session, err := backend.runtime.OpenCacheSession(ctx, usecase.OfflineReadRequest{
 		Login: login, Password: password,
 	})
 	if err != nil {
@@ -116,39 +140,39 @@ func (backend *tuiBackend) OpenCache(
 		return nil, err
 	}
 
-	backend.cacheSession = session
+	backend.cache.session = session
 	return records, nil
 }
 
 func (backend *tuiBackend) GetCachedRecord(ctx context.Context, recordID string) (model.Record, error) {
-	backend.cacheMu.Lock()
-	defer backend.cacheMu.Unlock()
+	backend.cache.mu.Lock()
+	defer backend.cache.mu.Unlock()
 
-	if backend.cacheSession == nil {
+	if backend.cache.session == nil {
 		return model.Record{}, fmt.Errorf("local cache is not open")
 	}
 
-	return backend.cacheSession.GetRecord(ctx, recordID)
+	return backend.cache.session.GetRecord(ctx, recordID)
 }
 
 func (backend *tuiBackend) CloseCache() {
-	backend.cacheMu.Lock()
-	defer backend.cacheMu.Unlock()
+	backend.cache.mu.Lock()
+	defer backend.cache.mu.Unlock()
 
 	backend.closeCacheLocked()
 }
 
 func (backend *tuiBackend) closeCacheLocked() {
-	if backend.cacheSession == nil {
+	if backend.cache.session == nil {
 		return
 	}
 
-	_ = backend.cacheSession.Close()
-	backend.cacheSession = nil
+	_ = backend.cache.session.Close()
+	backend.cache.session = nil
 }
 
 func (backend *tuiBackend) CreateRecord(ctx context.Context, title string, payload model.RecordPayload) (model.Record, error) {
-	return backend.application.CreateRecord(ctx, usecase.CreateRecordRequest{Title: title, Payload: payload})
+	return backend.runtime.CreateRecord(ctx, usecase.CreateRecordRequest{Title: title, Payload: payload})
 }
 
 func (backend *tuiBackend) UpdateRecord(
@@ -158,19 +182,19 @@ func (backend *tuiBackend) UpdateRecord(
 	title string,
 	payload model.RecordPayload,
 ) (model.Record, error) {
-	return backend.application.UpdateRecord(ctx, usecase.UpdateRecordRequest{
+	return backend.runtime.UpdateRecord(ctx, usecase.UpdateRecordRequest{
 		RecordID: recordID, ExpectedRevision: expectedRevision, Title: title, Payload: payload,
 	})
 }
 
 func (backend *tuiBackend) DeleteRecord(ctx context.Context, recordID string, expectedRevision int64) error {
-	return backend.application.DeleteRecord(ctx, usecase.DeleteRecordRequest{
+	return backend.runtime.DeleteRecord(ctx, usecase.DeleteRecordRequest{
 		RecordID: recordID, ExpectedRevision: expectedRevision,
 	})
 }
 
 func (backend *tuiBackend) Sync(ctx context.Context, password string) (tui.SyncSummary, error) {
-	result, err := backend.application.Sync(ctx, usecase.SyncRequest{Password: password})
+	result, err := backend.runtime.Sync(ctx, usecase.SyncRequest{Password: password})
 	if err != nil {
 		return tui.SyncSummary{}, err
 	}
@@ -181,6 +205,14 @@ func (backend *tuiBackend) Sync(ctx context.Context, password string) (tui.SyncS
 		Removed:   len(result.Removed),
 		Unchanged: result.Unchanged,
 	}, nil
+}
+
+func (backend *tuiBackend) CloseTransport() error {
+	if backend == nil || backend.runtime == nil {
+		return nil
+	}
+
+	return backend.runtime.Close()
 }
 
 func (defaultTUIRunner) Run(
@@ -197,7 +229,7 @@ func (defaultTUIRunner) Run(
 		Config:         cfg,
 		ConfigFile:     configFile,
 		Info:           info,
-		BackendFactory: newTUIBackend,
+		BackendFactory: newTUIBackendFactory(),
 	})
 }
 

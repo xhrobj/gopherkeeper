@@ -16,6 +16,38 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/client/failure"
 )
 
+type idleConnectionCloserStub struct {
+	calls int
+}
+
+func (stub *idleConnectionCloserStub) CloseIdleConnections() {
+	stub.calls++
+}
+
+func TestClient_CloseClosesIdleConnections(t *testing.T) {
+	closer := &idleConnectionCloserStub{}
+	client := &Client{idleConnections: closer}
+
+	if err := client.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if closer.calls != 1 {
+		t.Fatalf("CloseIdleConnections() calls = %d, want 1", closer.calls)
+	}
+}
+
+func TestClient_CloseAllowsNilClientAndTransport(t *testing.T) {
+	var nilClient *Client
+
+	if err := nilClient.Close(); err != nil {
+		t.Fatalf("nil Client.Close() error = %v", err)
+	}
+
+	if err := (&Client{}).Close(); err != nil {
+		t.Fatalf("Client without transport Close() error = %v", err)
+	}
+}
+
 func TestClient_HealthWithAdditionalCA(t *testing.T) {
 	server := newHealthTLSServer(t, http.StatusOK, `{"status":"ok"}`)
 	defer server.Close()

@@ -79,7 +79,7 @@ func TestEncryptedSyncCacheRepositoryProvider_RejectsInvalidIdentityWithoutCreat
 	cacheDirectory := filepath.Join(t.TempDir(), "encrypted-cache")
 	provider := encryptedSyncCacheRepositoryProvider(cacheDirectory)
 
-	_, err := provider(context.Background(), "localhost:8080", "Alice", []byte("password"))
+	_, err := provider(context.Background(), "Alice", []byte("password"))
 	if !errors.Is(err, cache.ErrInvalidAccountIdentity) {
 		t.Fatalf("cache provider error = %v, want ErrInvalidAccountIdentity", err)
 	}
@@ -95,7 +95,6 @@ func TestEncryptedOfflineCacheRepositoryProvider_DoesNotCreateMissingCache(t *te
 
 	_, err := provider(
 		context.Background(),
-		"localhost:8080",
 		"alice",
 		[]byte("correct-horse-battery-staple"),
 	)
@@ -108,5 +107,96 @@ func TestEncryptedOfflineCacheRepositoryProvider_DoesNotCreateMissingCache(t *te
 
 	if _, err := os.Stat(cacheDirectory); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("cache directory stat error = %v, want os.ErrNotExist", err)
+	}
+}
+
+func TestNewRuntime_SelectsConfiguredTransport(t *testing.T) {
+	tests := []struct {
+		name      string
+		transport config.Transport
+	}{
+		{name: "HTTPS", transport: config.TransportHTTPS},
+		{name: "gRPC", transport: config.TransportGRPC},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Default()
+			cfg.Transport = tt.transport
+			cfg.SessionDir = t.TempDir()
+
+			runtime, err := NewRuntime(cfg)
+			if err != nil {
+				t.Fatalf("NewRuntime() error = %v", err)
+			}
+
+			if runtime == nil || runtime.Application == nil {
+				t.Fatal("NewRuntime() runtime or application = nil")
+			}
+			if runtime.closer == nil {
+				t.Fatal("runtime transport closer = nil")
+			}
+			if err := runtime.Close(); err != nil {
+				t.Fatalf("Close() error = %v", err)
+			}
+			if err := runtime.Close(); err != nil {
+				t.Fatalf("second Close() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestNewRuntime_RejectsUnknownTransport(t *testing.T) {
+	cfg := config.Default()
+	cfg.Transport = config.Transport("quic")
+
+	if _, err := NewRuntime(cfg); err == nil {
+		t.Fatal("NewRuntime() error = nil")
+	}
+}
+
+type closerStub struct {
+	calls int
+	err   error
+}
+
+func (stub *closerStub) Close() error {
+	stub.calls++
+	return stub.err
+}
+
+func TestRuntimeClose(t *testing.T) {
+	closer := &closerStub{}
+	runtime, err := newRuntime(usecase.New(nil, nil, nil, nil, nil, nil), closer)
+	if err != nil {
+		t.Fatalf("newRuntime() error = %v", err)
+	}
+
+	if err := runtime.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if err := runtime.Close(); err != nil {
+		t.Fatalf("second Close() error = %v", err)
+	}
+	if closer.calls != 1 {
+		t.Fatalf("closer calls = %d, want 1", closer.calls)
+	}
+}
+
+func TestRuntimeClose_ReturnsStoredCloseError(t *testing.T) {
+	closeErr := errors.New("close failed")
+	closer := &closerStub{err: closeErr}
+	runtime, err := newRuntime(usecase.New(nil, nil, nil, nil, nil, nil), closer)
+	if err != nil {
+		t.Fatalf("newRuntime() error = %v", err)
+	}
+
+	for range 2 {
+		if err := runtime.Close(); !errors.Is(err, closeErr) {
+			t.Fatalf("Close() error = %v, want %v", err, closeErr)
+		}
+	}
+	if closer.calls != 1 {
+		t.Fatalf("closer calls = %d, want 1", closer.calls)
 	}
 }

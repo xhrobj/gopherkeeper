@@ -2,23 +2,26 @@ package httpclient
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/xhrobj/gopherkeeper/internal/client/failure"
+	"github.com/xhrobj/gopherkeeper/internal/client/transporttls"
 )
 
 const requestTimeout = 10 * time.Second
 
+type idleConnectionCloser interface {
+	CloseIdleConnections()
+}
+
 // Client выполняет HTTPS-запросы к Серверу GophKeeper.
 type Client struct {
-	client *resty.Client
+	client          *resty.Client
+	idleConnections idleConnectionCloser
 }
 
 type healthResponse struct {
@@ -28,27 +31,13 @@ type healthResponse struct {
 // New создаёт HTTPS-Клиент с системными корневыми сертификатами
 // и дополнительным доверенным CA certificate при его наличии.
 func New(address, caCertFile string) (*Client, error) {
-	rootCAs, err := x509.SystemCertPool()
+	tlsConfig, err := transporttls.NewConfig(caCertFile)
 	if err != nil {
-		return nil, failure.Wrap(failure.TLSCertificate, "load system CA certificates", "Unable to load system CA certificates", err)
-	}
-
-	if caCertFile != "" {
-		certificate, err := os.ReadFile(caCertFile)
-		if err != nil {
-			return nil, failure.Wrap(failure.TLSCertificate, "read additional CA certificate", "Unable to read additional CA certificate", err)
-		}
-
-		if !rootCAs.AppendCertsFromPEM(certificate) {
-			return nil, failure.Wrap(failure.TLSCertificate, "parse additional CA certificate", "Unable to parse additional CA certificate", nil)
-		}
+		return nil, err
 	}
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.TLSClientConfig = &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		RootCAs:    rootCAs,
-	}
+	transport.TLSClientConfig = tlsConfig
 
 	restyClient := resty.NewWithClient(&http.Client{
 		Transport: transport,
@@ -56,7 +45,18 @@ func New(address, caCertFile string) (*Client, error) {
 	})
 	restyClient.SetBaseURL("https://" + address)
 
-	return &Client{client: restyClient}, nil
+	return &Client{client: restyClient, idleConnections: transport}, nil
+}
+
+// Close закрывает неиспользуемые соединения HTTPS-транспорта, принадлежащего Клиенту.
+func (c *Client) Close() error {
+	if c == nil || c.idleConnections == nil {
+		return nil
+	}
+
+	c.idleConnections.CloseIdleConnections()
+
+	return nil
 }
 
 // Health проверяет доступность Сервера и возвращает его технический статус.

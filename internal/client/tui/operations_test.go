@@ -118,6 +118,15 @@ func TestModel_CurrentNetworkBusyStateCoversBlockingOperations(t *testing.T) {
 			message:   "Restoring session",
 		},
 		{
+			name: "reconfigure session",
+			prepare: func(m *model) {
+				m.authentication.currentUserCheck = currentUserCheckReconfigure
+				m.operations.request(operationCurrentUser).pending = true
+			},
+			operation: operationCurrentUser,
+			message:   "Checking session",
+		},
+		{
 			name: "manual current user",
 			prepare: func(m *model) {
 				m.dialog = dialogCurrentUser

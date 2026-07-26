@@ -8,12 +8,12 @@ import (
 	"net"
 	"time"
 
-	"github.com/xhrobj/gopherkeeper/internal/model"
+	"github.com/xhrobj/gopherkeeper/internal/apilimits"
+	"github.com/xhrobj/gopherkeeper/internal/grpclimits"
 	gopherkeeperpb "github.com/xhrobj/gopherkeeper/internal/proto"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
@@ -40,8 +40,8 @@ func NewServer(
 
 	server := grpc.NewServer(
 		grpc.Creds(transportCredentials),
-		grpc.MaxRecvMsgSize(int(model.HTTPRequestBodyMaxSize)),
-		grpc.MaxSendMsgSize(int(model.HTTPRequestBodyMaxSize)),
+		grpc.MaxRecvMsgSize(apilimits.RequestMaxSize),
+		grpc.MaxSendMsgSize(grpclimits.ResponseMessageMaxSize),
 		grpc.ChainUnaryInterceptor(
 			loggingUnaryInterceptor(logger),
 			authenticationUnaryInterceptor(deps.TokenValidator),
@@ -50,15 +50,7 @@ func NewServer(
 	gopherkeeperpb.RegisterAuthServiceServer(server, newAuthService(deps))
 	gopherkeeperpb.RegisterRecordServiceServer(server, newRecordService(deps.Records))
 
-	healthServer := health.NewServer()
-	for _, serviceName := range []string{
-		"",
-		gopherkeeperpb.AuthService_ServiceDesc.ServiceName,
-		gopherkeeperpb.RecordService_ServiceDesc.ServiceName,
-	} {
-		healthServer.SetServingStatus(serviceName, healthpb.HealthCheckResponse_SERVING)
-	}
-	healthpb.RegisterHealthServer(server, healthServer)
+	healthpb.RegisterHealthServer(server, newHealthService(deps.Database))
 
 	return server, nil
 }

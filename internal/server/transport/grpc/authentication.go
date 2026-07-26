@@ -46,7 +46,7 @@ func isPublicMethod(fullMethod string) bool {
 	case gopherkeeperpb.AuthService_Register_FullMethodName,
 		gopherkeeperpb.AuthService_Login_FullMethodName,
 		healthpb.Health_Check_FullMethodName,
-		healthpb.Health_Watch_FullMethodName:
+		healthpb.Health_List_FullMethodName:
 		return true
 	default:
 		return false

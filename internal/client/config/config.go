@@ -10,14 +10,33 @@ import (
 	"strings"
 )
 
-const defaultAddress = "localhost:8080"
+const (
+	defaultAddress     = "localhost:8080"
+	defaultGRPCAddress = "localhost:50051"
+)
+
+// Transport задаёт сетевой протокол Клиента для обращения к Серверу.
+type Transport string
+
+const (
+	// TransportHTTPS выбирает HTTPS API.
+	TransportHTTPS Transport = "https"
+	// TransportGRPC выбирает gRPC API.
+	TransportGRPC Transport = "grpc"
+)
 
 // Config содержит настройки командного Клиента.
 type Config struct {
-	// Address задаёт адрес Сервера в формате host:port.
+	// Transport задаёт активный сетевой протокол Клиента.
+	Transport Transport
+
+	// Address задаёт адрес HTTPS API Сервера в формате host:port.
 	Address string
 
-	// CACertFile задаёт путь к PEM-файлу доверенного CA для HTTPS-подключений к Серверу.
+	// GRPCAddress задаёт адрес gRPC API Сервера в формате host:port.
+	GRPCAddress string
+
+	// CACertFile задаёт путь к PEM-файлу доверенного CA для TLS-подключений к Серверу.
 	CACertFile string
 
 	// SessionDir задаёт каталог локального хранения online-сессии Клиента.
@@ -31,8 +50,14 @@ type Config struct {
 // Overrides содержит значения конфигурации, заданные через источники с более
 // высоким приоритетом, чем JSON-файл.
 type Overrides struct {
-	// Address переопределяет адрес Сервера.
+	// Transport переопределяет активный сетевой протокол.
+	Transport *Transport
+
+	// Address переопределяет адрес HTTPS API Сервера.
 	Address *string
+
+	// GRPCAddress переопределяет адрес gRPC API Сервера.
+	GRPCAddress *string
 
 	// CACertFile переопределяет путь к дополнительному CA certificate.
 	CACertFile *string
@@ -45,15 +70,21 @@ type Overrides struct {
 }
 
 type fileConfig struct {
-	Address    *string `json:"address"`
-	CACertFile *string `json:"ca_cert_file"`
-	SessionDir *string `json:"session_dir"`
-	CacheDir   *string `json:"cache_dir"`
+	Transport   *Transport `json:"transport"`
+	Address     *string    `json:"address"`
+	GRPCAddress *string    `json:"grpc_address"`
+	CACertFile  *string    `json:"ca_cert_file"`
+	SessionDir  *string    `json:"session_dir"`
+	CacheDir    *string    `json:"cache_dir"`
 }
 
 // Default возвращает конфигурацию Клиента со значениями по умолчанию.
 func Default() Config {
-	return Config{Address: defaultAddress}
+	return Config{
+		Transport:   TransportHTTPS,
+		Address:     defaultAddress,
+		GRPCAddress: defaultGRPCAddress,
+	}
 }
 
 // Resolve формирует конфигурацию Клиента из JSON-файла и значений с более
@@ -71,9 +102,10 @@ func Resolve(configFile string, overrides Overrides) (Config, error) {
 	}
 
 	applyOverrides(&cfg, overrides)
+	normalizeNetworkAddresses(&cfg)
 
-	if strings.TrimSpace(cfg.Address) == "" {
-		return Config{}, errors.New("server address is required")
+	if err := validate(cfg); err != nil {
+		return Config{}, err
 	}
 
 	return cfg, nil
@@ -84,28 +116,66 @@ func Save(path string, cfg Config) error {
 	if strings.TrimSpace(path) == "" {
 		return errors.New("client config file path is required")
 	}
-	if strings.TrimSpace(cfg.Address) == "" {
-		return errors.New("server address is required")
+
+	normalizeNetworkAddresses(&cfg)
+	if err := validate(cfg); err != nil {
+		return err
 	}
 
 	data, err := json.MarshalIndent(struct {
-		Address    string `json:"address"`
-		CACertFile string `json:"ca_cert_file"`
-		SessionDir string `json:"session_dir"`
-		CacheDir   string `json:"cache_dir"`
+		Transport   Transport `json:"transport"`
+		Address     string    `json:"address"`
+		GRPCAddress string    `json:"grpc_address"`
+		CACertFile  string    `json:"ca_cert_file"`
+		SessionDir  string    `json:"session_dir"`
+		CacheDir    string    `json:"cache_dir"`
 	}{
-		Address:    cfg.Address,
-		CACertFile: cfg.CACertFile,
-		SessionDir: cfg.SessionDir,
-		CacheDir:   cfg.CacheDir,
+		Transport:   cfg.Transport,
+		Address:     cfg.Address,
+		GRPCAddress: cfg.GRPCAddress,
+		CACertFile:  cfg.CACertFile,
+		SessionDir:  cfg.SessionDir,
+		CacheDir:    cfg.CacheDir,
 	}, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode client config file: %w", err)
 	}
+
 	data = append(data, '\n')
 
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("write client config file: %w", err)
+	}
+
+	return nil
+}
+
+// ActiveAddress возвращает адрес, соответствующий выбранному transport'у.
+func (cfg Config) ActiveAddress() string {
+	if cfg.Transport == TransportGRPC {
+		return cfg.GRPCAddress
+	}
+
+	return cfg.Address
+}
+
+func normalizeNetworkAddresses(cfg *Config) {
+	cfg.Address = strings.TrimSpace(cfg.Address)
+	cfg.GRPCAddress = strings.TrimSpace(cfg.GRPCAddress)
+}
+
+func validate(cfg Config) error {
+	switch cfg.Transport {
+	case TransportHTTPS:
+		if strings.TrimSpace(cfg.Address) == "" {
+			return errors.New("HTTPS server address is required")
+		}
+	case TransportGRPC:
+		if strings.TrimSpace(cfg.GRPCAddress) == "" {
+			return errors.New("gRPC server address is required")
+		}
+	default:
+		return fmt.Errorf("unsupported client transport %q", cfg.Transport)
 	}
 
 	return nil
@@ -129,8 +199,14 @@ func applyFile(cfg *Config, path string) error {
 		return fmt.Errorf("decode client config file: %w", err)
 	}
 
+	if file.Transport != nil {
+		cfg.Transport = *file.Transport
+	}
 	if file.Address != nil {
 		cfg.Address = *file.Address
+	}
+	if file.GRPCAddress != nil {
+		cfg.GRPCAddress = *file.GRPCAddress
 	}
 	if file.CACertFile != nil {
 		cfg.CACertFile = *file.CACertFile
@@ -157,8 +233,14 @@ func ensureSingleJSONValue(decoder *json.Decoder) error {
 }
 
 func applyOverrides(cfg *Config, overrides Overrides) {
+	if overrides.Transport != nil {
+		cfg.Transport = *overrides.Transport
+	}
 	if overrides.Address != nil {
 		cfg.Address = *overrides.Address
+	}
+	if overrides.GRPCAddress != nil {
+		cfg.GRPCAddress = *overrides.GRPCAddress
 	}
 	if overrides.CACertFile != nil {
 		cfg.CACertFile = *overrides.CACertFile

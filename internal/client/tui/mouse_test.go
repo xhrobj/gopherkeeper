@@ -188,10 +188,10 @@ func TestModel_MouseClickEditsAndCancelsConfig(t *testing.T) {
 	m.configForm = newConfigForm(m.config)
 
 	fields := m.configFieldBounds()
-	if len(fields) != 4 {
-		t.Fatalf("field count = %d, want 4", len(fields))
+	if len(fields) != 5 {
+		t.Fatalf("field count = %d, want 5", len(fields))
 	}
-	updated, _ := m.Update(mouseClick(fields[2].x+1, fields[2].y))
+	updated, _ := m.Update(mouseClick(fields[3].x+1, fields[3].y))
 	m = updated.(model)
 	if m.configForm.focus != configSessionDir {
 		t.Fatalf("focus = %d, want session dir", m.configForm.focus)
@@ -208,6 +208,29 @@ func TestModel_MouseClickEditsAndCancelsConfig(t *testing.T) {
 	}
 	if got.config != initial {
 		t.Fatalf("config = %#v, want %#v", got.config, initial)
+	}
+}
+
+func TestModel_MouseClickSelectsConfigTransport(t *testing.T) {
+	m := newTestModel(t, config.Config{
+		Transport:   config.TransportHTTPS,
+		Address:     "localhost:8888",
+		GRPCAddress: "localhost:9090",
+	}, buildinfo.Info{})
+	m.width = 100
+	m.height = 32
+	m.dialog = dialogConfig
+	m.configForm = newConfigForm(m.config)
+
+	bounds := m.configTransportBounds()
+	if len(bounds) != 2 {
+		t.Fatalf("transport bounds = %d, want 2", len(bounds))
+	}
+
+	updated, _ := m.Update(mouseClick(bounds[1].x+1, bounds[1].y))
+	got := updated.(model)
+	if got.configForm.transport != config.TransportGRPC || got.configForm.focus != configTransport {
+		t.Fatalf("transport = %q focus = %d, want gRPC transport focus", got.configForm.transport, got.configForm.focus)
 	}
 }
 
@@ -311,6 +334,37 @@ func TestModel_ControlsButtonBoundsMatchRenderedButtonRow(t *testing.T) {
 	}
 	if buttons[0].y != windowY+buttonRow {
 		t.Fatalf("button y = %d, want rendered row %d", buttons[0].y, windowY+buttonRow)
+	}
+}
+
+func TestModel_ServerStatusButtonBoundsMatchRenderedButtonRow(t *testing.T) {
+	m := newTestModel(t, config.Config{Address: "localhost:8888"}, buildinfo.Info{})
+	m.width = 100
+	m.height = 32
+	m.dialog = dialogServerStatus
+	m.statusState = serverStatusReady
+	m.statusValue = "ok"
+
+	window := m.renderDialog()
+	windowHeight := lipgloss.Height(window)
+	windowY := max(2, (m.height-windowHeight)/2)
+	buttonRow := lineIndexContaining(strings.Split(ansi.Strip(window), "\n"), "< Check >")
+	if buttonRow < 0 {
+		t.Fatal("rendered Server Status buttons were not found")
+	}
+	if buttonRow != serverStatusButtonRow {
+		t.Fatalf("Server Status button row = %d, want constant %d", buttonRow, serverStatusButtonRow)
+	}
+
+	buttons := m.dialogButtonBounds()
+	if len(buttons) != 2 {
+		t.Fatalf("button count = %d, want 2", len(buttons))
+	}
+	wantY := windowY + buttonRow
+	for index, bounds := range buttons {
+		if bounds.y != wantY {
+			t.Fatalf("button %d y = %d, want rendered row %d", index, bounds.y, wantY)
+		}
 	}
 }
 

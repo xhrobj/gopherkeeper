@@ -8,6 +8,12 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
 )
 
+// DatabasePinger проверяет доступность PostgreSQL.
+type DatabasePinger interface {
+	// Ping проверяет доступность базы данных.
+	Ping(context.Context) error
+}
+
 // UserRegisterer регистрирует нового пользователя.
 type UserRegisterer interface {
 	// Register регистрирует нового пользователя.
@@ -52,6 +58,9 @@ type RecordManager interface {
 
 // Dependencies содержит application-зависимости gRPC transport'а.
 type Dependencies struct {
+	// Database проверяет доступность PostgreSQL.
+	Database DatabasePinger
+
 	// Registerer регистрирует новых пользователей.
 	Registerer UserRegisterer
 
@@ -70,6 +79,8 @@ type Dependencies struct {
 
 func (deps Dependencies) validate() error {
 	switch {
+	case deps.Database == nil:
+		return fmt.Errorf("%w: database is required", errInvalidDependencies)
 	case deps.Registerer == nil:
 		return fmt.Errorf("%w: registerer is required", errInvalidDependencies)
 	case deps.Authenticator == nil:

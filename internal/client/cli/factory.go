@@ -2,16 +2,17 @@ package cli
 
 import (
 	"context"
+	"fmt"
 
 	urfavecli "github.com/urfave/cli/v3"
 	"github.com/xhrobj/gopherkeeper/internal/client/app"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
-	"github.com/xhrobj/gopherkeeper/internal/client/httpclient"
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 type application interface {
+	Health(ctx context.Context) (string, error)
 	Register(ctx context.Context, login, password string) (model.User, error)
 	Login(ctx context.Context, login, password string) (model.User, error)
 	Whoami(ctx context.Context) (model.User, error)
@@ -23,6 +24,7 @@ type application interface {
 	DeleteRecord(ctx context.Context, request usecase.DeleteRecordRequest) error
 
 	Sync(ctx context.Context, request usecase.SyncRequest) (usecase.SyncResult, error)
+	Close() error
 }
 
 type offlineApplication interface {
@@ -46,14 +48,13 @@ type clientFactory interface {
 	NewApplication(cfg config.Config) (application, error)
 	NewOfflineApplication(cfg config.Config) (offlineApplication, error)
 	NewLogoutApplication(cfg config.Config) (userLogoutter, error)
-	NewHealthClient(cfg config.Config) (healthChecker, error)
 }
 
 type defaultClientFactory struct{}
 
 // NewApplication создаёт application для online-сценариев Клиента.
 func (defaultClientFactory) NewApplication(cfg config.Config) (application, error) {
-	return app.New(cfg)
+	return app.NewRuntime(cfg)
 }
 
 // NewOfflineApplication создаёт application для offline read-only сценариев.
@@ -66,18 +67,47 @@ func (defaultClientFactory) NewLogoutApplication(cfg config.Config) (userLogoutt
 	return app.NewLogout(cfg)
 }
 
-// NewHealthClient создаёт Клиент для проверки доступности Сервера.
-func (defaultClientFactory) NewHealthClient(cfg config.Config) (healthChecker, error) {
-	return httpclient.New(cfg.Address, cfg.CACertFile)
-}
-
 func applicationFromCommand(command *urfavecli.Command, factory clientFactory) (application, error) {
+	if runtime, ok := runtimeApplicationFromMetadata(command); ok {
+		return runtime, nil
+	}
+
 	cfg, err := configFromCommand(command)
 	if err != nil {
 		return nil, err
 	}
 
-	return factory.NewApplication(cfg)
+	runtime, err := factory.NewApplication(cfg)
+	if err != nil {
+		return nil, err
+	}
+	command.Root().Metadata[clientApplicationMetadataKey] = runtime
+
+	return runtime, nil
+}
+
+func closeApplicationFromCommand(command *urfavecli.Command) error {
+	runtime, ok := runtimeApplicationFromMetadata(command)
+	if !ok {
+		return nil
+	}
+
+	delete(command.Root().Metadata, clientApplicationMetadataKey)
+	if err := runtime.Close(); err != nil {
+		return fmt.Errorf("close client application: %w", err)
+	}
+
+	return nil
+}
+
+func runtimeApplicationFromMetadata(command *urfavecli.Command) (application, bool) {
+	value, ok := command.Root().Metadata[clientApplicationMetadataKey]
+	if !ok {
+		return nil, false
+	}
+
+	runtime, ok := value.(application)
+	return runtime, ok
 }
 
 func offlineApplicationFromCommand(command *urfavecli.Command, factory clientFactory) (offlineApplication, error) {

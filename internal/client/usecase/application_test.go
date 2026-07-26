@@ -42,7 +42,7 @@ func (s userGatewayStub) CurrentUser(ctx context.Context, accessToken string) (m
 
 type sessionStorageStub struct {
 	save   func(session.Session) error
-	load   func(string) (session.Session, error)
+	load   func() (session.Session, error)
 	delete func() error
 }
 
@@ -50,8 +50,8 @@ func (s sessionStorageStub) Save(stored session.Session) error {
 	return s.save(stored)
 }
 
-func (s sessionStorageStub) Load(expectedServerAddress string) (session.Session, error) {
-	return s.load(expectedServerAddress)
+func (s sessionStorageStub) Load() (session.Session, error) {
+	return s.load()
 }
 
 func (s sessionStorageStub) Delete() error {
@@ -61,15 +61,14 @@ func (s sessionStorageStub) Delete() error {
 	return s.delete()
 }
 
-func newTestApplication(users UserGateway, sessions SessionStorage, serverAddress string) *Application {
-	return newTestApplicationWithRecords(users, recordGatewayStub{}, sessions, serverAddress)
+func newTestApplication(users UserGateway, sessions SessionStorage) *Application {
+	return newTestApplicationWithRecords(users, recordGatewayStub{}, sessions)
 }
 
 func newTestApplicationWithRecords(
 	users UserGateway,
 	records RecordGateway,
 	sessions SessionStorage,
-	serverAddress string,
 ) *Application {
 	return &Application{
 		users:   users,
@@ -77,15 +76,13 @@ func newTestApplicationWithRecords(
 		sessions: func() (SessionStorage, error) {
 			return sessions, nil
 		},
-		serverAddress: serverAddress,
 	}
 }
 
 func testOnlineSession() session.Session {
 	return session.Session{
-		ServerAddress: "localhost:8080",
-		AccessToken:   "test.jwt.token",
-		ExpiresAt:     time.Date(2026, time.July, 6, 12, 15, 0, 0, time.UTC),
+		AccessToken: "test.jwt.token",
+		ExpiresAt:   time.Date(2026, time.July, 6, 12, 15, 0, 0, time.UTC),
 	}
 }
 
@@ -103,9 +100,8 @@ func TestNew(t *testing.T) {
 		userGatewayStub{},
 		recordGatewayStub{},
 		func() (SessionStorage, error) { return sessionStorageStub{}, nil },
-		func(context.Context, string, string, []byte) (SyncCacheRepository, error) { return nil, nil },
-		func(context.Context, string, string, []byte) (OfflineCacheRepository, error) { return nil, nil },
-		"localhost:8080",
+		func(context.Context, string, []byte) (SyncCacheRepository, error) { return nil, nil },
+		func(context.Context, string, []byte) (OfflineCacheRepository, error) { return nil, nil },
 	)
 	if application.health == nil {
 		t.Error("New() health gateway = nil")
@@ -125,27 +121,20 @@ func TestNew(t *testing.T) {
 	if application.offlineCaches == nil {
 		t.Error("New() offline cache repository provider = nil")
 	}
-	if application.serverAddress != "localhost:8080" {
-		t.Errorf("New() server address = %q, want localhost:8080", application.serverAddress)
-	}
 }
 
 func TestNewOffline(t *testing.T) {
 	provider := func(
 		context.Context,
 		string,
-		string,
 		[]byte,
 	) (OfflineCacheRepository, error) {
 		return nil, nil
 	}
 
-	application := NewOffline(provider, "localhost:8080")
+	application := NewOffline(provider)
 
 	if application.offlineCaches == nil {
 		t.Error("NewOffline() offline cache repository provider = nil")
-	}
-	if application.serverAddress != "localhost:8080" {
-		t.Errorf("NewOffline() server address = %q, want localhost:8080", application.serverAddress)
 	}
 }
