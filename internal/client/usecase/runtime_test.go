@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/xhrobj/gopherkeeper/internal/client/failure"
 )
 
 func TestApplication_Health(t *testing.T) {
@@ -24,6 +26,12 @@ func TestApplication_HealthWithoutGateway(t *testing.T) {
 	_, err := (&Application{}).Health(context.Background())
 	if err == nil {
 		t.Fatal("Health() error = nil")
+	}
+	if got := failure.KindOf(err); got != failure.Unknown {
+		t.Errorf("failure.KindOf(Health() error) = %d, want %d", got, failure.Unknown)
+	}
+	if got := failure.Message(err); got != "Server health check is unavailable" {
+		t.Errorf("failure.Message(Health() error) = %q", got)
 	}
 }
 
@@ -57,7 +65,14 @@ func TestApplication_LogoutReturnsDeleteError(t *testing.T) {
 }
 
 func TestApplication_LogoutWithoutSessionStorage(t *testing.T) {
-	if err := (&Application{}).Logout(context.Background()); err == nil {
+	err := (&Application{}).Logout(context.Background())
+	if err == nil {
 		t.Fatal("Logout() error = nil")
+	}
+	if got := failure.KindOf(err); got != failure.Unknown {
+		t.Errorf("failure.KindOf(Logout() error) = %d, want %d", got, failure.Unknown)
+	}
+	if got := failure.Message(err); got != "Unable to log out" {
+		t.Errorf("failure.Message(Logout() error) = %q", got)
 	}
 }

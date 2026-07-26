@@ -453,42 +453,53 @@ func appendRecordViewField(lines []recordViewLine, label, value string, width in
 
 func wrapRecordViewText(value string, width int) []string {
 	width = max(1, width)
-	value = strings.ReplaceAll(value, "\r\n", "\n")
-	value = strings.ReplaceAll(value, "\r", "\n")
-	value = strings.ReplaceAll(value, "\t", "    ")
-
-	paragraphs := strings.Split(value, "\n")
+	paragraphs := strings.Split(normalizeRecordViewText(value), "\n")
 	lines := make([]string, 0, len(paragraphs))
 
 	for _, paragraph := range paragraphs {
-		if paragraph == "" {
-			lines = append(lines, "")
-			continue
-		}
-		runes := []rune(paragraph)
-		for len(runes) > 0 {
-			used := 0
-			end := 0
-			for end < len(runes) {
-				runeWidth := lipgloss.Width(string(runes[end]))
-				if end > 0 && used+runeWidth > width {
-					break
-				}
-				used += runeWidth
-				end++
-				if used >= width {
-					break
-				}
-			}
-			if end == 0 {
-				end = 1
-			}
-			lines = append(lines, string(runes[:end]))
-			runes = runes[end:]
-		}
+		lines = append(lines, wrapRecordViewParagraph(paragraph, width)...)
 	}
 
 	return lines
+}
+
+func normalizeRecordViewText(value string) string {
+	value = strings.ReplaceAll(value, "\r\n", "\n")
+	value = strings.ReplaceAll(value, "\r", "\n")
+
+	return strings.ReplaceAll(value, "\t", "    ")
+}
+
+func wrapRecordViewParagraph(paragraph string, width int) []string {
+	if paragraph == "" {
+		return []string{""}
+	}
+
+	runes := []rune(paragraph)
+	lines := make([]string, 0, (len(runes)+width-1)/width)
+	for len(runes) > 0 {
+		end := recordViewTextChunkEnd(runes, width)
+		lines = append(lines, string(runes[:end]))
+		runes = runes[end:]
+	}
+
+	return lines
+}
+
+func recordViewTextChunkEnd(runes []rune, width int) int {
+	used := 0
+	for index, value := range runes {
+		runeWidth := lipgloss.Width(string(value))
+		if index > 0 && used+runeWidth > width {
+			return index
+		}
+		used += runeWidth
+		if used >= width {
+			return index + 1
+		}
+	}
+
+	return len(runes)
 }
 
 func recordTypeTitle(recordType recordmodel.RecordType) string {

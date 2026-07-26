@@ -102,8 +102,33 @@ func TestClient_HealthReturnsStatusError(t *testing.T) {
 	if !strings.Contains(err.Error(), "503 Service Unavailable") {
 		t.Errorf("Health() error = %q, want status 503", err)
 	}
+	if got := failure.KindOf(err); got != failure.Unavailable {
+		t.Errorf("failure.KindOf(Health() error) = %d, want %d", got, failure.Unavailable)
+	}
 	if got := failure.Message(err); got != "Server health check failed" {
 		t.Errorf("failure.Message(Health() error) = %q, want %q", got, "Server health check failed")
+	}
+}
+
+func TestHealthStatusFailureKind_ReturnsExpectedKind(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		want       failure.Kind
+	}{
+		{name: "request timeout", statusCode: http.StatusRequestTimeout, want: failure.Timeout},
+		{name: "gateway timeout", statusCode: http.StatusGatewayTimeout, want: failure.Timeout},
+		{name: "bad gateway", statusCode: http.StatusBadGateway, want: failure.Unavailable},
+		{name: "service unavailable", statusCode: http.StatusServiceUnavailable, want: failure.Unavailable},
+		{name: "internal server error", statusCode: http.StatusInternalServerError, want: failure.Unknown},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := healthStatusFailureKind(test.statusCode); got != test.want {
+				t.Fatalf("healthStatusFailureKind(%d) = %d, want %d", test.statusCode, got, test.want)
+			}
+		})
 	}
 }
 

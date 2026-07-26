@@ -193,7 +193,7 @@ func TestContext(t *testing.T) {
 
 	t.Run("empty operation", func(t *testing.T) {
 		cause := errors.New("failure")
-		if got := Context("  ", cause); got != cause {
+		if Context("  ", cause) != cause {
 			t.Fatalf("Context() returned a new error for empty operation")
 		}
 	})

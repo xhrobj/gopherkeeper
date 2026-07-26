@@ -70,7 +70,7 @@ func (c *Client) Health(ctx context.Context) (string, error) {
 
 	if response.StatusCode() != http.StatusOK {
 		return "", failure.Wrap(
-			failure.Unknown,
+			healthStatusFailureKind(response.StatusCode()),
 			fmt.Sprintf("health request returned status %s", response.Status()),
 			"Server health check failed",
 			nil,
@@ -88,6 +88,17 @@ func (c *Client) Health(ctx context.Context) (string, error) {
 	}
 
 	return health.Status, nil
+}
+
+func healthStatusFailureKind(statusCode int) failure.Kind {
+	switch statusCode {
+	case http.StatusRequestTimeout, http.StatusGatewayTimeout:
+		return failure.Timeout
+	case http.StatusBadGateway, http.StatusServiceUnavailable:
+		return failure.Unavailable
+	default:
+		return failure.Unknown
+	}
 }
 
 func healthRequestError(err error) error {

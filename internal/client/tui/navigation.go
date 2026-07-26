@@ -408,50 +408,85 @@ func (m *model) closeActiveDialog() {
 	m.activeButton = 0
 }
 
+type dialogChangePathPickerState struct {
+	binarySave   bool
+	binaryCreate bool
+	binaryEdit   bool
+	action       actionID
+}
+
 func (m *model) prepareDialogChange(action actionID) {
 	if action == actionCloseWindow {
 		return
 	}
 
+	pathPickerState := m.dialogChangePathPickerState()
+
+	m.prepareAuthDialogChange(action)
+	m.prepareServerStatusDialogChange(action)
+	m.preparePathPickerDialogChange(action, pathPickerState)
+	m.prepareRecordDialogChange(action, pathPickerState)
+	m.prepareCacheAndSyncDialogChange(action)
+}
+
+func (m model) dialogChangePathPickerState() dialogChangePathPickerState {
+	state := dialogChangePathPickerState{action: actionConfig}
+	if m.dialog != dialogPathPicker {
+		return state
+	}
+
+	switch m.pathPicker.target {
+	case pathPickerBinarySaveDirectory:
+		state.binarySave = true
+		state.action = actionBrowseRecords
+	case pathPickerBinaryCreateFile:
+		state.binaryCreate = true
+		state.action = actionNewRecord
+	case pathPickerBinaryEditFile:
+		state.binaryEdit = true
+		state.action = actionEditRecord
+	}
+
+	return state
+}
+
+func (m *model) prepareAuthDialogChange(action actionID) {
 	if m.dialog == dialogLogin && action != actionLogin {
 		m.clearLoginForm()
 	}
 	if m.dialog == dialogRegister && action != actionRegister {
 		m.clearRegisterForm()
 	}
+}
+
+func (m *model) prepareServerStatusDialogChange(action actionID) {
 	if m.dialog == dialogServerStatus && action != actionServerStatus {
 		m.operations.cancel(operationServerStatus)
 	}
-	binarySavePathPicker := m.dialog == dialogPathPicker &&
-		m.pathPicker.target == pathPickerBinarySaveDirectory
-	binaryCreatePathPicker := m.dialog == dialogPathPicker &&
-		m.pathPicker.target == pathPickerBinaryCreateFile
-	binaryEditPathPicker := m.dialog == dialogPathPicker &&
-		m.pathPicker.target == pathPickerBinaryEditFile
-	pathPickerAction := actionConfig
-	switch {
-	case binarySavePathPicker:
-		pathPickerAction = actionBrowseRecords
-	case binaryCreatePathPicker:
-		pathPickerAction = actionNewRecord
-	case binaryEditPathPicker:
-		pathPickerAction = actionEditRecord
-	}
-	if m.dialog == dialogPathPicker && action != pathPickerAction {
+}
+
+func (m *model) preparePathPickerDialogChange(action actionID, state dialogChangePathPickerState) {
+	if m.dialog == dialogPathPicker && action != state.action {
 		m.pathPicker = pathPicker{}
 	}
-	if (m.dialog == dialogRecordView || m.dialog == dialogBinarySave || binarySavePathPicker) && action != actionEditRecord {
+}
+
+func (m *model) prepareRecordDialogChange(action actionID, state dialogChangePathPickerState) {
+	if (m.dialog == dialogRecordView || m.dialog == dialogBinarySave || state.binarySave) && action != actionEditRecord {
 		m.leaveRecordView()
 	}
-	if (m.dialog == dialogRecordType || m.dialog == dialogRecordCreate || binaryCreatePathPicker) && action != actionNewRecord {
+	if (m.dialog == dialogRecordType || m.dialog == dialogRecordCreate || state.binaryCreate) && action != actionNewRecord {
 		m.closeRecordCreate()
 	}
-	if (m.dialog == dialogRecordEdit || binaryEditPathPicker) && action != actionEditRecord {
+	if (m.dialog == dialogRecordEdit || state.binaryEdit) && action != actionEditRecord {
 		m.closeRecordEdit()
 	}
 	if m.dialog == dialogRecordDelete && action != actionDeleteRecord {
 		m.closeRecordDelete()
 	}
+}
+
+func (m *model) prepareCacheAndSyncDialogChange(action actionID) {
 	if m.dialog == dialogCacheBrowse && action != actionBrowseCache {
 		m.closeCacheBrowse()
 	}

@@ -550,7 +550,7 @@ type pathPickerWindowLayout struct {
 	listBounds   layoutBounds
 }
 
-func newPathPickerWindowLayout(windowWidth int, listHeight int) pathPickerWindowLayout {
+func newPathPickerWindowLayout(windowWidth, listHeight int) pathPickerWindowLayout {
 	contentWidth := max(1, windowWidth-4)
 
 	return pathPickerWindowLayout{

@@ -356,21 +356,31 @@ func TestRenderRecordForms_MarkOnlyRequiredFieldsAndOmitOptionalHints(t *testing
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			plain := ansi.Strip(test.render(test.form))
-			for _, wanted := range test.required {
-				if !strings.Contains(plain, wanted) {
-					t.Fatalf("form does not contain required label %q:\n%s", wanted, plain)
-				}
-			}
-			for _, unwanted := range test.notRequired {
-				if strings.Contains(plain, unwanted) {
-					t.Fatalf("optional label is marked as required %q:\n%s", unwanted, plain)
-				}
-			}
-			if strings.Contains(strings.ToLower(plain), "optional") || strings.Contains(plain, "Leave Replace file") {
-				t.Fatalf("form still contains an optional-field hint:\n%s", plain)
-			}
+			assertRecordFormLabels(
+				t,
+				ansi.Strip(test.render(test.form)),
+				test.required,
+				test.notRequired,
+			)
 		})
+	}
+}
+
+func assertRecordFormLabels(t *testing.T, plain string, required, notRequired []string) {
+	t.Helper()
+
+	for _, wanted := range required {
+		if !strings.Contains(plain, wanted) {
+			t.Fatalf("form does not contain required label %q:\n%s", wanted, plain)
+		}
+	}
+	for _, unwanted := range notRequired {
+		if strings.Contains(plain, unwanted) {
+			t.Fatalf("optional label is marked as required %q:\n%s", unwanted, plain)
+		}
+	}
+	if strings.Contains(strings.ToLower(plain), "optional") || strings.Contains(plain, "Leave Replace file") {
+		t.Fatalf("form still contains an optional-field hint:\n%s", plain)
 	}
 }
 
