@@ -59,14 +59,14 @@ func TestApplicationFromCommand_ReturnsFactoryError(t *testing.T) {
 
 func TestOfflineApplicationFromCommand(t *testing.T) {
 	wantConfig := config.Config{
-		Address:     "localhost:8080",
-		CACertFile:  "missing-ca.pem",
-		SessionFile: "missing-session.json",
-		CacheDir:    "cache",
+		Address:    "localhost:8080",
+		CACertFile: "missing-ca.pem",
+		SessionDir: "missing-session",
+		CacheDir:   "cache",
 	}
 	wantApplication := newApplicationStub(t)
 	factory := newClientFactoryStub(t)
-	factory.newOfflineApplication = func(got config.Config) (application, error) {
+	factory.newOfflineApplication = func(got config.Config) (offlineApplication, error) {
 		if got != wantConfig {
 			t.Errorf("NewOfflineApplication() config = %+v, want %+v", got, wantConfig)
 		}
@@ -88,7 +88,7 @@ func TestOfflineApplicationFromCommand(t *testing.T) {
 func TestOfflineApplicationFromCommand_ReturnsFactoryError(t *testing.T) {
 	factoryErr := errors.New("offline factory failed")
 	factory := newClientFactoryStub(t)
-	factory.newOfflineApplication = func(config.Config) (application, error) {
+	factory.newOfflineApplication = func(config.Config) (offlineApplication, error) {
 		return nil, factoryErr
 	}
 	command := &urfavecli.Command{Metadata: map[string]any{

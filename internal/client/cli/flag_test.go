@@ -47,3 +47,40 @@ func TestConfigFromCommand_ReturnsUnexpectedTypeError(t *testing.T) {
 		t.Errorf("configFromCommand() error = %q, want %q", got, want)
 	}
 }
+
+func TestConfigFileFromCommand(t *testing.T) {
+	command := &urfavecli.Command{Metadata: map[string]any{
+		clientConfigFileMetadataKey: "configs/client.json",
+	}}
+
+	got, err := configFileFromCommand(command)
+	if err != nil {
+		t.Fatalf("configFileFromCommand() error = %v", err)
+	}
+	if got != "configs/client.json" {
+		t.Fatalf("configFileFromCommand() = %q", got)
+	}
+}
+
+func TestConfigFileFromCommand_ReturnsEmptyWhenMissing(t *testing.T) {
+	command := &urfavecli.Command{Metadata: map[string]any{}}
+
+	got, err := configFileFromCommand(command)
+	if err != nil {
+		t.Fatalf("configFileFromCommand() error = %v", err)
+	}
+	if got != "" {
+		t.Fatalf("configFileFromCommand() = %q, want empty", got)
+	}
+}
+
+func TestConfigFileFromCommand_ReturnsUnexpectedTypeError(t *testing.T) {
+	command := &urfavecli.Command{Metadata: map[string]any{
+		clientConfigFileMetadataKey: 42,
+	}}
+
+	_, err := configFileFromCommand(command)
+	if err == nil {
+		t.Fatal("configFileFromCommand() error = nil")
+	}
+}

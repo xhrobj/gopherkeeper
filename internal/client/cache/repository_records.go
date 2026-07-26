@@ -74,7 +74,12 @@ WHERE id = ?`
 		return model.Record{}, fmt.Errorf("read local cache record: %w", err)
 	}
 
-	return repository.decodeRecordRow(row)
+	record, err := repository.decodeRecordRow(row)
+	if err != nil {
+		return model.Record{}, markUnreadableRecordError(err)
+	}
+
+	return record, nil
 }
 
 // Delete физически удаляет запись из локального кеша.
@@ -120,27 +125,9 @@ func scanEncryptedRecord(scanner rowScanner) (encryptedRecordRow, error) {
 }
 
 func (repository *Repository) decodeRecordRow(row encryptedRecordRow) (model.Record, error) {
-	if row.cryptoVersion != int(cachecrypto.CryptoVersion) {
-		return model.Record{}, fmt.Errorf(
-			"%w: record %s uses version %d",
-			ErrUnsupportedCacheCryptoVersion,
-			row.id,
-			row.cryptoVersion,
-		)
-	}
-
-	aad, err := cachecrypto.BuildRecordAAD(repository.account, row.id, row.revision)
+	encoded, err := repository.decryptRecordRow(row)
 	if err != nil {
-		return model.Record{}, ErrCorruptedCacheRecord
-	}
-
-	encoded, err := repository.crypto.Decrypt(cachecrypto.EncryptedData{
-		CryptoVersion: uint8(row.cryptoVersion),
-		Nonce:         row.nonce,
-		Ciphertext:    row.ciphertext,
-	}, aad)
-	if err != nil {
-		return model.Record{}, ErrCorruptedCacheRecord
+		return model.Record{}, err
 	}
 
 	record, err := cachecrypto.DecodeRecord(encoded)
@@ -155,4 +142,51 @@ func (repository *Repository) decodeRecordRow(row encryptedRecordRow) (model.Rec
 	}
 
 	return record, nil
+}
+
+func (repository *Repository) decodeRecordMetadataRow(row encryptedRecordRow) (model.RecordMetadata, error) {
+	encoded, err := repository.decryptRecordRow(row)
+	if err != nil {
+		return model.RecordMetadata{}, err
+	}
+
+	metadata, err := cachecrypto.DecodeRecordMetadata(encoded)
+	if errors.Is(err, cachecrypto.ErrUnsupportedRecordFormatVersion) {
+		return model.RecordMetadata{}, err
+	}
+	if err != nil {
+		return model.RecordMetadata{}, ErrCorruptedCacheRecord
+	}
+	if metadata.ID != row.id || metadata.Revision != row.revision {
+		return model.RecordMetadata{}, ErrCorruptedCacheRecord
+	}
+
+	return metadata, nil
+}
+
+func (repository *Repository) decryptRecordRow(row encryptedRecordRow) ([]byte, error) {
+	if row.cryptoVersion != int(cachecrypto.CryptoVersion) {
+		return nil, fmt.Errorf(
+			"%w: record %s uses version %d",
+			ErrUnsupportedCacheCryptoVersion,
+			row.id,
+			row.cryptoVersion,
+		)
+	}
+
+	aad, err := cachecrypto.BuildRecordAAD(repository.account, row.id, row.revision)
+	if err != nil {
+		return nil, ErrCorruptedCacheRecord
+	}
+
+	encoded, err := repository.crypto.Decrypt(cachecrypto.EncryptedData{
+		CryptoVersion: uint8(row.cryptoVersion),
+		Nonce:         row.nonce,
+		Ciphertext:    row.ciphertext,
+	}, aad)
+	if err != nil {
+		return nil, ErrCorruptedCacheRecord
+	}
+
+	return encoded, nil
 }

@@ -18,7 +18,7 @@ const (
 	testSecondSyncRecordID = "550e8400-e29b-41d4-a716-446655440002"
 )
 
-func TestSyncCommand_ConfigurationAndRefresh(t *testing.T) {
+func TestSyncCommand_Configuration(t *testing.T) {
 	isolateClientConfig(t)
 
 	var gotConfig config.Config
@@ -53,10 +53,9 @@ func TestSyncCommand_ConfigurationAndRefresh(t *testing.T) {
 		[]string{
 			"gkeep",
 			"sync",
-			"--refresh",
 			"--address", "localhost:8082",
 			"--ca-cert", "flag-ca.pem",
-			"--session-file", "flag-session.json",
+			"--session-dir", "flag-session",
 			"--cache-dir", "flag-cache",
 		},
 		strings.NewReader(testRegistrationPassword+"\n"),
@@ -69,10 +68,10 @@ func TestSyncCommand_ConfigurationAndRefresh(t *testing.T) {
 	}
 
 	wantConfig := config.Config{
-		Address:     "localhost:8082",
-		CACertFile:  "flag-ca.pem",
-		SessionFile: "flag-session.json",
-		CacheDir:    "flag-cache",
+		Address:    "localhost:8082",
+		CACertFile: "flag-ca.pem",
+		SessionDir: "flag-session",
+		CacheDir:   "flag-cache",
 	}
 	if gotConfig != wantConfig {
 		t.Errorf("configuration = %+v, want %+v", gotConfig, wantConfig)
@@ -80,19 +79,16 @@ func TestSyncCommand_ConfigurationAndRefresh(t *testing.T) {
 	if gotRequest.Password != testRegistrationPassword {
 		t.Error("Sync() received unexpected password")
 	}
-	if !gotRequest.RefreshStale {
-		t.Error("RefreshStale = false, want true")
-	}
 
 	wantOutput := "Cache synchronization completed.\n" +
-		"Added: 0\nUpdated: 1\nRemoved: 0\nUnchanged: 3\nStale: 0\n"
+		"Added: 0\nUpdated: 1\nRemoved: 0\nUnchanged: 3\n"
 	if got := output.String(); got != wantOutput {
 		t.Errorf("output = %q, want %q", got, wantOutput)
 	}
 	assertSyncOutputContainsNoSecrets(t, output.String())
 }
 
-func TestSyncCommand_HelpDoesNotOfferPasswordFlags(t *testing.T) {
+func TestSyncCommand_HelpDoesNotOfferObsoleteOrPasswordFlags(t *testing.T) {
 	isolateClientConfig(t)
 
 	var output bytes.Buffer
@@ -109,8 +105,8 @@ func TestSyncCommand_HelpDoesNotOfferPasswordFlags(t *testing.T) {
 	}
 
 	help := output.String()
-	if !strings.Contains(help, "--refresh") {
-		t.Errorf("sync help = %q, want refresh flag", help)
+	if strings.Contains(help, "--refresh") {
+		t.Errorf("sync help exposes obsolete refresh flag: %q", help)
 	}
 	if strings.Contains(help, "--password") {
 		t.Errorf("sync help exposes password flag: %q", help)
@@ -120,7 +116,7 @@ func TestSyncCommand_HelpDoesNotOfferPasswordFlags(t *testing.T) {
 	}
 }
 
-func TestExecuteSync_ReportsStaleRecords(t *testing.T) {
+func TestExecuteSync_ReportsAppliedChanges(t *testing.T) {
 	passwords := &passwordReaderStub{hiddenValues: []string{testRegistrationPassword}}
 	var gotRequest usecase.SyncRequest
 	var output bytes.Buffer
@@ -129,9 +125,8 @@ func TestExecuteSync_ReportsStaleRecords(t *testing.T) {
 	app.sync = func(_ context.Context, request usecase.SyncRequest) (usecase.SyncResult, error) {
 		gotRequest = request
 		return usecase.SyncResult{
-			Added:   []model.RecordMetadata{{ID: testSecondSyncRecordID}},
-			Removed: []usecase.RecordState{{ID: testSyncRecordID, Revision: 1}},
-			Stale: []usecase.RevisionChange{{
+			Added: []model.RecordMetadata{{ID: testSecondSyncRecordID}},
+			Updated: []usecase.RevisionChange{{
 				Metadata: model.RecordMetadata{
 					ID:       testSyncRecordID,
 					Type:     model.RecordTypeText,
@@ -140,6 +135,7 @@ func TestExecuteSync_ReportsStaleRecords(t *testing.T) {
 				},
 				LocalRevision: 1,
 			}},
+			Removed:   []usecase.RecordState{{ID: testSyncRecordID, Revision: 1}},
 			Unchanged: 3,
 		}, nil
 	}
@@ -153,7 +149,6 @@ func TestExecuteSync_ReportsStaleRecords(t *testing.T) {
 			output:       &output,
 			promptOutput: io.Discard,
 		},
-		false,
 	)
 	if err != nil {
 		t.Fatalf("executeSync() error = %v", err)
@@ -168,32 +163,13 @@ func TestExecuteSync_ReportsStaleRecords(t *testing.T) {
 	if gotRequest.Password != testRegistrationPassword {
 		t.Error("Sync() received unexpected password")
 	}
-	if gotRequest.RefreshStale {
-		t.Error("RefreshStale = true, want false")
-	}
 
-	got := output.String()
-	assertContainsAll(
-		t,
-		got,
-		"Cache synchronization completed.",
-		"Added: 1",
-		"Updated: 0",
-		"Removed: 1",
-		"Unchanged: 3",
-		"Stale: 1",
-		"Stale records:",
-		"ID",
-		"TYPE",
-		"TITLE",
-		"LOCAL REVISION",
-		"SERVER REVISION",
-		testSyncRecordID,
-		"text",
-		"Work note",
-		"Run `gkeep sync --refresh` to update stale records.",
-	)
-	assertSyncOutputContainsNoSecrets(t, got)
+	want := "Cache synchronization completed.\n" +
+		"Added: 1\nUpdated: 1\nRemoved: 1\nUnchanged: 3\n"
+	if got := output.String(); got != want {
+		t.Errorf("output = %q, want %q", got, want)
+	}
+	assertSyncOutputContainsNoSecrets(t, output.String())
 }
 
 func TestExecuteSync_ReturnsPasswordReaderError(t *testing.T) {
@@ -209,7 +185,6 @@ func TestExecuteSync_ReturnsPasswordReaderError(t *testing.T) {
 			output:       io.Discard,
 			promptOutput: io.Discard,
 		},
-		false,
 	)
 	if !errors.Is(err, readError) {
 		t.Fatalf("executeSync() error = %v, want %v", err, readError)
@@ -234,7 +209,6 @@ func TestExecuteSync_ReturnsApplicationError(t *testing.T) {
 			output:       &output,
 			promptOutput: io.Discard,
 		},
-		false,
 	)
 	if !errors.Is(err, applicationError) {
 		t.Fatalf("executeSync() error = %v, want %v", err, applicationError)
@@ -249,46 +223,23 @@ func TestWriteSyncResult(t *testing.T) {
 	tests := []struct {
 		name   string
 		result usecase.SyncResult
-		wants  []string
-		absent []string
+		want   string
 	}{
 		{
 			name: "empty synchronization",
-			wants: []string{
-				"Cache synchronization completed.",
-				"Added: 0",
-				"Updated: 0",
-				"Removed: 0",
-				"Unchanged: 0",
-				"Stale: 0",
-			},
-			absent: []string{"Stale records:", "sync --refresh"},
+			want: "Cache synchronization completed.\n" +
+				"Added: 0\nUpdated: 0\nRemoved: 0\nUnchanged: 0\n",
 		},
 		{
-			name: "stale synchronization",
+			name: "applied changes",
 			result: usecase.SyncResult{
 				Added:     []model.RecordMetadata{{ID: testSecondSyncRecordID}},
+				Updated:   []usecase.RevisionChange{{Metadata: model.RecordMetadata{ID: testSyncRecordID}}},
+				Removed:   []usecase.RecordState{{ID: testSyncRecordID, Revision: 1}},
 				Unchanged: 2,
-				Stale: []usecase.RevisionChange{{
-					Metadata: model.RecordMetadata{
-						ID:       testSyncRecordID,
-						Type:     model.RecordTypeCredentials,
-						Title:    "GitHub",
-						Revision: 4,
-					},
-					LocalRevision: 2,
-				}},
 			},
-			wants: []string{
-				"Added: 1",
-				"Unchanged: 2",
-				"Stale: 1",
-				"Stale records:",
-				testSyncRecordID,
-				"credentials",
-				"GitHub",
-				"Run `gkeep sync --refresh` to update stale records.",
-			},
+			want: "Cache synchronization completed.\n" +
+				"Added: 1\nUpdated: 1\nRemoved: 1\nUnchanged: 2\n",
 		},
 	}
 
@@ -298,75 +249,28 @@ func TestWriteSyncResult(t *testing.T) {
 			if err := writeSyncResult(&output, tt.result); err != nil {
 				t.Fatalf("writeSyncResult() error = %v", err)
 			}
-
-			got := output.String()
-			assertContainsAll(t, got, tt.wants...)
-			for _, value := range tt.absent {
-				if strings.Contains(got, value) {
-					t.Errorf("output = %q, must not contain %q", got, value)
-				}
+			if got := output.String(); got != tt.want {
+				t.Errorf("output = %q, want %q", got, tt.want)
 			}
-			assertSyncOutputContainsNoSecrets(t, got)
+			assertSyncOutputContainsNoSecrets(t, output.String())
 		})
 	}
 }
 
 func TestWriteSyncResult_ReturnsWriterError(t *testing.T) {
 	writeError := errors.New("write failed")
-	staleResult := usecase.SyncResult{
-		Stale: []usecase.RevisionChange{{
-			Metadata: model.RecordMetadata{
-				ID:       testSyncRecordID,
-				Type:     model.RecordTypeText,
-				Title:    "Work note",
-				Revision: 2,
-			},
-			LocalRevision: 1,
-		}},
-	}
-
 	tests := []struct {
 		name      string
-		writer    io.Writer
-		result    usecase.SyncResult
+		failAt    int
 		wantError string
 	}{
-		{
-			name:      "completion message",
-			writer:    &failOnWriteWriter{failAt: 1, err: writeError},
-			wantError: "write synchronization result",
-		},
-		{
-			name:      "summary",
-			writer:    &failOnWriteWriter{failAt: 2, err: writeError},
-			wantError: "write synchronization summary",
-		},
-		{
-			name:      "stale heading",
-			writer:    &failOnWriteWriter{failAt: 3, err: writeError},
-			result:    staleResult,
-			wantError: "write stale record heading",
-		},
-		{
-			name:      "stale table flush",
-			writer:    &failOnWriteWriter{failAt: 4, err: writeError},
-			result:    staleResult,
-			wantError: "flush stale records",
-		},
-		{
-			name: "stale hint",
-			writer: &rejectTextWriter{
-				rejected: "Run `gkeep sync --refresh`",
-				err:      writeError,
-			},
-			result:    staleResult,
-			wantError: "write stale record hint",
-		},
+		{name: "completion message", failAt: 1, wantError: "write synchronization result"},
+		{name: "summary", failAt: 2, wantError: "write synchronization summary"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := writeSyncResult(tt.writer, tt.result)
+			err := writeSyncResult(&failOnWriteWriter{failAt: tt.failAt, err: writeError}, usecase.SyncResult{})
 			if err == nil {
 				t.Fatal("writeSyncResult() error = nil, want writer error")
 			}
@@ -405,20 +309,6 @@ func (writer *failOnWriteWriter) Write(data []byte) (int, error) {
 	}
 
 	return len(data), nil
-}
-
-type rejectTextWriter struct {
-	buffer   bytes.Buffer
-	rejected string
-	err      error
-}
-
-func (writer *rejectTextWriter) Write(data []byte) (int, error) {
-	if strings.Contains(string(data), writer.rejected) {
-		return 0, writer.err
-	}
-
-	return writer.buffer.Write(data)
 }
 
 func assertSyncOutputContainsNoSecrets(t *testing.T, value string) {

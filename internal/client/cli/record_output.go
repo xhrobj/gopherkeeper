@@ -81,12 +81,6 @@ func writeBinaryRecordPayload(output io.Writer, payload *model.BinaryPayload, ou
 		return fmt.Errorf("write binary record: %w", err)
 	}
 
-	if payload.ContentType != "" {
-		if _, err := fmt.Fprintf(output, "Content type: %s\n", payload.ContentType); err != nil {
-			return fmt.Errorf("write binary record content type: %w", err)
-		}
-	}
-
 	return writeRecordMetadataPayload(output, payload.Metadata, "binary record")
 }
 func writeTextRecordPayload(output io.Writer, payload *model.TextPayload) error {
@@ -128,7 +122,7 @@ func writeCardRecordPayload(output io.Writer, payload *model.CardPayload) error 
 	if payload.ExpiryMonth != nil && payload.ExpiryYear != nil {
 		if _, err := fmt.Fprintf(
 			output,
-			"Expiry: %02d/%d\n",
+			"Expiry: %02d/%02d\n",
 			*payload.ExpiryMonth,
 			*payload.ExpiryYear,
 		); err != nil {

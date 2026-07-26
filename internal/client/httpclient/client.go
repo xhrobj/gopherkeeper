@@ -5,14 +5,13 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
-	"syscall"
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/xhrobj/gopherkeeper/internal/client/failure"
 )
 
 const requestTimeout = 10 * time.Second
@@ -31,17 +30,17 @@ type healthResponse struct {
 func New(address, caCertFile string) (*Client, error) {
 	rootCAs, err := x509.SystemCertPool()
 	if err != nil {
-		return nil, fmt.Errorf("load system CA certificates: %w", err)
+		return nil, failure.Wrap(failure.TLSCertificate, "load system CA certificates", "Unable to load system CA certificates", err)
 	}
 
 	if caCertFile != "" {
 		certificate, err := os.ReadFile(caCertFile)
 		if err != nil {
-			return nil, fmt.Errorf("read additional CA certificate: %w", err)
+			return nil, failure.Wrap(failure.TLSCertificate, "read additional CA certificate", "Unable to read additional CA certificate", err)
 		}
 
 		if !rootCAs.AppendCertsFromPEM(certificate) {
-			return nil, errors.New("parse additional CA certificate")
+			return nil, failure.Wrap(failure.TLSCertificate, "parse additional CA certificate", "Unable to parse additional CA certificate", nil)
 		}
 	}
 
@@ -70,21 +69,44 @@ func (c *Client) Health(ctx context.Context) (string, error) {
 	}
 
 	if response.StatusCode() != http.StatusOK {
-		return "", fmt.Errorf("health request returned status %s", response.Status())
+		return "", failure.Wrap(
+			healthStatusFailureKind(response.StatusCode()),
+			fmt.Sprintf("health request returned status %s", response.Status()),
+			"Server health check failed",
+			nil,
+		)
 	}
 
 	var health healthResponse
 	if err := json.Unmarshal(response.Body(), &health); err != nil {
-		return "", fmt.Errorf("decode health response: %w", err)
+		return "", failure.Wrap(
+			failure.Unknown,
+			"decode health response",
+			"Invalid server health response",
+			err,
+		)
 	}
 
 	return health.Status, nil
 }
 
+func healthStatusFailureKind(statusCode int) failure.Kind {
+	switch statusCode {
+	case http.StatusRequestTimeout, http.StatusGatewayTimeout:
+		return failure.Timeout
+	case http.StatusBadGateway, http.StatusServiceUnavailable:
+		return failure.Unavailable
+	default:
+		return failure.Unknown
+	}
+}
+
 func healthRequestError(err error) error {
-	if errors.Is(err, syscall.ECONNREFUSED) {
-		return errors.New("server unavailable: connection refused")
+	operation := "send health request"
+
+	if failure.KindOf(err) == failure.Unavailable {
+		operation = "server unavailable"
 	}
 
-	return fmt.Errorf("send health request: %w", err)
+	return failure.Network(operation, err)
 }

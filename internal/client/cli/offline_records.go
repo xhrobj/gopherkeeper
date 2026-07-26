@@ -34,9 +34,8 @@ func offlineReadFlags() []urfavecli.Flag {
 			Usage: "read from the encrypted local cache",
 		},
 		&urfavecli.StringFlag{
-			Name:    loginFlag,
-			Aliases: []string{"l"},
-			Usage:   "account login for the encrypted local cache",
+			Name:  loginFlag,
+			Usage: "account login for the encrypted local cache",
 		},
 	}
 }
@@ -68,7 +67,7 @@ func recordReadModeFromCommand(command *urfavecli.Command) (recordReadMode, erro
 
 func executeOfflineListRecords(
 	ctx context.Context,
-	application application,
+	application offlineApplication,
 	passwords passwordReader,
 	streams passwordStreams,
 	login string,
@@ -91,7 +90,7 @@ func executeOfflineListRecords(
 
 func executeOfflineGetRecord(
 	ctx context.Context,
-	application application,
+	application offlineApplication,
 	passwords passwordReader,
 	streams passwordStreams,
 	login string,

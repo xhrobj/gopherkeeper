@@ -334,7 +334,7 @@ func securityTestRecords() ([]model.Record, [][]byte) {
 		textMarker        = "GK38-TEXT-MARKER-4c7a1d9e2f6b8c30"
 		metadataMarker    = "GK38-METADATA-MARKER-8e2c5a1f7d9b3c60"
 		credentialsMarker = "GK38-CREDENTIALS-MARKER-6b2e8c4a1d7f9053"
-		cardMarker        = "491761339284675109384726"
+		cardMarker        = "49176133928467510938"
 	)
 
 	createdAt := time.Date(2026, time.July, 14, 12, 0, 0, 0, time.UTC)

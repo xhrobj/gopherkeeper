@@ -19,7 +19,8 @@ func New(cfg config.Config) (*usecase.Application, error) {
 	return usecase.New(
 		client,
 		client,
-		fileSessionStorageProvider(cfg.SessionFile),
+		client,
+		fileSessionStorageProvider(cfg.SessionDir),
 		encryptedSyncCacheRepositoryProvider(cfg.CacheDir),
 		encryptedOfflineCacheRepositoryProvider(cfg.CacheDir),
 		cfg.Address,
@@ -28,7 +29,7 @@ func New(cfg config.Config) (*usecase.Application, error) {
 
 // NewOffline создаёт клиентское application-приложение только для чтения
 // существующего зашифрованного локального кеша.
-func NewOffline(cfg config.Config) *usecase.Application {
+func NewOffline(cfg config.Config) *usecase.OfflineApplication {
 	return usecase.NewOffline(
 		encryptedOfflineCacheRepositoryProvider(cfg.CacheDir),
 		cfg.Address,
@@ -37,7 +38,7 @@ func NewOffline(cfg config.Config) *usecase.Application {
 
 // NewLogout создаёт application-сценарий локального выхода.
 func NewLogout(cfg config.Config) (*usecase.LogoutApplication, error) {
-	storage, err := session.NewFileStorage(cfg.SessionFile)
+	storage, err := session.NewFileStorage(cfg.SessionDir)
 	if err != nil {
 		return nil, fmt.Errorf("create online session storage: %w", err)
 	}
@@ -45,9 +46,9 @@ func NewLogout(cfg config.Config) (*usecase.LogoutApplication, error) {
 	return usecase.NewLogout(storage), nil
 }
 
-func fileSessionStorageProvider(path string) usecase.SessionStorageProvider {
+func fileSessionStorageProvider(directory string) usecase.SessionStorageProvider {
 	return func() (usecase.SessionStorage, error) {
-		storage, err := session.NewFileStorage(path)
+		storage, err := session.NewFileStorage(directory)
 		if err != nil {
 			return nil, fmt.Errorf("create online session storage: %w", err)
 		}

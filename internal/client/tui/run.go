@@ -1,0 +1,64 @@
+package tui
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
+	"github.com/xhrobj/gopherkeeper/internal/client/config"
+)
+
+// Options содержит зависимости и параметры запуска терминального интерфейса.
+type Options struct {
+	Input          io.Reader
+	Output         io.Writer
+	Config         config.Config
+	ConfigFile     string
+	Info           buildinfo.Info
+	BackendFactory BackendFactory
+}
+
+// Run запускает интерактивный терминальный интерфейс Клиента.
+func Run(ctx context.Context, options Options) error {
+	if options.BackendFactory == nil {
+		return errors.New("TUI backend factory is required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	model, err := newModel(ctx, options.Config, options.ConfigFile, options.Info, options.BackendFactory)
+	if err != nil {
+		return err
+	}
+
+	program := tea.NewProgram(
+		model,
+		tea.WithContext(ctx),
+		tea.WithInput(options.Input),
+		tea.WithOutput(options.Output),
+	)
+
+	finalModel, runErr := program.Run()
+	closeFinalCache(finalModel, model.backend)
+	if runErr != nil {
+		return fmt.Errorf("run Bubble Tea program: %w", runErr)
+	}
+
+	return nil
+}
+
+func closeFinalCache(finalModel tea.Model, fallback Backend) {
+	backend := fallback
+
+	if final, ok := finalModel.(model); ok && final.backend != nil {
+		backend = final.backend
+	}
+
+	if backend != nil {
+		backend.CloseCache()
+	}
+}

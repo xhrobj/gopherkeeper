@@ -1,10 +1,6 @@
 package model
 
-import (
-	"errors"
-	"strings"
-	"unicode/utf8"
-)
+import "errors"
 
 var (
 	// ErrInvalidCardPayload сообщает, что card payload некорректен.
@@ -22,7 +18,7 @@ type CardPayload struct {
 	// ExpiryMonth содержит необязательный месяц окончания срока действия карты.
 	ExpiryMonth *int `json:"expiry_month,omitempty"`
 
-	// ExpiryYear содержит необязательный год окончания срока действия карты.
+	// ExpiryYear содержит необязательный двухзначный год окончания срока действия карты.
 	ExpiryYear *int `json:"expiry_year,omitempty"`
 
 	// CVV содержит необязательный проверочный код карты.
@@ -34,26 +30,25 @@ type CardPayload struct {
 
 // Validate проверяет обязательные поля и ограничения card payload.
 func (payload *CardPayload) Validate() error {
-	if payload == nil {
+	if payload == nil ||
+		!validateASCIIDigits(payload.Number, CardNumberMinSize, CardNumberMaxSize) ||
+		!validateOptionalSingleLine(payload.Cardholder, CardholderMaxSize) {
 		return ErrInvalidCardPayload
 	}
 
-	if !utf8.ValidString(payload.Number) ||
-		!utf8.ValidString(payload.Cardholder) ||
-		!utf8.ValidString(payload.CVV) {
-		return ErrInvalidCardPayload
-	}
-	if strings.TrimSpace(payload.Number) == "" {
+	if payload.CVV != "" && !validateASCIIDigits(payload.CVV, CardCVVSize, CardCVVSize) {
 		return ErrInvalidCardPayload
 	}
 
 	if (payload.ExpiryMonth == nil) != (payload.ExpiryYear == nil) {
 		return ErrInvalidCardPayload
 	}
+
 	if payload.ExpiryMonth != nil && (*payload.ExpiryMonth < 1 || *payload.ExpiryMonth > 12) {
 		return ErrInvalidCardPayload
 	}
-	if payload.ExpiryYear != nil && (*payload.ExpiryYear < 1 || *payload.ExpiryYear > 9999) {
+
+	if payload.ExpiryYear != nil && (*payload.ExpiryYear < 0 || *payload.ExpiryYear > CardExpiryYearMax) {
 		return ErrInvalidCardPayload
 	}
 

@@ -16,7 +16,6 @@ func loginFlags() []urfavecli.Flag {
 	return []urfavecli.Flag{
 		&urfavecli.StringFlag{
 			Name:     "login",
-			Aliases:  []string{"l"},
 			Usage:    "user login",
 			Required: true,
 		},

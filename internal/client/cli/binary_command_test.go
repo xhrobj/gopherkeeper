@@ -25,7 +25,7 @@ func TestRecordsCreateBinaryCommand(t *testing.T) {
 		payload := binaryPayloadFromRequest(t, request.Payload)
 		if request.Title != "Encrypted backup" || payload.Filename != "backup.bin" ||
 			!bytes.Equal(payload.Data, []byte{0x00, 0x01, 0x02, 0xff}) ||
-			payload.ContentType != "application/octet-stream" || payload.Metadata != "private backup" {
+			payload.Metadata != "private backup" {
 			t.Errorf("request = %+v, payload = %+v, want binary values", request, payload)
 		}
 		return model.Record{Metadata: model.RecordMetadata{ID: testRecordID, Revision: 1}}, nil
@@ -45,7 +45,6 @@ func TestRecordsCreateBinaryCommand(t *testing.T) {
 			"records", "create-binary",
 			"--title", "Encrypted backup",
 			"--binary-file", binaryFile,
-			"--content-type", "application/octet-stream",
 			"--metadata-file", metadataFile,
 		},
 		nil,

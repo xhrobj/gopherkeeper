@@ -268,7 +268,7 @@ func TestCreateRecordHandler_RejectsInvalidRequest(t *testing.T) {
 		{
 			name:        "card payload contains text field",
 			contentType: "application/json",
-			body:        `{"type":"card","title":"Joel's card","payload":{"number":"2013 0614 2020 0619","text":"secret"}}`,
+			body:        `{"type":"card","title":"Joel's card","payload":{"number":"2013061420200619","text":"secret"}}`,
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
 			wantMessage: errorMessageInvalidRecordRequest,
@@ -977,7 +977,7 @@ func TestRecordHandlers_RequireAuthentication(t *testing.T) {
 
 func recordPayloadCases() []recordPayloadCase {
 	month := 3
-	year := 2038
+	year := 38
 
 	return []recordPayloadCase{
 		{
@@ -1002,7 +1002,7 @@ func recordPayloadCases() []recordPayloadCase {
 			name:  "card",
 			title: "Joel's card",
 			payload: &model.CardPayload{
-				Number:      "2013 0614 2020 0619",
+				Number:      "2013061420200619",
 				Cardholder:  "Joel Miller",
 				ExpiryMonth: &month,
 				ExpiryYear:  &year,
@@ -1014,10 +1014,9 @@ func recordPayloadCases() []recordPayloadCase {
 			name:  "binary",
 			title: "Backup",
 			payload: &model.BinaryPayload{
-				Filename:    "backup.bin",
-				Data:        []byte{0x00, 0x01, 0x02, 0xff},
-				ContentType: "application/octet-stream",
-				Metadata:    "encrypted backup",
+				Filename: "backup.bin",
+				Data:     []byte{0x00, 0x01, 0x02, 0xff},
+				Metadata: "encrypted backup",
 			},
 			wantBase64: `"data":"AAEC/w=="`,
 		},

@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/xhrobj/gopherkeeper/internal/client/session"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
@@ -40,7 +39,7 @@ func (stub offlineCacheRepositoryStub) Close() error {
 	return stub.close()
 }
 
-func TestApplication_ListCachedRecords(t *testing.T) {
+func TestOfflineApplication_ListCachedRecords(t *testing.T) {
 	want := []model.RecordMetadata{{
 		ID:       testRecordID,
 		Type:     model.RecordTypeText,
@@ -96,7 +95,7 @@ func TestApplication_ListCachedRecords(t *testing.T) {
 	}
 }
 
-func TestApplication_GetCachedRecord(t *testing.T) {
+func TestOfflineApplication_GetCachedRecord(t *testing.T) {
 	want := model.Record{
 		Metadata: model.RecordMetadata{
 			ID:       testRecordID,
@@ -152,15 +151,15 @@ func TestApplication_GetCachedRecord(t *testing.T) {
 	}
 }
 
-func TestApplication_OfflineReadRejectsInvalidInputBeforeOpeningCache(t *testing.T) {
+func TestOfflineApplication_OfflineReadRejectsInvalidInputBeforeOpeningCache(t *testing.T) {
 	tests := []struct {
 		name    string
-		read    func(*Application) error
+		read    func(*OfflineApplication) error
 		wantErr error
 	}{
 		{
 			name: "invalid login",
-			read: func(application *Application) error {
+			read: func(application *OfflineApplication) error {
 				_, err := application.ListCachedRecords(
 					context.Background(),
 					OfflineReadRequest{Login: "álîçé", Password: testPassword},
@@ -171,7 +170,7 @@ func TestApplication_OfflineReadRejectsInvalidInputBeforeOpeningCache(t *testing
 		},
 		{
 			name: "invalid record ID",
-			read: func(application *Application) error {
+			read: func(application *OfflineApplication) error {
 				_, err := application.GetCachedRecord(
 					context.Background(),
 					OfflineReadRequest{Login: "alice", Password: testPassword},
@@ -207,7 +206,7 @@ func TestApplication_OfflineReadRejectsInvalidInputBeforeOpeningCache(t *testing
 	}
 }
 
-func TestApplication_OfflineReadMapsCacheOpenErrors(t *testing.T) {
+func TestOfflineApplication_OfflineReadMapsCacheOpenErrors(t *testing.T) {
 	openError := errors.New("cache storage unavailable")
 	tests := []struct {
 		name        string
@@ -254,12 +253,12 @@ func TestApplication_OfflineReadMapsCacheOpenErrors(t *testing.T) {
 	}
 }
 
-func TestApplication_OfflineReadMapsRepositoryErrorsAndClosesCache(t *testing.T) {
+func TestOfflineApplication_OfflineReadMapsRepositoryErrorsAndClosesCache(t *testing.T) {
 	readError := errors.New("cache read failed")
 	tests := []struct {
 		name        string
 		repository  offlineCacheRepositoryStub
-		read        func(*Application) error
+		read        func(*OfflineApplication) error
 		wantErr     error
 		wantMessage string
 	}{
@@ -270,7 +269,7 @@ func TestApplication_OfflineReadMapsRepositoryErrorsAndClosesCache(t *testing.T)
 					return nil, readError
 				},
 			},
-			read: func(application *Application) error {
+			read: func(application *OfflineApplication) error {
 				_, err := application.ListCachedRecords(
 					context.Background(),
 					OfflineReadRequest{Login: "alice", Password: testPassword},
@@ -287,7 +286,7 @@ func TestApplication_OfflineReadMapsRepositoryErrorsAndClosesCache(t *testing.T)
 					return model.Record{}, ErrCachedRecordNotFound
 				},
 			},
-			read: func(application *Application) error {
+			read: func(application *OfflineApplication) error {
 				_, err := application.GetCachedRecord(
 					context.Background(),
 					OfflineReadRequest{Login: "alice", Password: testPassword},
@@ -305,7 +304,7 @@ func TestApplication_OfflineReadMapsRepositoryErrorsAndClosesCache(t *testing.T)
 					return model.Record{}, readError
 				},
 			},
-			read: func(application *Application) error {
+			read: func(application *OfflineApplication) error {
 				_, err := application.GetCachedRecord(
 					context.Background(),
 					OfflineReadRequest{Login: "alice", Password: testPassword},
@@ -349,7 +348,7 @@ func TestApplication_OfflineReadMapsRepositoryErrorsAndClosesCache(t *testing.T)
 	}
 }
 
-func TestApplication_OfflineReadReturnsCloseErrorWithoutPartialResult(t *testing.T) {
+func TestOfflineApplication_OfflineReadReturnsCloseErrorWithoutPartialResult(t *testing.T) {
 	closeError := errors.New("close failed")
 	application := newOfflineTestApplication(t, func(
 		context.Context,
@@ -380,7 +379,7 @@ func TestApplication_OfflineReadReturnsCloseErrorWithoutPartialResult(t *testing
 	}
 }
 
-func TestApplication_GetCachedRecordPreservesOperationAndCloseErrors(t *testing.T) {
+func TestOfflineApplication_GetCachedRecordPreservesOperationAndCloseErrors(t *testing.T) {
 	readError := errors.New("cache read failed")
 	closeError := errors.New("close failed")
 	application := newOfflineTestApplication(t, func(
@@ -413,45 +412,10 @@ func TestApplication_GetCachedRecordPreservesOperationAndCloseErrors(t *testing.
 func newOfflineTestApplication(
 	t *testing.T,
 	provider OfflineCacheRepositoryProvider,
-) *Application {
+) *OfflineApplication {
 	t.Helper()
 
-	unexpectedNetworkCall := func() {
-		t.Fatal("offline read must not call network or online session dependencies")
-	}
-
-	return &Application{
-		users: userGatewayStub{
-			register: func(context.Context, string, string) (model.User, error) {
-				unexpectedNetworkCall()
-				return model.User{}, nil
-			},
-			login: func(context.Context, string, string) (model.Authentication, error) {
-				unexpectedNetworkCall()
-				return model.Authentication{}, nil
-			},
-			whoami: func(context.Context, string) (model.User, error) {
-				unexpectedNetworkCall()
-				return model.User{}, nil
-			},
-		},
-		records: recordGatewayStub{
-			list: func(context.Context, string) ([]model.RecordMetadata, error) {
-				unexpectedNetworkCall()
-				return nil, nil
-			},
-			get: func(context.Context, string, string) (model.Record, error) {
-				unexpectedNetworkCall()
-				return model.Record{}, nil
-			},
-		},
-		sessions: func() (SessionStorage, error) {
-			unexpectedNetworkCall()
-			return sessionStorageStub{
-				save: func(session.Session) error { return nil },
-				load: func(string) (session.Session, error) { return session.Session{}, nil },
-			}, nil
-		},
+	return &OfflineApplication{
 		offlineCaches: provider,
 		serverAddress: "localhost:8080",
 	}

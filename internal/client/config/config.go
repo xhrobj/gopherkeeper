@@ -20,8 +20,9 @@ type Config struct {
 	// CACertFile задаёт путь к PEM-файлу доверенного CA для HTTPS-подключений к Серверу.
 	CACertFile string
 
-	// SessionFile задаёт путь к файлу локального хранения online-сессии Клиента.
-	SessionFile string
+	// SessionDir задаёт каталог локального хранения online-сессии Клиента.
+	// Файл внутри каталога всегда называется session.json.
+	SessionDir string
 
 	// CacheDir задаёт базовый каталог локального зашифрованного кеша.
 	CacheDir string
@@ -36,18 +37,18 @@ type Overrides struct {
 	// CACertFile переопределяет путь к дополнительному CA certificate.
 	CACertFile *string
 
-	// SessionFile переопределяет путь к файлу online-сессии.
-	SessionFile *string
+	// SessionDir переопределяет каталог online-сессии.
+	SessionDir *string
 
 	// CacheDir переопределяет базовый каталог локального зашифрованного кеша.
 	CacheDir *string
 }
 
 type fileConfig struct {
-	Address     *string `json:"address"`
-	CACertFile  *string `json:"ca_cert_file"`
-	SessionFile *string `json:"session_file"`
-	CacheDir    *string `json:"cache_dir"`
+	Address    *string `json:"address"`
+	CACertFile *string `json:"ca_cert_file"`
+	SessionDir *string `json:"session_dir"`
+	CacheDir   *string `json:"cache_dir"`
 }
 
 // Default возвращает конфигурацию Клиента со значениями по умолчанию.
@@ -78,6 +79,38 @@ func Resolve(configFile string, overrides Overrides) (Config, error) {
 	return cfg, nil
 }
 
+// Save записывает конфигурацию Клиента в JSON-файл.
+func Save(path string, cfg Config) error {
+	if strings.TrimSpace(path) == "" {
+		return errors.New("client config file path is required")
+	}
+	if strings.TrimSpace(cfg.Address) == "" {
+		return errors.New("server address is required")
+	}
+
+	data, err := json.MarshalIndent(struct {
+		Address    string `json:"address"`
+		CACertFile string `json:"ca_cert_file"`
+		SessionDir string `json:"session_dir"`
+		CacheDir   string `json:"cache_dir"`
+	}{
+		Address:    cfg.Address,
+		CACertFile: cfg.CACertFile,
+		SessionDir: cfg.SessionDir,
+		CacheDir:   cfg.CacheDir,
+	}, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode client config file: %w", err)
+	}
+	data = append(data, '\n')
+
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("write client config file: %w", err)
+	}
+
+	return nil
+}
+
 func applyFile(cfg *Config, path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -102,8 +135,8 @@ func applyFile(cfg *Config, path string) error {
 	if file.CACertFile != nil {
 		cfg.CACertFile = *file.CACertFile
 	}
-	if file.SessionFile != nil {
-		cfg.SessionFile = *file.SessionFile
+	if file.SessionDir != nil {
+		cfg.SessionDir = *file.SessionDir
 	}
 	if file.CacheDir != nil {
 		cfg.CacheDir = *file.CacheDir
@@ -130,8 +163,8 @@ func applyOverrides(cfg *Config, overrides Overrides) {
 	if overrides.CACertFile != nil {
 		cfg.CACertFile = *overrides.CACertFile
 	}
-	if overrides.SessionFile != nil {
-		cfg.SessionFile = *overrides.SessionFile
+	if overrides.SessionDir != nil {
+		cfg.SessionDir = *overrides.SessionDir
 	}
 	if overrides.CacheDir != nil {
 		cfg.CacheDir = *overrides.CacheDir

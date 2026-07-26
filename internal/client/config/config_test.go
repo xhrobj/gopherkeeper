@@ -18,7 +18,7 @@ func TestResolve(t *testing.T) {
 	configFile := writeConfigFile(t, `{
   "address": "localhost:8081",
   "ca_cert_file": "file-ca.pem",
-  "session_file": "file-session.json",
+  "session_dir": "file-session",
   "cache_dir": "file-cache"
 }`)
 
@@ -36,26 +36,26 @@ func TestResolve(t *testing.T) {
 			name:       "config file",
 			configFile: configFile,
 			want: Config{
-				Address:     "localhost:8081",
-				CACertFile:  "file-ca.pem",
-				SessionFile: "file-session.json",
-				CacheDir:    "file-cache",
+				Address:    "localhost:8081",
+				CACertFile: "file-ca.pem",
+				SessionDir: "file-session",
+				CacheDir:   "file-cache",
 			},
 		},
 		{
 			name:       "overrides > config file",
 			configFile: configFile,
 			overrides: Overrides{
-				Address:     stringPointer("localhost:8082"),
-				CACertFile:  stringPointer("override-ca.pem"),
-				SessionFile: stringPointer("override-session.json"),
-				CacheDir:    stringPointer("override-cache"),
+				Address:    stringPointer("localhost:8082"),
+				CACertFile: stringPointer("override-ca.pem"),
+				SessionDir: stringPointer("override-session"),
+				CacheDir:   stringPointer("override-cache"),
 			},
 			want: Config{
-				Address:     "localhost:8082",
-				CACertFile:  "override-ca.pem",
-				SessionFile: "override-session.json",
-				CacheDir:    "override-cache",
+				Address:    "localhost:8082",
+				CACertFile: "override-ca.pem",
+				SessionDir: "override-session",
+				CacheDir:   "override-cache",
 			},
 		},
 		{
@@ -66,8 +66,8 @@ func TestResolve(t *testing.T) {
 				CacheDir:   stringPointer(""),
 			},
 			want: Config{
-				Address:     "localhost:8081",
-				SessionFile: "file-session.json",
+				Address:    "localhost:8081",
+				SessionDir: "file-session",
 			},
 		},
 	}
@@ -160,4 +160,43 @@ func writeConfigFile(t *testing.T, content string) string {
 
 func stringPointer(value string) *string {
 	return &value
+}
+
+func TestSaveWritesClientConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "client.json")
+	want := Config{
+		Address:    "vault.example:9443",
+		CACertFile: "certs/ca.pem",
+		SessionDir: "session",
+		CacheDir:   "cache",
+	}
+
+	if err := Save(path, want); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	got, err := Resolve(path, Overrides{})
+	if err != nil {
+		t.Fatalf("Resolve() saved config error = %v", err)
+	}
+	if got != want {
+		t.Fatalf("saved config = %#v, want %#v", got, want)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read saved config: %v", err)
+	}
+	if !strings.HasSuffix(string(data), "\n") {
+		t.Fatal("saved config does not end with newline")
+	}
+}
+
+func TestSaveRejectsMissingPathAndAddress(t *testing.T) {
+	if err := Save("", Config{Address: "localhost:8080"}); err == nil {
+		t.Fatal("Save() path error = nil")
+	}
+	if err := Save(filepath.Join(t.TempDir(), "client.json"), Config{}); err == nil {
+		t.Fatal("Save() address error = nil")
+	}
 }

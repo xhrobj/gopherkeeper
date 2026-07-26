@@ -11,7 +11,7 @@ import (
 
 func TestWriteRecord_DisplaysPayload(t *testing.T) {
 	expiryMonth := 3
-	expiryYear := 2038
+	expiryYear := 38
 	recordedAt := time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
 		name    string
@@ -57,7 +57,7 @@ func TestWriteRecord_DisplaysPayload(t *testing.T) {
 				"Type: card",
 				"Number: " + testCardNumber,
 				"Cardholder: Joel Miller",
-				"Expiry: 03/2038",
+				"Expiry: 03/38",
 				"CVV: " + testCardCVV,
 				"Metadata:\ntest card",
 			},

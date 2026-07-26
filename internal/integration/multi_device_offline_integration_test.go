@@ -29,14 +29,14 @@ func TestIntegration_CLITwoDeviceOfflineAndConflictFlow(t *testing.T) {
 
 	flow.stopServerAndReadOffline(recordID)
 	flow.restartServerAndCreateConflict(recordID)
-	flow.assertStaleCacheIsNotReplaced(recordID)
-	flow.refreshSecondClient(recordID)
+	flow.assertOfflineCacheRemainsOldUntilSync(recordID)
+	flow.synchronizeSecondClient(recordID)
 	flow.assertIndependentCaches(recordID)
 }
 
 type multiDeviceCLIClient struct {
-	sessionFile string
-	cacheDir    string
+	sessionDir string
+	cacheDir   string
 }
 
 type multiDeviceOfflineFlow struct {
@@ -60,7 +60,7 @@ func newMultiDeviceOfflineFlow(t *testing.T) *multiDeviceOfflineFlow {
 	isolateClientConfig(t)
 	t.Setenv("ADDRESS", "")
 	t.Setenv("CA_CERT_FILE", "")
-	t.Setenv("SESSION_FILE", "")
+	t.Setenv("SESSION_DIR", "")
 	t.Setenv("CACHE_DIR", "")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*integrationTestTimeout)
@@ -88,15 +88,15 @@ func newMultiDeviceOfflineFlow(t *testing.T) *multiDeviceOfflineFlow {
 	}
 
 	first := multiDeviceCLIClient{
-		sessionFile: filepath.Join(t.TempDir(), "client-a-session.json"),
-		cacheDir:    filepath.Join(t.TempDir(), "client-a-cache"),
+		sessionDir: filepath.Join(t.TempDir(), "client-a-session"),
+		cacheDir:   filepath.Join(t.TempDir(), "client-a-cache"),
 	}
 	second := multiDeviceCLIClient{
-		sessionFile: filepath.Join(t.TempDir(), "client-b-session.json"),
-		cacheDir:    filepath.Join(t.TempDir(), "client-b-cache"),
+		sessionDir: filepath.Join(t.TempDir(), "client-b-session"),
+		cacheDir:   filepath.Join(t.TempDir(), "client-b-cache"),
 	}
-	loginTestUser(t, ctx, server.Address(), caCertFile, first.sessionFile, " Alice ")
-	loginTestUser(t, ctx, server.Address(), caCertFile, second.sessionFile, "ALICE")
+	loginTestUser(t, ctx, server.Address(), caCertFile, first.sessionDir, " Alice ")
+	loginTestUser(t, ctx, server.Address(), caCertFile, second.sessionDir, "ALICE")
 
 	return &multiDeviceOfflineFlow{
 		t:          t,
@@ -118,7 +118,7 @@ func (flow *multiDeviceOfflineFlow) createAndSynchronizeRecord() string {
 		flow.ctx,
 		flow.address,
 		flow.caCertFile,
-		flow.first.sessionFile,
+		flow.first.sessionDir,
 		"Shared note",
 		textFile,
 		metadataFile,
@@ -134,8 +134,8 @@ func (flow *multiDeviceOfflineFlow) createAndSynchronizeRecord() string {
 		flow.t.Fatalf("created shared record revision = %d, want 1", revision)
 	}
 
-	flow.assertSync(flow.first, false, "Added: 1", "Updated: 0", "Stale: 0")
-	flow.assertSync(flow.second, false, "Added: 1", "Updated: 0", "Stale: 0")
+	flow.assertSync(flow.first, "Added: 1", "Updated: 0")
+	flow.assertSync(flow.second, "Added: 1", "Updated: 0")
 
 	firstLocation := flow.cacheLocation(flow.first)
 	secondLocation := flow.cacheLocation(flow.second)
@@ -198,7 +198,7 @@ func (flow *multiDeviceOfflineFlow) restartServerAndCreateConflict(recordID stri
 		flow.ctx,
 		flow.address,
 		flow.caCertFile,
-		flow.second.sessionFile,
+		flow.second.sessionDir,
 	); err != nil {
 		flow.t.Fatalf("second Client session after restart: %v", err)
 	}
@@ -213,7 +213,7 @@ func (flow *multiDeviceOfflineFlow) restartServerAndCreateConflict(recordID stri
 		flow.ctx,
 		flow.address,
 		flow.caCertFile,
-		flow.first.sessionFile,
+		flow.first.sessionDir,
 		textRecordUpdateCLIRequest{
 			recordID:     recordID,
 			revision:     1,
@@ -235,7 +235,7 @@ func (flow *multiDeviceOfflineFlow) restartServerAndCreateConflict(recordID stri
 		flow.ctx,
 		flow.address,
 		flow.caCertFile,
-		flow.second.sessionFile,
+		flow.second.sessionDir,
 		textRecordUpdateCLIRequest{
 			recordID: recordID,
 			revision: 1,
@@ -249,45 +249,28 @@ func (flow *multiDeviceOfflineFlow) restartServerAndCreateConflict(recordID stri
 	}
 }
 
-func (flow *multiDeviceOfflineFlow) assertStaleCacheIsNotReplaced(recordID string) {
+func (flow *multiDeviceOfflineFlow) assertOfflineCacheRemainsOldUntilSync(recordID string) {
 	flow.t.Helper()
-
-	output := flow.assertSync(
-		flow.second,
-		false,
-		"Added: 0",
-		"Updated: 0",
-		"Stale: 1",
-		"LOCAL REVISION",
-		"SERVER REVISION",
-		"Run `gkeep sync --refresh` to update stale records.",
-	)
-	for _, want := range []string{recordID, "Updated shared note", "1", "2"} {
-		if !strings.Contains(output, want) {
-			flow.t.Errorf("stale synchronization output = %q, want %q", output, want)
-		}
-	}
 
 	flow.assertOfflineRecord(flow.second, recordID, 1, multiDeviceInitialText, multiDeviceUpdatedText)
 }
 
-func (flow *multiDeviceOfflineFlow) refreshSecondClient(recordID string) {
+func (flow *multiDeviceOfflineFlow) synchronizeSecondClient(recordID string) {
 	flow.t.Helper()
 
-	flow.assertSync(flow.second, true, "Added: 0", "Updated: 1", "Stale: 0")
+	flow.assertSync(flow.second, "Added: 0", "Updated: 1", "Removed: 0")
 	flow.assertOfflineRecord(flow.second, recordID, 2, multiDeviceUpdatedText, multiDeviceInitialText)
 }
 
 func (flow *multiDeviceOfflineFlow) assertIndependentCaches(recordID string) {
 	flow.t.Helper()
 
-	// Refreshing Client B must not mutate Client A's independent local cache.
+	// Synchronizing Client B must not mutate Client A's independent local cache.
 	flow.assertOfflineRecord(flow.first, recordID, 1, multiDeviceInitialText, multiDeviceUpdatedText)
 }
 
 func (flow *multiDeviceOfflineFlow) assertSync(
 	client multiDeviceCLIClient,
-	refresh bool,
 	want ...string,
 ) string {
 	flow.t.Helper()
@@ -298,10 +281,9 @@ func (flow *multiDeviceOfflineFlow) assertSync(
 		flow.caCertFile,
 		client,
 		testRegistrationPassword,
-		refresh,
 	)
 	if err != nil {
-		flow.t.Fatalf("synchronize Client refresh=%t: %v", refresh, err)
+		flow.t.Fatalf("synchronize Client: %v", err)
 	}
 	if stderr != "" {
 		flow.t.Errorf("synchronize Client stderr = %q, want empty output", stderr)
@@ -366,7 +348,7 @@ func (flow *multiDeviceOfflineFlow) runOfflineList(client multiDeviceCLIClient) 
 		"gkeep",
 		"--address", flow.address,
 		"--ca-cert", flow.caCertFile,
-		"--session-file", client.sessionFile,
+		"--session-dir", client.sessionDir,
 		"--cache-dir", client.cacheDir,
 		"records", "list", "--offline", "--login", " Alice ",
 	}, testRegistrationPassword+"\n")
@@ -396,20 +378,15 @@ func runMultiDeviceSync(
 	caCertFile string,
 	client multiDeviceCLIClient,
 	password string,
-	refresh bool,
 ) (string, string, error) {
 	args := []string{
 		"gkeep",
 		"--address", address,
 		"--ca-cert", caCertFile,
-		"--session-file", client.sessionFile,
+		"--session-dir", client.sessionDir,
 		"--cache-dir", client.cacheDir,
 		"sync",
 	}
-	if refresh {
-		args = append(args, "--refresh")
-	}
-
 	return runClientCommandWithInput(ctx, args, password+"\n")
 }
 
@@ -424,7 +401,7 @@ func runMultiDeviceOnlineGet(
 		"gkeep",
 		"--address", address,
 		"--ca-cert", caCertFile,
-		"--session-file", client.sessionFile,
+		"--session-dir", client.sessionDir,
 		"--cache-dir", client.cacheDir,
 		"records", "get", recordID,
 	})
@@ -443,7 +420,7 @@ func runMultiDeviceOfflineGet(
 		"gkeep",
 		"--address", address,
 		"--ca-cert", caCertFile,
-		"--session-file", client.sessionFile,
+		"--session-dir", client.sessionDir,
 		"--cache-dir", client.cacheDir,
 		"records", "get", recordID,
 		"--offline", "--login", login,

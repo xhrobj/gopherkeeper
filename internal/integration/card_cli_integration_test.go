@@ -19,9 +19,9 @@ func TestIntegration_CLICardRecordRoundTrip(t *testing.T) {
 	config, pool, httpLogs := newRecordCLIEnvironment(t)
 
 	expiryMonth := 3
-	expiryYear := 2038
+	expiryYear := 38
 	initial := model.CardPayload{
-		Number:      "2013 0614 2020 0619",
+		Number:      "2013061420200619",
 		Cardholder:  "Joel Miller",
 		ExpiryMonth: &expiryMonth,
 		ExpiryYear:  &expiryYear,
@@ -43,9 +43,9 @@ func TestIntegration_CLICardRecordRoundTrip(t *testing.T) {
 	assertCardRecord(t, config, recordID, 1, initial)
 
 	updatedMonth := 3
-	updatedYear := 2038
+	updatedYear := 38
 	updated := model.CardPayload{
-		Number:      "2013 0614 2020 0619",
+		Number:      "2013061420200619",
 		Cardholder:  "Joel Miller",
 		ExpiryMonth: &updatedMonth,
 		ExpiryYear:  &updatedYear,
@@ -140,7 +140,7 @@ func assertCardList(
 		config.ctx,
 		config.address,
 		config.caCertFile,
-		config.sessionFile,
+		config.sessionDir,
 	)
 	if err != nil {
 		t.Fatalf("list card records: %v", err)
@@ -169,7 +169,7 @@ func assertCardRecord(
 		config.ctx,
 		config.address,
 		config.caCertFile,
-		config.sessionFile,
+		config.sessionDir,
 		recordID,
 	)
 	if err != nil {
@@ -184,7 +184,7 @@ func assertCardRecord(
 		fmt.Sprintf("Revision: %d", revision),
 		"Number: " + payload.Number,
 		"Cardholder: " + payload.Cardholder,
-		fmt.Sprintf("Expiry: %02d/%d", *payload.ExpiryMonth, *payload.ExpiryYear),
+		fmt.Sprintf("Expiry: %02d/%02d", *payload.ExpiryMonth, *payload.ExpiryYear),
 		"CVV: " + payload.CVV,
 		payload.Metadata,
 	}
@@ -207,7 +207,7 @@ func runCreateCardRecordCommand(
 		"gkeep",
 		"--address", config.address,
 		"--ca-cert", config.caCertFile,
-		"--session-file", config.sessionFile,
+		"--session-dir", config.sessionDir,
 		"records", "create-card",
 		"--title", title,
 	}
@@ -233,7 +233,7 @@ func runUpdateCardRecordCommand(
 		"gkeep",
 		"--address", config.address,
 		"--ca-cert", config.caCertFile,
-		"--session-file", config.sessionFile,
+		"--session-dir", config.sessionDir,
 		"records", "update-card", recordID,
 		"--revision", fmt.Sprintf("%d", revision),
 		"--title", title,
@@ -249,7 +249,7 @@ func runUpdateCardRecordCommand(
 func cardInput(payload model.CardPayload) string {
 	expiry := ""
 	if payload.ExpiryMonth != nil && payload.ExpiryYear != nil {
-		expiry = fmt.Sprintf("%02d/%04d", *payload.ExpiryMonth, *payload.ExpiryYear)
+		expiry = fmt.Sprintf("%02d/%02d", *payload.ExpiryMonth, *payload.ExpiryYear)
 	}
 
 	return strings.Join([]string{

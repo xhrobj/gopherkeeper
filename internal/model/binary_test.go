@@ -18,10 +18,9 @@ func TestBinaryPayload_Validate(t *testing.T) {
 		{
 			name: "full payload",
 			payload: &BinaryPayload{
-				Filename:    "alice-secret.bin",
-				Data:        []byte{0x00, 0x2a, 0xff},
-				ContentType: "application/octet-stream",
-				Metadata:    "private binary",
+				Filename: "alice-secret.bin",
+				Data:     []byte{0x00, 0x2a, 0xff},
+				Metadata: "private binary",
 			},
 		},
 		{
@@ -44,6 +43,13 @@ func TestBinaryPayload_Validate(t *testing.T) {
 				Filename: "metadata.bin",
 				Data:     []byte{0x2a},
 				Metadata: strings.Repeat("a", MetadataMaxSize),
+			},
+		},
+		{
+			name: "Unicode filename at limit",
+			payload: &BinaryPayload{
+				Filename: strings.Repeat("я", BinaryFilenameMaxSize),
+				Data:     []byte{0x2a},
 			},
 		},
 		{
@@ -90,11 +96,26 @@ func TestBinaryPayload_Validate(t *testing.T) {
 			wantErr: ErrInvalidBinaryPayload,
 		},
 		{
-			name: "invalid UTF-8 content type",
+			name: "filename too long",
 			payload: &BinaryPayload{
-				Filename:    "secret.bin",
-				Data:        []byte{0x2a},
-				ContentType: string([]byte{0xff}),
+				Filename: strings.Repeat("я", BinaryFilenameMaxSize+1),
+				Data:     []byte{0x2a},
+			},
+			wantErr: ErrInvalidBinaryPayload,
+		},
+		{
+			name: "filename with slash",
+			payload: &BinaryPayload{
+				Filename: "dir/secret.bin",
+				Data:     []byte{0x2a},
+			},
+			wantErr: ErrInvalidBinaryPayload,
+		},
+		{
+			name: "filename parent directory",
+			payload: &BinaryPayload{
+				Filename: "..",
+				Data:     []byte{0x2a},
 			},
 			wantErr: ErrInvalidBinaryPayload,
 		},
@@ -114,7 +135,7 @@ func TestBinaryPayload_Validate(t *testing.T) {
 				Data:     []byte{0x2a},
 				Metadata: strings.Repeat("a", MetadataMaxSize+1),
 			},
-			wantErr: ErrPayloadTooLarge,
+			wantErr: ErrInvalidBinaryPayload,
 		},
 	}
 
@@ -171,16 +192,14 @@ func TestBinaryPayload_JSONDataPresence(t *testing.T) {
 
 func TestBinaryPayload_ValidatePreservesValues(t *testing.T) {
 	payload := BinaryPayload{
-		Filename:    " secret.bin ",
-		Data:        []byte{0x00, 0x2a, 0xff},
-		ContentType: " application/octet-stream ",
-		Metadata:    " private binary ",
+		Filename: " secret.bin ",
+		Data:     []byte{0x00, 0x2a, 0xff},
+		Metadata: " private binary ",
 	}
 	want := BinaryPayload{
-		Filename:    payload.Filename,
-		Data:        append([]byte(nil), payload.Data...),
-		ContentType: payload.ContentType,
-		Metadata:    payload.Metadata,
+		Filename: payload.Filename,
+		Data:     append([]byte(nil), payload.Data...),
+		Metadata: payload.Metadata,
 	}
 
 	if err := payload.Validate(); err != nil {

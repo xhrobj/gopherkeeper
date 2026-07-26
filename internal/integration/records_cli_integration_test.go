@@ -37,10 +37,10 @@ func TestIntegration_CLITextRecordConflictAndIsolationFlow(t *testing.T) {
 }
 
 type recordCLIConfig struct {
-	ctx         context.Context
-	address     string
-	caCertFile  string
-	sessionFile string
+	ctx        context.Context
+	address    string
+	caCertFile string
+	sessionDir string
 }
 
 func newRecordCLIEnvironment(
@@ -59,29 +59,29 @@ func newRecordCLIEnvironment(
 		t.Fatalf("register Alice: %v", err)
 	}
 
-	sessionFile := filepath.Join(t.TempDir(), "alice-session.json")
-	loginTestUser(t, ctx, serverAddress, caCertFile, sessionFile, " Alice ")
+	sessionDir := filepath.Join(t.TempDir(), "alice-session")
+	loginTestUser(t, ctx, serverAddress, caCertFile, sessionDir, " Alice ")
 
 	return recordCLIConfig{
-		ctx:         ctx,
-		address:     serverAddress,
-		caCertFile:  caCertFile,
-		sessionFile: sessionFile,
+		ctx:        ctx,
+		address:    serverAddress,
+		caCertFile: caCertFile,
+		sessionDir: sessionDir,
 	}, pool, httpLogs
 }
 
 type cliTextRecordFlow struct {
-	t                      *testing.T
-	ctx                    context.Context
-	serverAddress          string
-	caCertFile             string
-	pool                   *pgxpool.Pool
-	httpLogs               *bytes.Buffer
-	aliceSessionFile       string
-	aliceSecondSessionFile string
-	eveSessionFile         string
-	updatedTextFile        string
-	updatedMetadataFile    string
+	t                     *testing.T
+	ctx                   context.Context
+	serverAddress         string
+	caCertFile            string
+	pool                  *pgxpool.Pool
+	httpLogs              *bytes.Buffer
+	aliceSessionDir       string
+	aliceSecondSessionDir string
+	eveSessionDir         string
+	updatedTextFile       string
+	updatedMetadataFile   string
 }
 
 func newCLITextRecordFlow(t *testing.T) *cliTextRecordFlow {
@@ -96,7 +96,7 @@ func newCLITextRecordFlow(t *testing.T) *cliTextRecordFlow {
 		caCertFile:          config.caCertFile,
 		pool:                pool,
 		httpLogs:            httpLogs,
-		aliceSessionFile:    config.sessionFile,
+		aliceSessionDir:     config.sessionDir,
 		updatedTextFile:     writeIntegrationFile(t, "updated-note.txt", "updated secret"),
 		updatedMetadataFile: writeIntegrationFile(t, "updated-metadata.txt", "updated private metadata"),
 	}
@@ -114,7 +114,7 @@ func startCLIRecordTestServer(
 	isolateClientConfig(t)
 	t.Setenv("ADDRESS", "")
 	t.Setenv("CA_CERT_FILE", "")
-	t.Setenv("SESSION_FILE", "")
+	t.Setenv("SESSION_DIR", "")
 
 	ctx, cancel := context.WithTimeout(context.Background(), integrationTestTimeout)
 	t.Cleanup(cancel)
@@ -158,11 +158,11 @@ func openIsolatedMigratedDatabase(t *testing.T, ctx context.Context, dsn string)
 func loginTestUser(
 	t *testing.T,
 	ctx context.Context,
-	serverAddress, caCertFile, sessionFile, login string,
+	serverAddress, caCertFile, sessionDir, login string,
 ) {
 	t.Helper()
 
-	if _, _, err := runLoginCommand(ctx, serverAddress, caCertFile, sessionFile, login, testRegistrationPassword); err != nil {
+	if _, _, err := runLoginCommand(ctx, serverAddress, caCertFile, sessionDir, login, testRegistrationPassword); err != nil {
 		t.Fatalf("login %s: %v", strings.TrimSpace(login), err)
 	}
 }
@@ -176,7 +176,7 @@ func (f *cliTextRecordFlow) createInitialRecord() string {
 		f.ctx,
 		f.serverAddress,
 		f.caCertFile,
-		f.aliceSessionFile,
+		f.aliceSessionDir,
 		"Alice note",
 		initialTextFile,
 		initialMetadataFile,
@@ -199,8 +199,8 @@ func (f *cliTextRecordFlow) createInitialRecord() string {
 func (f *cliTextRecordFlow) loginSecondAliceClient() {
 	f.t.Helper()
 
-	f.aliceSecondSessionFile = filepath.Join(f.t.TempDir(), "alice-second-session.json")
-	loginTestUser(f.t, f.ctx, f.serverAddress, f.caCertFile, f.aliceSecondSessionFile, " Alice ")
+	f.aliceSecondSessionDir = filepath.Join(f.t.TempDir(), "alice-second-session")
+	loginTestUser(f.t, f.ctx, f.serverAddress, f.caCertFile, f.aliceSecondSessionDir, " Alice ")
 }
 
 func (f *cliTextRecordFlow) updateRecord(recordID string) {
@@ -210,7 +210,7 @@ func (f *cliTextRecordFlow) updateRecord(recordID string) {
 		f.ctx,
 		f.serverAddress,
 		f.caCertFile,
-		f.aliceSessionFile,
+		f.aliceSessionDir,
 		textRecordUpdateCLIRequest{
 			recordID:     recordID,
 			revision:     1,
@@ -235,7 +235,7 @@ func (f *cliTextRecordFlow) updateRecord(recordID string) {
 func (f *cliTextRecordFlow) assertUpdatedRecord(recordID string) {
 	f.t.Helper()
 
-	stdout, stderr, err := runGetRecordCommand(f.ctx, f.serverAddress, f.caCertFile, f.aliceSessionFile, recordID)
+	stdout, stderr, err := runGetRecordCommand(f.ctx, f.serverAddress, f.caCertFile, f.aliceSessionDir, recordID)
 	if err != nil {
 		f.t.Fatalf("get updated text record: %v", err)
 	}
@@ -254,7 +254,7 @@ func (f *cliTextRecordFlow) assertStaleConflicts(recordID string) {
 		f.ctx,
 		f.serverAddress,
 		f.caCertFile,
-		f.aliceSecondSessionFile,
+		f.aliceSecondSessionDir,
 		textRecordUpdateCLIRequest{
 			recordID:     recordID,
 			revision:     1,
@@ -265,7 +265,7 @@ func (f *cliTextRecordFlow) assertStaleConflicts(recordID string) {
 	)
 	assertCLIErrorContains(f.t, "stale update", err, "record revision conflict")
 
-	_, _, err = runDeleteRecordCommand(f.ctx, f.serverAddress, f.caCertFile, f.aliceSessionFile, recordID, 1)
+	_, _, err = runDeleteRecordCommand(f.ctx, f.serverAddress, f.caCertFile, f.aliceSessionDir, recordID, 1)
 	assertCLIErrorContains(f.t, "stale delete", err, "record revision conflict")
 }
 
@@ -275,8 +275,8 @@ func (f *cliTextRecordFlow) loginEve() {
 	if _, _, err := runRegisterCommand(f.ctx, f.serverAddress, f.caCertFile, " Eve ", testRegistrationPassword); err != nil {
 		f.t.Fatalf("register Eve: %v", err)
 	}
-	f.eveSessionFile = filepath.Join(f.t.TempDir(), "eve-session.json")
-	loginTestUser(f.t, f.ctx, f.serverAddress, f.caCertFile, f.eveSessionFile, " Eve ")
+	f.eveSessionDir = filepath.Join(f.t.TempDir(), "eve-session")
+	loginTestUser(f.t, f.ctx, f.serverAddress, f.caCertFile, f.eveSessionDir, " Eve ")
 }
 
 func (f *cliTextRecordFlow) assertForeignAccessHidden(recordID string) {
@@ -286,7 +286,7 @@ func (f *cliTextRecordFlow) assertForeignAccessHidden(recordID string) {
 		f.ctx,
 		f.serverAddress,
 		f.caCertFile,
-		f.eveSessionFile,
+		f.eveSessionDir,
 		textRecordUpdateCLIRequest{
 			recordID:     recordID,
 			revision:     2,
@@ -297,14 +297,14 @@ func (f *cliTextRecordFlow) assertForeignAccessHidden(recordID string) {
 	)
 	assertCLIErrorContains(f.t, "foreign update", err, "record not found")
 
-	_, _, err = runDeleteRecordCommand(f.ctx, f.serverAddress, f.caCertFile, f.eveSessionFile, recordID, 2)
+	_, _, err = runDeleteRecordCommand(f.ctx, f.serverAddress, f.caCertFile, f.eveSessionDir, recordID, 2)
 	assertCLIErrorContains(f.t, "foreign delete", err, "record not found")
 }
 
 func (f *cliTextRecordFlow) deleteRecord(recordID string) {
 	f.t.Helper()
 
-	stdout, stderr, err := runDeleteRecordCommand(f.ctx, f.serverAddress, f.caCertFile, f.aliceSessionFile, recordID, 2)
+	stdout, stderr, err := runDeleteRecordCommand(f.ctx, f.serverAddress, f.caCertFile, f.aliceSessionDir, recordID, 2)
 	if err != nil {
 		f.t.Fatalf("delete text record: %v", err)
 	}
@@ -320,7 +320,7 @@ func (f *cliTextRecordFlow) deleteRecord(recordID string) {
 func (f *cliTextRecordFlow) assertDeleted(recordID string) {
 	f.t.Helper()
 
-	_, _, err := runGetRecordCommand(f.ctx, f.serverAddress, f.caCertFile, f.aliceSessionFile, recordID)
+	_, _, err := runGetRecordCommand(f.ctx, f.serverAddress, f.caCertFile, f.aliceSessionDir, recordID)
 	assertCLIErrorContains(f.t, "get deleted record", err, "record not found")
 }
 
@@ -342,14 +342,14 @@ func (f *cliTextRecordFlow) assertHTTPLogsDoNotContainSecrets() {
 
 func runCreateTextRecordCommand(
 	ctx context.Context,
-	address, caCertFile, sessionFile string,
+	address, caCertFile, sessionDir string,
 	title, textFile, metadataFile string,
 ) (string, string, error) {
 	args := []string{
 		"gkeep",
 		"--address", address,
 		"--ca-cert", caCertFile,
-		"--session-file", sessionFile,
+		"--session-dir", sessionDir,
 		"records", "create-text",
 		"--title", title,
 		"--text-file", textFile,
@@ -371,14 +371,14 @@ type textRecordUpdateCLIRequest struct {
 
 func runUpdateTextRecordCommand(
 	ctx context.Context,
-	address, caCertFile, sessionFile string,
+	address, caCertFile, sessionDir string,
 	request textRecordUpdateCLIRequest,
 ) (string, string, error) {
 	args := []string{
 		"gkeep",
 		"--address", address,
 		"--ca-cert", caCertFile,
-		"--session-file", sessionFile,
+		"--session-dir", sessionDir,
 		"records", "update-text", request.recordID,
 		"--revision", fmt.Sprintf("%d", request.revision),
 		"--title", request.title,
@@ -393,27 +393,27 @@ func runUpdateTextRecordCommand(
 
 func runGetRecordCommand(
 	ctx context.Context,
-	address, caCertFile, sessionFile, recordID string,
+	address, caCertFile, sessionDir, recordID string,
 ) (string, string, error) {
 	return runClientCommand(ctx, []string{
 		"gkeep",
 		"--address", address,
 		"--ca-cert", caCertFile,
-		"--session-file", sessionFile,
+		"--session-dir", sessionDir,
 		"records", "get", recordID,
 	})
 }
 
 func runDeleteRecordCommand(
 	ctx context.Context,
-	address, caCertFile, sessionFile, recordID string,
+	address, caCertFile, sessionDir, recordID string,
 	revision int64,
 ) (string, string, error) {
 	return runClientCommand(ctx, []string{
 		"gkeep",
 		"--address", address,
 		"--ca-cert", caCertFile,
-		"--session-file", sessionFile,
+		"--session-dir", sessionDir,
 		"records", "delete", recordID,
 		"--revision", fmt.Sprintf("%d", revision),
 	})

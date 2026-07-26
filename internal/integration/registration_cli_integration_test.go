@@ -128,7 +128,7 @@ func TestIntegration_CLILoginFlow(t *testing.T) {
 	isolateClientConfig(t)
 	t.Setenv("ADDRESS", "")
 	t.Setenv("CA_CERT_FILE", "")
-	t.Setenv("SESSION_FILE", "")
+	t.Setenv("SESSION_DIR", "")
 
 	ctx, cancel := context.WithTimeout(context.Background(), integrationTestTimeout)
 	defer cancel()
@@ -180,12 +180,12 @@ func TestIntegration_CLILoginFlow(t *testing.T) {
 		t.Errorf("registration stderr = %q, want empty output", stderr)
 	}
 
-	sessionFile := filepath.Join(t.TempDir(), "session.json")
+	sessionDir := filepath.Join(t.TempDir(), "session")
 	stdout, stderr, err = runLoginCommand(
 		ctx,
 		serverAddress,
 		caCertFile,
-		sessionFile,
+		sessionDir,
 		" Alice ",
 		testRegistrationPassword,
 	)
@@ -201,7 +201,7 @@ func TestIntegration_CLILoginFlow(t *testing.T) {
 	loginStdout := stdout
 	loginStderr := stderr
 
-	stdout, stderr, err = runWhoamiCommand(ctx, serverAddress, caCertFile, sessionFile)
+	stdout, stderr, err = runWhoamiCommand(ctx, serverAddress, caCertFile, sessionDir)
 	if err != nil {
 		t.Fatalf("whoami command error = %v", err)
 	}
@@ -217,7 +217,7 @@ func TestIntegration_CLILoginFlow(t *testing.T) {
 	assertSecretAbsent(t, "whoami stdout", stdout)
 	assertSecretAbsent(t, "whoami stderr", stderr)
 	assertSecretAbsent(t, "HTTP logs", httpLogs.String())
-	assertSessionFileSecretAbsent(t, sessionFile)
+	assertSessionFileSecretAbsent(t, sessionDir)
 }
 
 func runRegisterCommand(
@@ -252,7 +252,7 @@ func runLoginCommand(
 	ctx context.Context,
 	address string,
 	caCertFile string,
-	sessionFile string,
+	sessionDir string,
 	login string,
 	password string,
 ) (string, string, error) {
@@ -265,7 +265,7 @@ func runLoginCommand(
 			"gkeep",
 			"--address", address,
 			"--ca-cert", caCertFile,
-			"--session-file", sessionFile,
+			"--session-dir", sessionDir,
 			"login",
 			"--login", login,
 		},
@@ -282,7 +282,7 @@ func runWhoamiCommand(
 	ctx context.Context,
 	address string,
 	caCertFile string,
-	sessionFile string,
+	sessionDir string,
 ) (string, string, error) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -293,7 +293,7 @@ func runWhoamiCommand(
 			"gkeep",
 			"--address", address,
 			"--ca-cert", caCertFile,
-			"--session-file", sessionFile,
+			"--session-dir", sessionDir,
 			"whoami",
 		},
 		strings.NewReader(""),
@@ -324,10 +324,10 @@ func assertSecretAbsent(t *testing.T, source, value string) {
 	}
 }
 
-func assertSessionFileSecretAbsent(t *testing.T, sessionFile string) {
+func assertSessionFileSecretAbsent(t *testing.T, sessionDir string) {
 	t.Helper()
 
-	data, err := os.ReadFile(sessionFile)
+	data, err := os.ReadFile(filepath.Join(sessionDir, "session.json"))
 	if err != nil {
 		t.Fatalf("read session file: %v", err)
 	}

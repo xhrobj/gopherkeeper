@@ -1,9 +1,6 @@
 package model
 
-import (
-	"strings"
-	"unicode/utf8"
-)
+import "strings"
 
 // BinaryPayload содержит приватные бинарные данные записи и связанные метаданные.
 type BinaryPayload struct {
@@ -13,27 +10,23 @@ type BinaryPayload struct {
 	// Data содержит исходные байты файла.
 	Data []byte `json:"data"`
 
-	// ContentType содержит необязательный пользовательский тип содержимого.
-	ContentType string `json:"content_type,omitempty"`
-
 	// Metadata содержит необязательную произвольную текстовую метаинформацию.
 	Metadata string `json:"metadata,omitempty"`
 }
 
 // Validate проверяет обязательные поля и ограничения binary payload.
 func (payload *BinaryPayload) Validate() error {
-	if payload == nil {
+	if payload == nil ||
+		!validateRequiredSingleLine(payload.Filename, BinaryFilenameMaxSize) ||
+		strings.ContainsAny(payload.Filename, `/\\`) ||
+		payload.Filename == "." || payload.Filename == ".." {
 		return ErrInvalidBinaryPayload
 	}
 
-	if strings.TrimSpace(payload.Filename) == "" ||
-		!utf8.ValidString(payload.Filename) ||
-		!utf8.ValidString(payload.ContentType) {
-		return ErrInvalidBinaryPayload
-	}
 	if payload.Data == nil {
 		return ErrInvalidBinaryPayload
 	}
+
 	if len(payload.Data) > BinaryPayloadMaxSize {
 		return ErrPayloadTooLarge
 	}

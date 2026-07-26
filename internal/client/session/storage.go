@@ -53,18 +53,18 @@ type FileStorage struct {
 
 // NewFileStorage создаёт файловое хранилище online-сессии.
 //
-// Если path пустой, используется путь по умолчанию внутри os.UserCacheDir():
-// gopherkeeper/session.json.
-func NewFileStorage(path string) (*FileStorage, error) {
-	return newFileStorage(path, time.Now)
+// В указанном каталоге используется фиксированное имя session.json.
+// Если directory пустой, используется каталог gopherkeeper внутри os.UserCacheDir().
+func NewFileStorage(directory string) (*FileStorage, error) {
+	return newFileStorage(directory, time.Now)
 }
 
-func newFileStorage(path string, now nowFunc) (*FileStorage, error) {
+func newFileStorage(directory string, now nowFunc) (*FileStorage, error) {
 	if now == nil {
 		return nil, errors.New("session clock is required")
 	}
 
-	resolvedPath, err := resolvePath(path)
+	resolvedPath, err := resolvePath(directory)
 	if err != nil {
 		return nil, err
 	}
@@ -182,9 +182,9 @@ func (s *FileStorage) Load(expectedServerAddress string) (Session, error) {
 	return session, nil
 }
 
-func resolvePath(path string) (string, error) {
-	if path != "" {
-		return path, nil
+func resolvePath(directory string) (string, error) {
+	if directory != "" {
+		return filepath.Join(directory, sessionFileName), nil
 	}
 
 	cacheDir, err := os.UserCacheDir()

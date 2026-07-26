@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/xhrobj/gopherkeeper/internal/client/failure"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
@@ -32,6 +33,11 @@ func (e *APIError) Error() string {
 // Unwrap возвращает transport-neutral причину ошибки API, если она известна Клиенту.
 func (e *APIError) Unwrap() error {
 	return e.cause
+}
+
+// UserMessage возвращает сообщение API, предназначенное для пользователя.
+func (e *APIError) UserMessage() string {
+	return e.Message
 }
 
 type errorResponse struct {
@@ -71,7 +77,7 @@ func (c *Client) doJSON(ctx context.Context, request jsonRequest) error {
 
 	response, err := restyRequest.Execute(request.method, request.path)
 	if err != nil {
-		return fmt.Errorf("send %s request: %w", request.operation, err)
+		return failure.Network("send "+request.operation+" request", err)
 	}
 
 	if response.StatusCode() != request.expectedStatus {

@@ -102,6 +102,22 @@ func TestRecordsGetCommand_RequiresRecordIDWithListHint(t *testing.T) {
 	}
 }
 
+func TestRecordsListCommand_RejectsRemovedShortOfflineLoginFlag(t *testing.T) {
+	isolateClientConfig(t)
+
+	err := runTestCommand(
+		t,
+		[]string{"gkeep", "records", "list", "--offline", "-l", "alice"},
+		nil,
+		io.Discard,
+		io.Discard,
+		nil,
+	)
+	if err == nil {
+		t.Fatal("run list command error = nil, want unknown -l flag error")
+	}
+}
+
 func TestRecordsDeleteCommand(t *testing.T) {
 	isolateClientConfig(t)
 

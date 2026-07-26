@@ -4,12 +4,16 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
+	"syscall"
 	"testing"
+
+	"github.com/xhrobj/gopherkeeper/internal/client/failure"
 )
 
 func TestClient_HealthWithAdditionalCA(t *testing.T) {
@@ -66,8 +70,14 @@ func TestClient_HealthReturnsUnavailableErrorOnConnectionRefused(t *testing.T) {
 		t.Fatal("Health() error = nil, want server unavailable error")
 	}
 
-	if err.Error() != "server unavailable: connection refused" {
-		t.Errorf("Health() error = %q, want server unavailable", err)
+	if got := failure.KindOf(err); got != failure.Unavailable {
+		t.Errorf("failure.KindOf(Health() error) = %d, want %d", got, failure.Unavailable)
+	}
+	if got := failure.Message(err); got != "Connection refused" {
+		t.Errorf("failure.Message(Health() error) = %q, want %q", got, "Connection refused")
+	}
+	if !errors.Is(err, syscall.ECONNREFUSED) {
+		t.Errorf("Health() error does not preserve ECONNREFUSED: %v", err)
 	}
 }
 
@@ -91,6 +101,34 @@ func TestClient_HealthReturnsStatusError(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "503 Service Unavailable") {
 		t.Errorf("Health() error = %q, want status 503", err)
+	}
+	if got := failure.KindOf(err); got != failure.Unavailable {
+		t.Errorf("failure.KindOf(Health() error) = %d, want %d", got, failure.Unavailable)
+	}
+	if got := failure.Message(err); got != "Server health check failed" {
+		t.Errorf("failure.Message(Health() error) = %q, want %q", got, "Server health check failed")
+	}
+}
+
+func TestHealthStatusFailureKind_ReturnsExpectedKind(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		want       failure.Kind
+	}{
+		{name: "request timeout", statusCode: http.StatusRequestTimeout, want: failure.Timeout},
+		{name: "gateway timeout", statusCode: http.StatusGatewayTimeout, want: failure.Timeout},
+		{name: "bad gateway", statusCode: http.StatusBadGateway, want: failure.Unavailable},
+		{name: "service unavailable", statusCode: http.StatusServiceUnavailable, want: failure.Unavailable},
+		{name: "internal server error", statusCode: http.StatusInternalServerError, want: failure.Unknown},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := healthStatusFailureKind(test.statusCode); got != test.want {
+				t.Fatalf("healthStatusFailureKind(%d) = %d, want %d", test.statusCode, got, test.want)
+			}
+		})
 	}
 }
 
@@ -183,6 +221,14 @@ func TestClient_HealthReturnsDecodeError(t *testing.T) {
 		t.Errorf(
 			"Health() error = %q, want decode health response context",
 			err,
+		)
+	}
+
+	if got := failure.Message(err); got != "Invalid server health response" {
+		t.Errorf(
+			"failure.Message(Health() error) = %q, want %q",
+			got,
+			"Invalid server health response",
 		)
 	}
 }

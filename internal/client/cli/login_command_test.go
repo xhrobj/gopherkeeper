@@ -38,10 +38,10 @@ func TestLoginCommand_ConfigurationAndInput(t *testing.T) {
 		[]string{
 			"gkeep",
 			"login",
-			"-l", "alice",
+			"--login", "alice",
 			"--address", "localhost:8082",
 			"--ca-cert", "flag-ca.pem",
-			"--session-file", "flag-session.json",
+			"--session-dir", "flag-session",
 		},
 		input,
 		&output,
@@ -53,9 +53,9 @@ func TestLoginCommand_ConfigurationAndInput(t *testing.T) {
 	}
 
 	wantConfig := config.Config{
-		Address:     "localhost:8082",
-		CACertFile:  "flag-ca.pem",
-		SessionFile: "flag-session.json",
+		Address:    "localhost:8082",
+		CACertFile: "flag-ca.pem",
+		SessionDir: "flag-session",
 	}
 	if gotConfig != wantConfig {
 		t.Errorf("configuration = %+v, want %+v", gotConfig, wantConfig)
@@ -87,6 +87,22 @@ func TestLoginCommand_RequiresLogin(t *testing.T) {
 	}
 }
 
+func TestLoginCommand_RejectsRemovedShortLoginFlag(t *testing.T) {
+	isolateClientConfig(t)
+
+	err := runTestCommand(
+		t,
+		[]string{"gkeep", "login", "-l", "alice"},
+		strings.NewReader(testRegistrationPassword+"\n"),
+		io.Discard,
+		io.Discard,
+		nil,
+	)
+	if err == nil {
+		t.Fatal("run() error = nil, want unknown -l flag error")
+	}
+}
+
 func TestLoginCommand_HelpDoesNotOfferPasswordFlags(t *testing.T) {
 	isolateClientConfig(t)
 
@@ -106,6 +122,9 @@ func TestLoginCommand_HelpDoesNotOfferPasswordFlags(t *testing.T) {
 	help := output.String()
 	if strings.Contains(help, "--password") {
 		t.Errorf("login help exposes password flag: %q", help)
+	}
+	if strings.Contains(help, "-l, --login") {
+		t.Errorf("help exposes removed short login alias: %q", help)
 	}
 	if strings.Contains(help, "stdin") {
 		t.Errorf("login help exposes technical stdin input: %q", help)

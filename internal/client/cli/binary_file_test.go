@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -148,48 +147,4 @@ func TestWriteBinaryFile_RejectsMissingParentDirectory(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "create output file") {
 		t.Fatalf("writeBinaryFile() error = %v, want create error", err)
 	}
-}
-
-func TestWriteBinaryFile_RemovesPartialFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "partial.bin")
-	writeErr := errors.New("disk full")
-
-	err := writeBinaryFileWith(
-		path,
-		[]byte("backup"),
-		func(outputPath string) (binaryOutputFile, error) {
-			file, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-			if err != nil {
-				return nil, err
-			}
-			return &failingBinaryOutputFile{file: file, err: writeErr}, nil
-		},
-		os.Remove,
-	)
-	if !errors.Is(err, writeErr) {
-		t.Fatalf("writeBinaryFileWith() error = %v, want %v", err, writeErr)
-	}
-	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
-		t.Fatalf("partial output stat error = %v, want not exist", statErr)
-	}
-}
-
-type failingBinaryOutputFile struct {
-	file *os.File
-	err  error
-}
-
-func (f *failingBinaryOutputFile) Write(data []byte) (int, error) {
-	written := len(data) / 2
-	if written == 0 && len(data) > 0 {
-		written = 1
-	}
-	if _, err := io.CopyN(f.file, bytes.NewReader(data), int64(written)); err != nil {
-		return 0, err
-	}
-	return written, f.err
-}
-
-func (f *failingBinaryOutputFile) Close() error {
-	return f.file.Close()
 }

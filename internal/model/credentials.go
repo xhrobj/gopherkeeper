@@ -1,10 +1,6 @@
 package model
 
-import (
-	"errors"
-	"strings"
-	"unicode/utf8"
-)
+import "errors"
 
 var (
 	// ErrInvalidCredentialsPayload сообщает, что credentials payload некорректен.
@@ -28,17 +24,10 @@ type CredentialsPayload struct {
 
 // Validate проверяет обязательные поля и ограничения credentials payload.
 func (payload *CredentialsPayload) Validate() error {
-	if payload == nil {
-		return ErrInvalidCredentialsPayload
-	}
-
-	if !utf8.ValidString(payload.Login) ||
-		!utf8.ValidString(payload.Password) ||
-		!utf8.ValidString(payload.URL) {
-		return ErrInvalidCredentialsPayload
-	}
-
-	if strings.TrimSpace(payload.Login) == "" || strings.TrimSpace(payload.Password) == "" {
+	if payload == nil ||
+		!validateRequiredSingleLine(payload.Login, CredentialsFieldMaxSize) ||
+		!validateRequiredSingleLine(payload.Password, CredentialsFieldMaxSize) ||
+		!validateOptionalSingleLine(payload.URL, CredentialsFieldMaxSize) {
 		return ErrInvalidCredentialsPayload
 	}
 

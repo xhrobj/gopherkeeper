@@ -38,7 +38,7 @@ func TestRegisterCommand_ConfigurationAndInput(t *testing.T) {
 		[]string{
 			"gkeep",
 			"register",
-			"-l", "alice",
+			"--login", "alice",
 			"--address", "localhost:8082",
 			"--ca-cert", "flag-ca.pem",
 		},
@@ -101,6 +101,9 @@ func TestRegisterCommand_HelpDoesNotOfferPasswordFlags(t *testing.T) {
 	help := output.String()
 	if strings.Contains(help, "--password") {
 		t.Errorf("register help exposes password flag: %q", help)
+	}
+	if strings.Contains(help, "-l, --login") {
+		t.Errorf("help exposes removed short login alias: %q", help)
 	}
 	if strings.Contains(help, "stdin") {
 		t.Errorf("register help exposes technical stdin input: %q", help)

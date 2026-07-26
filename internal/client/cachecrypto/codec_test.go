@@ -11,7 +11,7 @@ import (
 
 func TestRecordCodec_RoundTrip(t *testing.T) {
 	expiryMonth := 7
-	expiryYear := 2028
+	expiryYear := 28
 	createdAt := time.Date(2026, time.July, 14, 12, 0, 0, 0, time.UTC)
 	updatedAt := createdAt.Add(time.Hour)
 
@@ -23,7 +23,7 @@ func TestRecordCodec_RoundTrip(t *testing.T) {
 		{name: "text", typeID: model.RecordTypeText, payload: &model.TextPayload{Text: "secret", Metadata: "note"}},
 		{name: "credentials", typeID: model.RecordTypeCredentials, payload: &model.CredentialsPayload{Login: "alice", Password: "password", URL: "https://example.com"}},
 		{name: "card", typeID: model.RecordTypeCard, payload: &model.CardPayload{Number: "2013061420200619", ExpiryMonth: &expiryMonth, ExpiryYear: &expiryYear, CVV: "123"}},
-		{name: "binary", typeID: model.RecordTypeBinary, payload: &model.BinaryPayload{Filename: "backup.bin", Data: []byte{0, 1, 2, 255}, ContentType: "application/octet-stream"}},
+		{name: "binary", typeID: model.RecordTypeBinary, payload: &model.BinaryPayload{Filename: "backup.bin", Data: []byte{0, 1, 2, 255}}},
 	}
 
 	for _, tt := range tests {
@@ -52,6 +52,34 @@ func TestRecordCodec_RoundTrip(t *testing.T) {
 				t.Fatalf("DecodeRecord() = %#v, want %#v", decoded, record)
 			}
 		})
+	}
+}
+
+func TestDecodeRecordMetadata_DoesNotValidatePayload(t *testing.T) {
+	encoded := []byte(`{
+		"format_version":1,
+		"id":"550e8400-e29b-41d4-a716-446655440000",
+		"type":"text",
+		"title":"Cached note",
+		"revision":2,
+		"created_at":"2026-07-24T12:00:00Z",
+		"updated_at":"2026-07-24T12:05:00Z",
+		"payload":{"text":""}
+	}`)
+
+	metadata, err := DecodeRecordMetadata(encoded)
+	if err != nil {
+		t.Fatalf("DecodeRecordMetadata() error = %v", err)
+	}
+	if metadata.ID != "550e8400-e29b-41d4-a716-446655440000" ||
+		metadata.Type != model.RecordTypeText ||
+		metadata.Title != "Cached note" ||
+		metadata.Revision != 2 {
+		t.Fatalf("DecodeRecordMetadata() = %#v", metadata)
+	}
+
+	if _, err := DecodeRecord(encoded); !errors.Is(err, ErrInvalidRecordFormat) {
+		t.Fatalf("DecodeRecord() error = %v, want ErrInvalidRecordFormat", err)
 	}
 }
 

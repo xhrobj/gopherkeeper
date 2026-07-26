@@ -100,6 +100,44 @@ func TestAuthenticationService_Authenticate(t *testing.T) {
 	}
 }
 
+func TestAuthenticationService_AuthenticateAcceptsLegacyShortPassword(t *testing.T) {
+	const legacyPassword = "old"
+
+	users := successfulUserCredentialReaderStub(t)
+	passwords := &passwordCheckerStub{
+		checkFunc: func(password string, _ []byte) error {
+			if password != legacyPassword {
+				t.Errorf("Check() password = %q, want %q", password, legacyPassword)
+			}
+
+			return nil
+		},
+	}
+	tokens := &tokenIssuerStub{
+		issueFunc: func(context.Context, int64) (string, time.Time, error) {
+			return "access-token", time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC), nil
+		},
+	}
+	service := NewAuthenticationService(users, passwords, tokens)
+
+	_, err := service.Authenticate(context.Background(), "alice", legacyPassword)
+	if err != nil {
+		t.Fatalf("Authenticate() error = %v", err)
+	}
+
+	if users.calls != 1 {
+		t.Errorf("FindByLogin() calls = %d, want 1", users.calls)
+	}
+
+	if passwords.calls != 1 {
+		t.Errorf("Check() calls = %d, want 1", passwords.calls)
+	}
+
+	if tokens.calls != 1 {
+		t.Errorf("Issue() calls = %d, want 1", tokens.calls)
+	}
+}
+
 func TestAuthenticationService_AuthenticateInvalidInput(t *testing.T) {
 	users := &userCredentialReaderStub{}
 	passwords := &passwordCheckerStub{}

@@ -9,11 +9,11 @@ import (
 
 // ListCachedRecords возвращает metadata записей из существующего
 // зашифрованного локального кеша без обращения к online-сессии или Серверу.
-func (a *Application) ListCachedRecords(
+func (a *OfflineApplication) ListCachedRecords(
 	ctx context.Context,
 	request OfflineReadRequest,
 ) (result OfflineListResult, err error) {
-	repository, err := a.openOfflineCache(ctx, request)
+	repository, err := openOfflineCache(ctx, a.offlineCaches, a.serverAddress, request)
 	if err != nil {
 		return OfflineListResult{}, err
 	}
@@ -38,7 +38,7 @@ func (a *Application) ListCachedRecords(
 
 // GetCachedRecord возвращает полную запись из существующего зашифрованного
 // локального кеша без обращения к online-сессии или Серверу.
-func (a *Application) GetCachedRecord(
+func (a *OfflineApplication) GetCachedRecord(
 	ctx context.Context,
 	request OfflineReadRequest,
 	recordID string,
@@ -47,7 +47,7 @@ func (a *Application) GetCachedRecord(
 		return OfflineGetResult{}, err
 	}
 
-	repository, err := a.openOfflineCache(ctx, request)
+	repository, err := openOfflineCache(ctx, a.offlineCaches, a.serverAddress, request)
 	if err != nil {
 		return OfflineGetResult{}, err
 	}
@@ -74,8 +74,10 @@ func (a *Application) GetCachedRecord(
 	}, nil
 }
 
-func (a *Application) openOfflineCache(
+func openOfflineCache(
 	ctx context.Context,
+	offlineCaches OfflineCacheRepositoryProvider,
+	serverAddress string,
 	request OfflineReadRequest,
 ) (OfflineCacheRepository, error) {
 	canonicalLogin, err := model.CanonicalizeLogin(request.Login)
@@ -83,9 +85,9 @@ func (a *Application) openOfflineCache(
 		return nil, newUserError("invalid login", err)
 	}
 
-	repository, err := a.offlineCaches(
+	repository, err := offlineCaches(
 		ctx,
-		a.serverAddress,
+		serverAddress,
 		canonicalLogin,
 		[]byte(request.Password),
 	)

@@ -15,18 +15,23 @@ type application interface {
 	Register(ctx context.Context, login, password string) (model.User, error)
 	Login(ctx context.Context, login, password string) (model.User, error)
 	Whoami(ctx context.Context) (model.User, error)
-	CreateRecord(ctx context.Context, request usecase.CreateRecordRequest) (model.Record, error)
-	UpdateRecord(ctx context.Context, request usecase.UpdateRecordRequest) (model.Record, error)
+
 	ListRecords(ctx context.Context) ([]model.RecordMetadata, error)
 	GetRecord(ctx context.Context, recordID string) (model.Record, error)
+	CreateRecord(ctx context.Context, request usecase.CreateRecordRequest) (model.Record, error)
+	UpdateRecord(ctx context.Context, request usecase.UpdateRecordRequest) (model.Record, error)
+	DeleteRecord(ctx context.Context, request usecase.DeleteRecordRequest) error
+
+	Sync(ctx context.Context, request usecase.SyncRequest) (usecase.SyncResult, error)
+}
+
+type offlineApplication interface {
 	ListCachedRecords(ctx context.Context, request usecase.OfflineReadRequest) (usecase.OfflineListResult, error)
 	GetCachedRecord(
 		ctx context.Context,
 		request usecase.OfflineReadRequest,
 		recordID string,
 	) (usecase.OfflineGetResult, error)
-	DeleteRecord(ctx context.Context, request usecase.DeleteRecordRequest) error
-	Sync(ctx context.Context, request usecase.SyncRequest) (usecase.SyncResult, error)
 }
 
 type userLogoutter interface {
@@ -39,7 +44,7 @@ type healthChecker interface {
 
 type clientFactory interface {
 	NewApplication(cfg config.Config) (application, error)
-	NewOfflineApplication(cfg config.Config) (application, error)
+	NewOfflineApplication(cfg config.Config) (offlineApplication, error)
 	NewLogoutApplication(cfg config.Config) (userLogoutter, error)
 	NewHealthClient(cfg config.Config) (healthChecker, error)
 }
@@ -52,7 +57,7 @@ func (defaultClientFactory) NewApplication(cfg config.Config) (application, erro
 }
 
 // NewOfflineApplication создаёт application для offline read-only сценариев.
-func (defaultClientFactory) NewOfflineApplication(cfg config.Config) (application, error) {
+func (defaultClientFactory) NewOfflineApplication(cfg config.Config) (offlineApplication, error) {
 	return app.NewOffline(cfg), nil
 }
 
@@ -75,7 +80,7 @@ func applicationFromCommand(command *urfavecli.Command, factory clientFactory) (
 	return factory.NewApplication(cfg)
 }
 
-func offlineApplicationFromCommand(command *urfavecli.Command, factory clientFactory) (application, error) {
+func offlineApplicationFromCommand(command *urfavecli.Command, factory clientFactory) (offlineApplication, error) {
 	cfg, err := configFromCommand(command)
 	if err != nil {
 		return nil, err

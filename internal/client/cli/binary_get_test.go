@@ -67,7 +67,6 @@ func TestRecordsGetBinaryCommand(t *testing.T) {
 		"Filename: backup.bin",
 		"Size: 16 bytes",
 		"Saved to: " + outputPath,
-		"Content type: application/octet-stream",
 		"Metadata:\nprivate backup",
 	} {
 		if !strings.Contains(output.String(), want) {
@@ -176,10 +175,9 @@ func binaryTestRecord(recordedAt time.Time, data []byte) model.Record {
 			UpdatedAt: recordedAt,
 		},
 		Payload: &model.BinaryPayload{
-			Filename:    "backup.bin",
-			Data:        data,
-			ContentType: "application/octet-stream",
-			Metadata:    "private backup",
+			Filename: "backup.bin",
+			Data:     data,
+			Metadata: "private backup",
 		},
 	}
 }

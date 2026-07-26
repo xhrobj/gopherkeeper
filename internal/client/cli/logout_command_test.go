@@ -27,7 +27,7 @@ func TestLogoutCommand_Configuration(t *testing.T) {
 			"logout",
 			"--address", "localhost:8082",
 			"--ca-cert", "flag-ca.pem",
-			"--session-file", "flag-session.json",
+			"--session-dir", "flag-session",
 		},
 		nil,
 		&output,
@@ -39,9 +39,9 @@ func TestLogoutCommand_Configuration(t *testing.T) {
 	}
 
 	wantConfig := config.Config{
-		Address:     "localhost:8082",
-		CACertFile:  "flag-ca.pem",
-		SessionFile: "flag-session.json",
+		Address:    "localhost:8082",
+		CACertFile: "flag-ca.pem",
+		SessionDir: "flag-session",
 	}
 	if gotConfig != wantConfig {
 		t.Errorf("configuration = %+v, want %+v", gotConfig, wantConfig)

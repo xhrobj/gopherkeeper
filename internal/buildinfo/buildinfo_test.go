@@ -34,11 +34,30 @@ func TestPrint_WithEmptyValues(t *testing.T) {
 	}
 
 	got := buf.String()
-	want := "Build version: " + notAvailable + "\n" +
-		"Build date: " + notAvailable + "\n" +
-		"Build commit: " + notAvailable + "\n"
+	want := "Build version: " + NotAvailable + "\n" +
+		"Build date: " + NotAvailable + "\n" +
+		"Build commit: " + NotAvailable + "\n"
 
 	if got != want {
 		t.Fatalf("Print() = %q, want %q", got, want)
+	}
+}
+
+func TestValue(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{name: "value", value: "v0.9.0", want: "v0.9.0"},
+		{name: "empty", value: "", want: NotAvailable},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := Value(test.value); got != test.want {
+				t.Fatalf("Value(%q) = %q, want %q", test.value, got, test.want)
+			}
+		})
 	}
 }

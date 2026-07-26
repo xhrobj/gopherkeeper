@@ -65,18 +65,27 @@ func EncodeRecord(record model.Record) ([]byte, error) {
 	return encoded, nil
 }
 
+// DecodeRecordMetadata восстанавливает и валидирует только открытые metadata
+// записи, не разбирая её приватный payload.
+func DecodeRecordMetadata(encoded []byte) (model.RecordMetadata, error) {
+	envelope, err := decodeRecordEnvelope(encoded)
+	if err != nil {
+		return model.RecordMetadata{}, err
+	}
+
+	metadata := metadataFromEnvelope(envelope)
+	if err := metadata.Validate(); err != nil {
+		return model.RecordMetadata{}, fmt.Errorf("%w: %v", ErrInvalidRecordFormat, err)
+	}
+
+	return metadata, nil
+}
+
 // DecodeRecord восстанавливает и валидирует полную приватную запись после локального расшифрования.
 func DecodeRecord(encoded []byte) (model.Record, error) {
-	var envelope recordEnvelope
-	if err := decodeStrictJSON(encoded, &envelope); err != nil {
-		return model.Record{}, fmt.Errorf("%w: decode record", ErrInvalidRecordFormat)
-	}
-	if envelope.FormatVersion != RecordFormatVersion {
-		return model.Record{}, fmt.Errorf(
-			"%w: %d",
-			ErrUnsupportedRecordFormatVersion,
-			envelope.FormatVersion,
-		)
+	envelope, err := decodeRecordEnvelope(encoded)
+	if err != nil {
+		return model.Record{}, err
 	}
 
 	payload, err := model.NewRecordPayload(envelope.Type)
@@ -88,21 +97,41 @@ func DecodeRecord(encoded []byte) (model.Record, error) {
 	}
 
 	record := model.Record{
-		Metadata: model.RecordMetadata{
-			ID:        envelope.ID,
-			Type:      envelope.Type,
-			Title:     envelope.Title,
-			Revision:  envelope.Revision,
-			CreatedAt: envelope.CreatedAt,
-			UpdatedAt: envelope.UpdatedAt,
-		},
-		Payload: payload,
+		Metadata: metadataFromEnvelope(envelope),
+		Payload:  payload,
 	}
 	if err := record.Validate(); err != nil {
 		return model.Record{}, fmt.Errorf("%w: %v", ErrInvalidRecordFormat, err)
 	}
 
 	return record, nil
+}
+
+func decodeRecordEnvelope(encoded []byte) (recordEnvelope, error) {
+	var envelope recordEnvelope
+	if err := decodeStrictJSON(encoded, &envelope); err != nil {
+		return recordEnvelope{}, fmt.Errorf("%w: decode record", ErrInvalidRecordFormat)
+	}
+	if envelope.FormatVersion != RecordFormatVersion {
+		return recordEnvelope{}, fmt.Errorf(
+			"%w: %d",
+			ErrUnsupportedRecordFormatVersion,
+			envelope.FormatVersion,
+		)
+	}
+
+	return envelope, nil
+}
+
+func metadataFromEnvelope(envelope recordEnvelope) model.RecordMetadata {
+	return model.RecordMetadata{
+		ID:        envelope.ID,
+		Type:      envelope.Type,
+		Title:     envelope.Title,
+		Revision:  envelope.Revision,
+		CreatedAt: envelope.CreatedAt,
+		UpdatedAt: envelope.UpdatedAt,
+	}
 }
 
 func decodeStrictJSON(data []byte, destination any) error {

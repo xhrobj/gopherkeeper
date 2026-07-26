@@ -9,22 +9,23 @@ import (
 )
 
 const (
-	configFlag      = "config"
-	addressFlag     = "address"
-	caCertFlag      = "ca-cert"
-	sessionFileFlag = "session-file"
-	cacheDirFlag    = "cache-dir"
+	configFlag     = "config"
+	addressFlag    = "address"
+	caCertFlag     = "ca-cert"
+	sessionDirFlag = "session-dir"
+	cacheDirFlag   = "cache-dir"
 
-	clientConfigMetadataKey = "client-config"
+	clientConfigMetadataKey     = "client-config"
+	clientConfigFileMetadataKey = "client-config-file"
 )
 
-func resolveClientConfig(command *urfavecli.Command) (config.Config, error) {
+func resolveClientConfigWithFile(command *urfavecli.Command) (config.Config, string, error) {
 	configFile := nonEmptyEnvironmentValue("CONFIG")
 	overrides := config.Overrides{
-		Address:     nonEmptyEnvironmentValue("ADDRESS"),
-		CACertFile:  nonEmptyEnvironmentValue("CA_CERT_FILE"),
-		SessionFile: nonEmptyEnvironmentValue("SESSION_FILE"),
-		CacheDir:    nonEmptyEnvironmentValue("CACHE_DIR"),
+		Address:    nonEmptyEnvironmentValue("ADDRESS"),
+		CACertFile: nonEmptyEnvironmentValue("CA_CERT_FILE"),
+		SessionDir: nonEmptyEnvironmentValue("SESSION_DIR"),
+		CacheDir:   nonEmptyEnvironmentValue("CACHE_DIR"),
 	}
 
 	if value := explicitStringFlag(command, configFlag); value != nil {
@@ -36,8 +37,8 @@ func resolveClientConfig(command *urfavecli.Command) (config.Config, error) {
 	if value := explicitStringFlag(command, caCertFlag); value != nil {
 		overrides.CACertFile = value
 	}
-	if value := explicitStringFlag(command, sessionFileFlag); value != nil {
-		overrides.SessionFile = value
+	if value := explicitStringFlag(command, sessionDirFlag); value != nil {
+		overrides.SessionDir = value
 	}
 	if value := explicitStringFlag(command, cacheDirFlag); value != nil {
 		overrides.CacheDir = value
@@ -48,7 +49,12 @@ func resolveClientConfig(command *urfavecli.Command) (config.Config, error) {
 		configFilePath = *configFile
 	}
 
-	return config.Resolve(configFilePath, overrides)
+	cfg, err := config.Resolve(configFilePath, overrides)
+	if err != nil {
+		return config.Config{}, "", err
+	}
+
+	return cfg, configFilePath, nil
 }
 
 func explicitStringFlag(command *urfavecli.Command, name string) *string {
@@ -81,4 +87,18 @@ func configFromCommand(command *urfavecli.Command) (config.Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func configFileFromCommand(command *urfavecli.Command) (string, error) {
+	value, ok := command.Root().Metadata[clientConfigFileMetadataKey]
+	if !ok {
+		return "", nil
+	}
+
+	path, ok := value.(string)
+	if !ok {
+		return "", errors.New("client config file has unexpected type")
+	}
+
+	return path, nil
 }

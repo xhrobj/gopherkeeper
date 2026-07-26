@@ -165,13 +165,28 @@ type healthCheckerStub struct {
 	health func(context.Context) (string, error)
 }
 
+type tuiRunnerStub struct {
+	run func(context.Context, config.Config, string, buildinfo.Info, io.Reader, io.Writer) error
+}
+
+func (s tuiRunnerStub) Run(
+	ctx context.Context,
+	cfg config.Config,
+	configFile string,
+	info buildinfo.Info,
+	input io.Reader,
+	output io.Writer,
+) error {
+	return s.run(ctx, cfg, configFile, info, input, output)
+}
+
 func (s healthCheckerStub) Health(ctx context.Context) (string, error) {
 	return s.health(ctx)
 }
 
 type clientFactoryStub struct {
 	newApplication        func(config.Config) (application, error)
-	newOfflineApplication func(config.Config) (application, error)
+	newOfflineApplication func(config.Config) (offlineApplication, error)
 	newLogoutApplication  func(config.Config) (userLogoutter, error)
 	newHealthClient       func(config.Config) (healthChecker, error)
 }
@@ -185,7 +200,7 @@ func newClientFactoryStub(t *testing.T) *clientFactoryStub {
 			t.Fatal("application factory must not be called")
 			return nil, nil
 		},
-		newOfflineApplication: func(config.Config) (application, error) {
+		newOfflineApplication: func(config.Config) (offlineApplication, error) {
 			t.Helper()
 			t.Fatal("offline application factory must not be called")
 			return nil, nil
@@ -207,7 +222,7 @@ func (s *clientFactoryStub) NewApplication(cfg config.Config) (application, erro
 	return s.newApplication(cfg)
 }
 
-func (s *clientFactoryStub) NewOfflineApplication(cfg config.Config) (application, error) {
+func (s *clientFactoryStub) NewOfflineApplication(cfg config.Config) (offlineApplication, error) {
 	return s.newOfflineApplication(cfg)
 }
 
@@ -235,7 +250,7 @@ func isolateClientConfig(t *testing.T) {
 	t.Setenv("CONFIG", "")
 	t.Setenv("ADDRESS", "")
 	t.Setenv("CA_CERT_FILE", "")
-	t.Setenv("SESSION_FILE", "")
+	t.Setenv("SESSION_DIR", "")
 	t.Setenv("CACHE_DIR", "")
 }
 
@@ -263,6 +278,18 @@ func runTestCommand(
 		info:        testBuildInfo,
 		factory:     factory,
 		passwords:   streamPasswordReader{},
+		tui: tuiRunnerStub{run: func(
+			context.Context,
+			config.Config,
+			string,
+			buildinfo.Info,
+			io.Reader,
+			io.Writer,
+		) error {
+			t.Helper()
+			t.Fatal("TUI runner must not be called")
+			return nil
+		}},
 	})
 }
 

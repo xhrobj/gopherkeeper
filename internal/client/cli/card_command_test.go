@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	testCardNumber = "2013 0614 2020 0619"
+	testCardNumber = "2013061420200619"
 	testCardCVV    = "014"
 )
 
@@ -48,7 +48,7 @@ func (r *cardReaderStub) ReadLine(io.Reader, io.Writer, string) (string, error) 
 func TestRecordsCreateCardCommand(t *testing.T) {
 	isolateClientConfig(t)
 
-	input := strings.NewReader(testCardNumber + "\nJoel Miller\n03/2038\n" + testCardCVV + "\n")
+	input := strings.NewReader(testCardNumber + "\nJoel Miller\n03/38\n" + testCardCVV + "\n")
 	var gotConfig config.Config
 	app := newApplicationStub(t)
 	app.createRecord = func(_ context.Context, request usecase.CreateRecordRequest) (model.Record, error) {
@@ -90,7 +90,7 @@ func TestRecordsCreateCardCommand(t *testing.T) {
 func TestRecordsUpdateCardCommand(t *testing.T) {
 	isolateClientConfig(t)
 
-	input := strings.NewReader(testCardNumber + "\nJoel Miller\n03/2038\n" + testCardCVV + "\n")
+	input := strings.NewReader(testCardNumber + "\nJoel Miller\n03/38\n" + testCardCVV + "\n")
 	app := newApplicationStub(t)
 	app.updateRecord = func(_ context.Context, request usecase.UpdateRecordRequest) (model.Record, error) {
 		payload := cardPayloadFromRequest(t, request.Payload)
@@ -152,7 +152,7 @@ func TestReadCardPayload(t *testing.T) {
 	metadataFile := writeTestFile(t, "metadata.txt", "test card")
 	reader := &cardReaderStub{
 		hiddenValues: []string{testCardNumber, testCardCVV},
-		lineValues:   []string{"Joel Miller", "03/2038"},
+		lineValues:   []string{"Joel Miller", "03/38"},
 	}
 
 	payload, err := readCardPayload(
@@ -169,27 +169,27 @@ func TestReadCardPayload(t *testing.T) {
 	}
 	if payload.Number != testCardNumber || payload.Cardholder != "Joel Miller" ||
 		payload.ExpiryMonth == nil || *payload.ExpiryMonth != 3 ||
-		payload.ExpiryYear == nil || *payload.ExpiryYear != 2038 ||
+		payload.ExpiryYear == nil || *payload.ExpiryYear != 38 ||
 		payload.CVV != testCardCVV || payload.Metadata != "test card" {
 		t.Errorf("payload = %#v, want card values", payload)
 	}
 }
 
 func TestReadOptionalCardExpiry_RetriesInvalidValue(t *testing.T) {
-	reader := &cardReaderStub{lineValues: []string{"13/2038", "01/0000", "03/2038"}}
+	reader := &cardReaderStub{lineValues: []string{"13/38", "01/100", "03/38"}}
 	var promptOutput bytes.Buffer
 
 	month, year, err := readOptionalCardExpiry(reader, strings.NewReader(""), &promptOutput)
 	if err != nil {
 		t.Fatalf("readOptionalCardExpiry() error = %v", err)
 	}
-	if month == nil || *month != 3 || year == nil || *year != 2038 {
-		t.Fatalf("expiry = %v/%v, want 3/2038", month, year)
+	if month == nil || *month != 3 || year == nil || *year != 38 {
+		t.Fatalf("expiry = %v/%v, want 3/38", month, year)
 	}
 	if reader.lineCalls != 3 {
 		t.Errorf("line calls = %d, want 3", reader.lineCalls)
 	}
-	if got := strings.Count(promptOutput.String(), "Invalid expiry. Use MM/YYYY or leave it empty."); got != 2 {
+	if got := strings.Count(promptOutput.String(), "Invalid expiry. Use MM/YY or leave it empty."); got != 2 {
 		t.Errorf("validation messages = %d, want 2", got)
 	}
 }
@@ -214,14 +214,14 @@ func TestParseCardExpiry(t *testing.T) {
 		wantYear  int
 		wantOK    bool
 	}{
-		{name: "valid", value: "03/2038", wantMonth: 3, wantYear: 2038, wantOK: true},
-		{name: "minimum values", value: "01/0001", wantMonth: 1, wantYear: 1, wantOK: true},
-		{name: "zero year", value: "01/0000", wantOK: false},
+		{name: "valid", value: "03/38", wantMonth: 3, wantYear: 38, wantOK: true},
+		{name: "minimum values", value: "01/00", wantMonth: 1, wantYear: 0, wantOK: true},
+		{name: "year too long", value: "01/100", wantOK: false},
 		{name: "empty", value: "", wantOK: false},
-		{name: "single digit month", value: "3/2038", wantOK: false},
-		{name: "short year", value: "03/38", wantOK: false},
-		{name: "month out of range", value: "13/2038", wantOK: false},
-		{name: "non digit", value: "03/20x8", wantOK: false},
+		{name: "single digit month", value: "3/38", wantOK: false},
+		{name: "short year", value: "03/8", wantOK: false},
+		{name: "month out of range", value: "13/38", wantOK: false},
+		{name: "non digit", value: "03/3x", wantOK: false},
 	}
 
 	for _, test := range tests {

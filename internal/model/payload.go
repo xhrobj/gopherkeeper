@@ -1,7 +1,5 @@
 package model
 
-import "unicode/utf8"
-
 // RecordPayload описывает типизированный приватный payload записи.
 //
 // Реализации интерфейса определены только в пакете model, чтобы тип записи
@@ -33,11 +31,8 @@ func NewRecordPayload(recordType RecordType) (RecordPayload, error) {
 }
 
 func validatePayloadMetadata(metadata string, invalidPayloadError error) error {
-	if !utf8.ValidString(metadata) {
+	if !validateOptionalSingleLine(metadata, MetadataMaxSize) {
 		return invalidPayloadError
-	}
-	if len(metadata) > MetadataMaxSize {
-		return ErrPayloadTooLarge
 	}
 
 	return nil
