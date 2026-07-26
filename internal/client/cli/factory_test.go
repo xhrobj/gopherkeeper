@@ -66,7 +66,7 @@ func TestOfflineApplicationFromCommand(t *testing.T) {
 	}
 	wantApplication := newApplicationStub(t)
 	factory := newClientFactoryStub(t)
-	factory.newOfflineApplication = func(got config.Config) (application, error) {
+	factory.newOfflineApplication = func(got config.Config) (offlineApplication, error) {
 		if got != wantConfig {
 			t.Errorf("NewOfflineApplication() config = %+v, want %+v", got, wantConfig)
 		}
@@ -88,7 +88,7 @@ func TestOfflineApplicationFromCommand(t *testing.T) {
 func TestOfflineApplicationFromCommand_ReturnsFactoryError(t *testing.T) {
 	factoryErr := errors.New("offline factory failed")
 	factory := newClientFactoryStub(t)
-	factory.newOfflineApplication = func(config.Config) (application, error) {
+	factory.newOfflineApplication = func(config.Config) (offlineApplication, error) {
 		return nil, factoryErr
 	}
 	command := &urfavecli.Command{Metadata: map[string]any{

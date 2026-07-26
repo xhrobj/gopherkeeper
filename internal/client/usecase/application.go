@@ -19,6 +19,13 @@ type Application struct {
 	serverAddress string
 }
 
+// OfflineApplication выполняет только offline read-only сценарии поверх
+// существующего зашифрованного локального кеша.
+type OfflineApplication struct {
+	offlineCaches OfflineCacheRepositoryProvider
+	serverAddress string
+}
+
 // HealthChecker описывает удалённую проверку доступности Сервера.
 type HealthChecker interface {
 	Health(ctx context.Context) (string, error)
@@ -67,8 +74,8 @@ func New(
 func NewOffline(
 	offlineCaches OfflineCacheRepositoryProvider,
 	serverAddress string,
-) *Application {
-	return &Application{
+) *OfflineApplication {
+	return &OfflineApplication{
 		offlineCaches: offlineCaches,
 		serverAddress: serverAddress,
 	}

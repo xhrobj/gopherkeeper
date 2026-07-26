@@ -29,7 +29,7 @@ func New(cfg config.Config) (*usecase.Application, error) {
 
 // NewOffline создаёт клиентское application-приложение только для чтения
 // существующего зашифрованного локального кеша.
-func NewOffline(cfg config.Config) *usecase.Application {
+func NewOffline(cfg config.Config) *usecase.OfflineApplication {
 	return usecase.NewOffline(
 		encryptedOfflineCacheRepositoryProvider(cfg.CacheDir),
 		cfg.Address,

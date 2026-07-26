@@ -19,7 +19,25 @@ func (a *Application) OpenCacheSession(
 	ctx context.Context,
 	request OfflineReadRequest,
 ) (*CacheSession, error) {
-	repository, err := a.openOfflineCache(ctx, request)
+	return openCacheSession(ctx, a.offlineCaches, a.serverAddress, request)
+}
+
+// OpenCacheSession открывает существующий зашифрованный кеш аккаунта и
+// возвращает сессию, которую вызывающая сторона обязана закрыть.
+func (a *OfflineApplication) OpenCacheSession(
+	ctx context.Context,
+	request OfflineReadRequest,
+) (*CacheSession, error) {
+	return openCacheSession(ctx, a.offlineCaches, a.serverAddress, request)
+}
+
+func openCacheSession(
+	ctx context.Context,
+	offlineCaches OfflineCacheRepositoryProvider,
+	serverAddress string,
+	request OfflineReadRequest,
+) (*CacheSession, error) {
+	repository, err := openOfflineCache(ctx, offlineCaches, serverAddress, request)
 	if err != nil {
 		return nil, err
 	}

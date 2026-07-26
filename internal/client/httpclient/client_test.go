@@ -102,6 +102,9 @@ func TestClient_HealthReturnsStatusError(t *testing.T) {
 	if !strings.Contains(err.Error(), "503 Service Unavailable") {
 		t.Errorf("Health() error = %q, want status 503", err)
 	}
+	if got := failure.Message(err); got != "Server health check failed" {
+		t.Errorf("failure.Message(Health() error) = %q, want %q", got, "Server health check failed")
+	}
 }
 
 func TestNew_ReturnsCertificateErrors(t *testing.T) {
@@ -193,6 +196,14 @@ func TestClient_HealthReturnsDecodeError(t *testing.T) {
 		t.Errorf(
 			"Health() error = %q, want decode health response context",
 			err,
+		)
+	}
+
+	if got := failure.Message(err); got != "Invalid server health response" {
+		t.Errorf(
+			"failure.Message(Health() error) = %q, want %q",
+			got,
+			"Invalid server health response",
 		)
 	}
 }

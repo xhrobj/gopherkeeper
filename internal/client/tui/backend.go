@@ -58,11 +58,21 @@ func createBackend(factory BackendFactory, cfg config.Config) (Backend, error) {
 
 	backend, err := factory(cfg)
 	if err != nil {
-		return nil, failure.Context("create TUI backend", err)
+		return nil, failure.Wrap(
+			failure.KindOf(err),
+			"create TUI backend",
+			"Backend creation failed",
+			err,
+		)
 	}
 
 	if backend == nil {
-		return nil, errors.New("create TUI backend: factory returned nil backend")
+		return nil, failure.Wrap(
+			failure.Unknown,
+			"create TUI backend: factory returned nil backend",
+			"Backend creation failed",
+			nil,
+		)
 	}
 
 	return backend, nil

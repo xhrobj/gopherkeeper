@@ -69,12 +69,22 @@ func (c *Client) Health(ctx context.Context) (string, error) {
 	}
 
 	if response.StatusCode() != http.StatusOK {
-		return "", fmt.Errorf("health request returned status %s", response.Status())
+		return "", failure.Wrap(
+			failure.Unknown,
+			fmt.Sprintf("health request returned status %s", response.Status()),
+			"Server health check failed",
+			nil,
+		)
 	}
 
 	var health healthResponse
 	if err := json.Unmarshal(response.Body(), &health); err != nil {
-		return "", fmt.Errorf("decode health response: %w", err)
+		return "", failure.Wrap(
+			failure.Unknown,
+			"decode health response",
+			"Invalid server health response",
+			err,
+		)
 	}
 
 	return health.Status, nil

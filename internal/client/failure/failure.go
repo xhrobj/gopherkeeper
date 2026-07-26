@@ -218,11 +218,13 @@ func Message(err error) string {
 	if err == nil {
 		return ""
 	}
+
 	var provider messageProvider
 	if errors.As(err, &provider) {
 		return strings.TrimSpace(provider.UserMessage())
 	}
-	return strings.TrimSpace(err.Error())
+
+	return Reason(Unknown)
 }
 
 // Context добавляет диагностический контекст, не включая его в сообщение для пользователя.
@@ -246,6 +248,7 @@ func Network(operation string, err error) error {
 	if kind == Unknown {
 		return Wrap(Unknown, operation, "Connection failed", err)
 	}
+
 	return Wrap(kind, operation, Reason(kind), err)
 }
 
@@ -279,6 +282,6 @@ func Reason(kind Kind) string {
 	case TooLarge:
 		return "Payload exceeds the allowed size"
 	default:
-		return "Connection failed"
+		return "Operation failed"
 	}
 }

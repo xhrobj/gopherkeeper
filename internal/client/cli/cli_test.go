@@ -186,7 +186,7 @@ func (s healthCheckerStub) Health(ctx context.Context) (string, error) {
 
 type clientFactoryStub struct {
 	newApplication        func(config.Config) (application, error)
-	newOfflineApplication func(config.Config) (application, error)
+	newOfflineApplication func(config.Config) (offlineApplication, error)
 	newLogoutApplication  func(config.Config) (userLogoutter, error)
 	newHealthClient       func(config.Config) (healthChecker, error)
 }
@@ -200,7 +200,7 @@ func newClientFactoryStub(t *testing.T) *clientFactoryStub {
 			t.Fatal("application factory must not be called")
 			return nil, nil
 		},
-		newOfflineApplication: func(config.Config) (application, error) {
+		newOfflineApplication: func(config.Config) (offlineApplication, error) {
 			t.Helper()
 			t.Fatal("offline application factory must not be called")
 			return nil, nil
@@ -222,7 +222,7 @@ func (s *clientFactoryStub) NewApplication(cfg config.Config) (application, erro
 	return s.newApplication(cfg)
 }
 
-func (s *clientFactoryStub) NewOfflineApplication(cfg config.Config) (application, error) {
+func (s *clientFactoryStub) NewOfflineApplication(cfg config.Config) (offlineApplication, error) {
 	return s.newOfflineApplication(cfg)
 }
 

@@ -55,8 +55,8 @@ func TestCleanRecordListError(t *testing.T) {
 		{name: "unknown", want: "Unknown record list error"},
 		{name: "canceled", err: context.Canceled, want: "Record loading canceled"},
 		{name: "server refused", err: errors.New("list records: connection refused"), want: "Connection refused"},
-		{name: "server prefix", err: failure.Context("list records", errors.New("access token is missing")), want: "Access token is missing"},
-		{name: "application prefix", err: failure.Context("create client application", errors.New("invalid config")), want: "Invalid config"},
+		{name: "server prefix", err: failure.Context("list records", errors.New("access token is missing")), want: "Unable to load records from Server"},
+		{name: "application prefix", err: failure.Context("create client application", errors.New("invalid config")), want: "Unable to load records from Server"},
 		{name: "empty server", err: errors.New(""), want: "Unable to load records from Server"},
 	}
 

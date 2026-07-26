@@ -67,7 +67,7 @@ func recordReadModeFromCommand(command *urfavecli.Command) (recordReadMode, erro
 
 func executeOfflineListRecords(
 	ctx context.Context,
-	application application,
+	application offlineApplication,
 	passwords passwordReader,
 	streams passwordStreams,
 	login string,
@@ -90,7 +90,7 @@ func executeOfflineListRecords(
 
 func executeOfflineGetRecord(
 	ctx context.Context,
-	application application,
+	application offlineApplication,
 	passwords passwordReader,
 	streams passwordStreams,
 	login string,

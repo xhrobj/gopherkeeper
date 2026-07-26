@@ -75,7 +75,8 @@ func cleanFailureMessage(err error, fallback string) string {
 	}
 
 	message := failure.Message(err)
-	if message == "" {
+	if message == "" ||
+		(failure.KindOf(err) == failure.Unknown && message == failure.Reason(failure.Unknown)) {
 		return fallback
 	}
 

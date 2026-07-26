@@ -13,6 +13,18 @@ import (
 	recordmodel "github.com/xhrobj/gopherkeeper/internal/model"
 )
 
+type registrationConflictError struct {
+	login string
+}
+
+func (err registrationConflictError) Error() string {
+	return `login "` + err.login + `" is already registered`
+}
+
+func (err registrationConflictError) Unwrap() error {
+	return recordmodel.ErrLoginAlreadyExists
+}
+
 func TestModel_F10OpensCurrentAccountMenuAtLogin(t *testing.T) {
 	m := newTestModel(t, config.Config{}, buildinfo.Info{})
 
@@ -115,7 +127,7 @@ func TestModel_LoginErrorShowsRedDialog(t *testing.T) {
 		string,
 		string,
 	) (string, error) {
-		return "", errors.New("invalid login or password")
+		return "", recordmodel.ErrInvalidCredentials
 	}}
 
 	updated, cmd := m.Update(keyPress("enter"))
@@ -502,7 +514,7 @@ func TestModel_RegisterFailureHighlightsLogin(t *testing.T) {
 	m.authentication.registerForm.repeatPassword.setValue("secret")
 	m.authentication.registerForm.focus = registerSubmit
 	m.backend = backendStub{register: func(context.Context, string, string) (string, error) {
-		return "", errors.New(`login "alice" is already registered`)
+		return "", registrationConflictError{login: "alice"}
 	}}
 
 	updated, cmd := m.Update(keyPress("enter"))

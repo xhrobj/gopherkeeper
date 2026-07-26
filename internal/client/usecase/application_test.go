@@ -142,18 +142,6 @@ func TestNewOffline(t *testing.T) {
 
 	application := NewOffline(provider, "localhost:8080")
 
-	if application.users != nil {
-		t.Error("NewOffline() user gateway != nil")
-	}
-	if application.records != nil {
-		t.Error("NewOffline() record gateway != nil")
-	}
-	if application.sessions != nil {
-		t.Error("NewOffline() session storage provider != nil")
-	}
-	if application.syncCaches != nil {
-		t.Error("NewOffline() sync cache repository provider != nil")
-	}
 	if application.offlineCaches == nil {
 		t.Error("NewOffline() offline cache repository provider = nil")
 	}
