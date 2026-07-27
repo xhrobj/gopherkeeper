@@ -61,9 +61,15 @@ gkeep --config configs/client.json tui
   <img src="docs/images/tui/02-server-status-preview.png" alt="Server status">
 </a>
 
-### 3. Войдите в аккаунт
+### 3. Зарегистрируйтесь и войдите в аккаунт
 
-Выберите `System → Login...` и введите login и password. Новый пользователь может предварительно зарегистрироваться через `System → Register...`.
+Если у вас ещё нет аккаунта, выберите `Account → Register...`, укажите `Login` и `Password` и завершите регистрацию.
+
+<a href="docs/images/tui/03-register.jpg">
+  <img src="docs/images/tui/03-register-preview.jpg" alt="Register">
+</a>
+
+После регистрации выберите `Account → Login...` и войдите с теми же `Login` и `Password`.
 
 <a href="docs/images/tui/03-login.png">
   <img src="docs/images/tui/03-login-preview.png" alt="Login">
