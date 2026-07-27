@@ -32,7 +32,11 @@ func newCreateCardRecordCommand(
 	return &urfavecli.Command{
 		Name:  "create-card",
 		Usage: "create a private card record",
-		Flags: cardRecordFlags(false),
+		Flags: recordMutationFlags(
+			false,
+			recordTitleUsage,
+			recordMetadataFileUsage,
+		),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			application, err := applicationFromCommand(command, factory)
 			if err != nil {
@@ -66,7 +70,11 @@ func newUpdateCardRecordCommand(
 		Name:      "update-card",
 		Usage:     "update a private card record",
 		ArgsUsage: recordIDArgsUsage,
-		Flags:     cardRecordFlags(true),
+		Flags: recordMutationFlags(
+			true,
+			recordTitleUsage,
+			recordMetadataFileUsage,
+		),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			recordID := command.Args().First()
 			if recordID == "" {
@@ -96,30 +104,6 @@ func newUpdateCardRecordCommand(
 			)
 		},
 	}
-}
-
-func cardRecordFlags(withRevision bool) []urfavecli.Flag {
-	flags := make([]urfavecli.Flag, 0, 3)
-	if withRevision {
-		flags = append(flags, &urfavecli.Int64Flag{
-			Name:     revisionFlag,
-			Aliases:  []string{"r"},
-			Usage:    "expected record revision",
-			Required: true,
-		})
-	}
-
-	return append(flags,
-		&urfavecli.StringFlag{
-			Name:     titleFlag,
-			Usage:    "record title",
-			Required: true,
-		},
-		&urfavecli.StringFlag{
-			Name:  metadataFileFlag,
-			Usage: "path to optional file with private metadata",
-		},
-	)
 }
 
 func executeCreateCardRecord(

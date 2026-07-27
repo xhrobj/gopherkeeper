@@ -29,7 +29,16 @@ func newCreateBinaryRecordCommand(factory clientFactory) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "create-binary",
 		Usage: "create a private binary record",
-		Flags: binaryRecordFlags(false),
+		Flags: recordMutationFlags(
+			false,
+			recordTitleUsage,
+			recordMetadataFileUsage,
+			&urfavecli.StringFlag{
+				Name:     binaryFileFlag,
+				Usage:    "path to private binary payload",
+				Required: true,
+			},
+		),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			application, err := applicationFromCommand(command, factory)
 			if err != nil {
@@ -55,7 +64,16 @@ func newUpdateBinaryRecordCommand(factory clientFactory) *urfavecli.Command {
 		Name:      "update-binary",
 		Usage:     "update a private binary record",
 		ArgsUsage: recordIDArgsUsage,
-		Flags:     binaryRecordFlags(true),
+		Flags: recordMutationFlags(
+			true,
+			recordTitleUsage,
+			recordMetadataFileUsage,
+			&urfavecli.StringFlag{
+				Name:     binaryFileFlag,
+				Usage:    "path to private binary payload",
+				Required: true,
+			},
+		),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			recordID := command.Args().First()
 			if recordID == "" {
@@ -81,35 +99,6 @@ func newUpdateBinaryRecordCommand(factory clientFactory) *urfavecli.Command {
 			)
 		},
 	}
-}
-
-func binaryRecordFlags(withRevision bool) []urfavecli.Flag {
-	flags := make([]urfavecli.Flag, 0, 4)
-	if withRevision {
-		flags = append(flags, &urfavecli.Int64Flag{
-			Name:     revisionFlag,
-			Aliases:  []string{"r"},
-			Usage:    "expected record revision",
-			Required: true,
-		})
-	}
-
-	return append(flags,
-		&urfavecli.StringFlag{
-			Name:     titleFlag,
-			Usage:    "record title",
-			Required: true,
-		},
-		&urfavecli.StringFlag{
-			Name:     binaryFileFlag,
-			Usage:    "path to private binary payload",
-			Required: true,
-		},
-		&urfavecli.StringFlag{
-			Name:  metadataFileFlag,
-			Usage: "path to optional file with private metadata",
-		},
-	)
 }
 
 func executeCreateBinaryRecord(

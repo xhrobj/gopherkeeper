@@ -30,7 +30,11 @@ func newCreateCredentialsRecordCommand(
 	return &urfavecli.Command{
 		Name:  "create-credentials",
 		Usage: "create a private credentials record",
-		Flags: credentialsRecordFlags(false),
+		Flags: recordMutationFlags(
+			false,
+			recordTitleUsage,
+			recordMetadataFileUsage,
+		),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			application, err := applicationFromCommand(command, factory)
 			if err != nil {
@@ -64,7 +68,11 @@ func newUpdateCredentialsRecordCommand(
 		Name:      "update-credentials",
 		Usage:     "update a private credentials record",
 		ArgsUsage: recordIDArgsUsage,
-		Flags:     credentialsRecordFlags(true),
+		Flags: recordMutationFlags(
+			true,
+			recordTitleUsage,
+			recordMetadataFileUsage,
+		),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			recordID := command.Args().First()
 			if recordID == "" {
@@ -94,30 +102,6 @@ func newUpdateCredentialsRecordCommand(
 			)
 		},
 	}
-}
-
-func credentialsRecordFlags(withRevision bool) []urfavecli.Flag {
-	flags := make([]urfavecli.Flag, 0, 3)
-	if withRevision {
-		flags = append(flags, &urfavecli.Int64Flag{
-			Name:     revisionFlag,
-			Aliases:  []string{"r"},
-			Usage:    "expected record revision",
-			Required: true,
-		})
-	}
-
-	return append(flags,
-		&urfavecli.StringFlag{
-			Name:     titleFlag,
-			Usage:    "record title",
-			Required: true,
-		},
-		&urfavecli.StringFlag{
-			Name:  metadataFileFlag,
-			Usage: "path to optional file with private metadata",
-		},
-	)
 }
 
 func executeCreateCredentialsRecord(

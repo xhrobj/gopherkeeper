@@ -153,12 +153,7 @@ func newDeleteRecordCommand(factory clientFactory) *urfavecli.Command {
 		Usage:     "delete a private record",
 		ArgsUsage: recordIDArgsUsage,
 		Flags: []urfavecli.Flag{
-			&urfavecli.Int64Flag{
-				Name:     revisionFlag,
-				Aliases:  []string{"r"},
-				Usage:    "expected record revision",
-				Required: true,
-			},
+			expectedRevisionFlag(),
 		},
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			recordID := command.Args().First()
