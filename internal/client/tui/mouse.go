@@ -4,6 +4,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/xhrobj/gopherkeeper/internal/client/config"
 )
 
 func (m model) updateMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
@@ -264,34 +265,93 @@ func (m model) updatePathPickerMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd)
 }
 
 func (m model) updateConfigMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
-	for index, bounds := range m.configFieldBounds() {
-		if bounds.contains(msg.X, msg.Y) {
-			m.configForm.setFocus(configFieldFocus(index))
-			return m, nil
-		}
+	if updated, command, ok := m.selectConfigTransportMouse(msg); ok {
+		return updated, command
+	}
+	if updated, command, ok := m.focusConfigFieldMouse(msg); ok {
+		return updated, command
+	}
+	if updated, command, ok := m.openConfigBrowseMouse(msg); ok {
+		return updated, command
+	}
+	if updated, command, ok := m.activateConfigButtonMouse(msg); ok {
+		return updated, command
 	}
 
+	return m, nil
+}
+
+func (m model) selectConfigTransportMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd, bool) {
+	for index, bounds := range m.configTransportBounds() {
+		if !bounds.contains(msg.X, msg.Y) {
+			continue
+		}
+
+		m.configForm.setFocus(configTransport)
+		m.configForm.selectTransport(configTransportAt(index))
+
+		return m, nil, true
+	}
+
+	return m, nil, false
+}
+
+func configTransportAt(index int) config.Transport {
+	if index == 0 {
+		return config.TransportHTTPS
+	}
+	return config.TransportGRPC
+}
+
+func (m model) focusConfigFieldMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd, bool) {
+	layout := m.configLayout()
+	for index, bounds := range m.configFieldBounds() {
+		if !bounds.contains(msg.X, msg.Y) {
+			continue
+		}
+
+		m.configForm.setFocus(layout.fieldFocus[index])
+
+		return m, nil, true
+	}
+
+	return m, nil, false
+}
+
+func (m model) openConfigBrowseMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd, bool) {
 	browseFocus := []configFocus{configCACertBrowse, configSessionBrowse, configCacheBrowse}
 	for index, bounds := range m.configBrowseButtonBounds() {
-		if bounds.contains(msg.X, msg.Y) {
-			m.configForm.setFocus(browseFocus[index])
-			target, _ := configBrowseTarget(browseFocus[index])
-			return m.openConfigPathPicker(target)
+		if !bounds.contains(msg.X, msg.Y) {
+			continue
 		}
+
+		m.configForm.setFocus(browseFocus[index])
+		target, _ := configBrowseTarget(browseFocus[index])
+		updated, command := m.openConfigPathPicker(target)
+
+		return updated, command, true
 	}
 
+	return m, nil, false
+}
+
+func (m model) activateConfigButtonMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd, bool) {
 	for index, bounds := range m.dialogButtonBounds() {
 		if !bounds.contains(msg.X, msg.Y) {
 			continue
 		}
+
 		if index == 0 && !m.configForm.canSave() {
-			return m, nil
+			return m, nil, true
 		}
+
 		m.configForm.setFocus(configFocus(int(configSave) + index))
-		return m.activateConfig()
+		updated, command := m.activateConfig()
+
+		return updated, command, true
 	}
 
-	return m, nil
+	return m, nil, false
 }
 
 func (m model) updateDialogButtonsMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
@@ -506,13 +566,31 @@ func (m model) registerFieldBounds() []layoutBounds {
 	return window.screenBounds(layout.bounds)
 }
 
+func (m model) configLayout() configWindowLayout {
+	window, ok := m.dialogPlacement()
+	if !ok {
+		return configWindowLayout{}
+	}
+
+	return newConfigWindowLayout(m.theme, window.width)
+}
+
+func (m model) configTransportBounds() []layoutBounds {
+	window, ok := m.dialogPlacement()
+	if !ok {
+		return nil
+	}
+
+	return window.screenBounds(m.configLayout().transportBounds)
+}
+
 func (m model) configFieldBounds() []layoutBounds {
 	window, ok := m.dialogPlacement()
 	if !ok {
 		return nil
 	}
 
-	return window.screenBounds(newConfigWindowLayout(m.theme, window.width).fieldBounds)
+	return window.screenBounds(m.configLayout().fieldBounds)
 }
 
 func (m model) configBrowseButtonBounds() []layoutBounds {

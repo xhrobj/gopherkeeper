@@ -19,14 +19,11 @@ func TestFileStorage_SaveAndLoad(t *testing.T) {
 		t.Fatalf("Save() error = %v", err)
 	}
 
-	got, err := storage.Load(want.ServerAddress)
+	got, err := storage.Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if got.ServerAddress != want.ServerAddress {
-		t.Errorf("server address = %q, want %q", got.ServerAddress, want.ServerAddress)
-	}
 	if got.AccessToken != want.AccessToken {
 		t.Errorf("access token = %q, want %q", got.AccessToken, want.AccessToken)
 	}
@@ -73,7 +70,7 @@ func TestFileStorage_DeleteIgnoresMissingSessionFile(t *testing.T) {
 func TestFileStorage_LoadReturnsNotFound(t *testing.T) {
 	storage := newTestStorage(t, "")
 
-	_, err := storage.Load("localhost:8080")
+	_, err := storage.Load()
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Load() error = %v, want ErrNotFound", err)
 	}
@@ -88,23 +85,9 @@ func TestFileStorage_LoadRejectsExpiredSession(t *testing.T) {
 		t.Fatalf("write session: %v", err)
 	}
 
-	_, err := storage.Load(session.ServerAddress)
+	_, err := storage.Load()
 	if !errors.Is(err, ErrExpired) {
 		t.Fatalf("Load() error = %v, want ErrExpired", err)
-	}
-}
-
-func TestFileStorage_LoadRejectsServerMismatch(t *testing.T) {
-	storage := newTestStorage(t, "")
-	session := testSession()
-
-	if err := storage.Save(session); err != nil {
-		t.Fatalf("Save() error = %v", err)
-	}
-
-	_, err := storage.Load("localhost:8081")
-	if !errors.Is(err, ErrServerMismatch) {
-		t.Fatalf("Load() error = %v, want ErrServerMismatch", err)
 	}
 }
 
@@ -115,16 +98,16 @@ func TestFileStorage_LoadRejectsInvalidJSON(t *testing.T) {
 	}{
 		{
 			name: "malformed JSON",
-			body: `{"server_address":`,
+			body: `{"access_token":`,
 		},
 		{
 			name: "unknown field",
-			body: `{"server_address":"localhost:8080","access_token":"token",` +
+			body: `{"access_token":"token",` +
 				`"expires_at":"2026-07-04T12:15:00Z","extra":"value"}`,
 		},
 		{
 			name: "multiple JSON values",
-			body: `{"server_address":"localhost:8080","access_token":"token",` +
+			body: `{"access_token":"token",` +
 				`"expires_at":"2026-07-04T12:15:00Z"} {}`,
 		},
 	}
@@ -136,7 +119,7 @@ func TestFileStorage_LoadRejectsInvalidJSON(t *testing.T) {
 				t.Fatalf("write session file: %v", err)
 			}
 
-			_, err := storage.Load("localhost:8080")
+			_, err := storage.Load()
 			if !errors.Is(err, ErrInvalid) {
 				t.Fatalf("Load() error = %v, want ErrInvalid", err)
 			}
@@ -150,13 +133,6 @@ func TestFileStorage_SaveRejectsInvalidSession(t *testing.T) {
 		mutate  func(*Session)
 		wantErr error
 	}{
-		{
-			name: "missing server address",
-			mutate: func(s *Session) {
-				s.ServerAddress = ""
-			},
-			wantErr: ErrInvalid,
-		},
 		{
 			name: "missing access token",
 			mutate: func(s *Session) {
@@ -236,9 +212,8 @@ func newTestStorage(t *testing.T, name string) *FileStorage {
 
 func testSession() Session {
 	return Session{
-		ServerAddress: "localhost:8080",
-		AccessToken:   "test.jwt.token",
-		ExpiresAt:     time.Date(2026, time.July, 4, 12, 15, 0, 0, time.UTC),
+		AccessToken: "test.jwt.token",
+		ExpiresAt:   time.Date(2026, time.July, 4, 12, 15, 0, 0, time.UTC),
 	}
 }
 

@@ -100,3 +100,68 @@ func TestOfflineApplicationFromCommand_ReturnsFactoryError(t *testing.T) {
 		t.Fatalf("offlineApplicationFromCommand() error = %v, want %v", err, factoryErr)
 	}
 }
+
+func TestApplicationFromCommand_ReusesRuntime(t *testing.T) {
+	wantConfig := config.Config{Address: "localhost:8080"}
+	runtime := newApplicationStub(t)
+	factoryCalls := 0
+	factory := newClientFactoryStub(t)
+	factory.newApplication = func(config.Config) (application, error) {
+		factoryCalls++
+		return runtime, nil
+	}
+	command := &urfavecli.Command{Metadata: map[string]any{
+		clientConfigMetadataKey: wantConfig,
+	}}
+
+	first, err := applicationFromCommand(command, factory)
+	if err != nil {
+		t.Fatalf("first applicationFromCommand() error = %v", err)
+	}
+	second, err := applicationFromCommand(command, factory)
+	if err != nil {
+		t.Fatalf("second applicationFromCommand() error = %v", err)
+	}
+	if first != runtime || second != runtime {
+		t.Fatal("applicationFromCommand() did not reuse runtime")
+	}
+	if factoryCalls != 1 {
+		t.Fatalf("factory calls = %d, want 1", factoryCalls)
+	}
+}
+
+func TestCloseApplicationFromCommand(t *testing.T) {
+	closeCalls := 0
+	runtime := newApplicationStub(t)
+	runtime.close = func() error {
+		closeCalls++
+		return nil
+	}
+	command := &urfavecli.Command{Metadata: map[string]any{
+		clientApplicationMetadataKey: runtime,
+	}}
+
+	if err := closeApplicationFromCommand(command); err != nil {
+		t.Fatalf("closeApplicationFromCommand() error = %v", err)
+	}
+	if err := closeApplicationFromCommand(command); err != nil {
+		t.Fatalf("second closeApplicationFromCommand() error = %v", err)
+	}
+	if closeCalls != 1 {
+		t.Fatalf("Close() calls = %d, want 1", closeCalls)
+	}
+}
+
+func TestCloseApplicationFromCommand_ReturnsCloseError(t *testing.T) {
+	closeErr := errors.New("close failed")
+	runtime := newApplicationStub(t)
+	runtime.close = func() error { return closeErr }
+	command := &urfavecli.Command{Metadata: map[string]any{
+		clientApplicationMetadataKey: runtime,
+	}}
+
+	err := closeApplicationFromCommand(command)
+	if !errors.Is(err, closeErr) {
+		t.Fatalf("closeApplicationFromCommand() error = %v, want %v", err, closeErr)
+	}
+}

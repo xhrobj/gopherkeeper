@@ -43,7 +43,7 @@ func Run(ctx context.Context, options Options) error {
 	)
 
 	finalModel, runErr := program.Run()
-	closeFinalCache(finalModel, model.backend)
+	closeFinalBackend(finalModel, model.backend)
 	if runErr != nil {
 		return fmt.Errorf("run Bubble Tea program: %w", runErr)
 	}
@@ -51,7 +51,7 @@ func Run(ctx context.Context, options Options) error {
 	return nil
 }
 
-func closeFinalCache(finalModel tea.Model, fallback Backend) {
+func closeFinalBackend(finalModel tea.Model, fallback Backend) {
 	backend := fallback
 
 	if final, ok := finalModel.(model); ok && final.backend != nil {
@@ -60,5 +60,6 @@ func closeFinalCache(finalModel tea.Model, fallback Backend) {
 
 	if backend != nil {
 		backend.CloseCache()
+		closeBackendTransport(backend)
 	}
 }

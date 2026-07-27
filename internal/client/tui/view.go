@@ -134,7 +134,8 @@ func (m model) renderDialog() string {
 	case dialogServerStatus:
 		return renderServerStatusWindow(m.theme, serverStatusWindowOptions{
 			width:        serverStatusWindowWidth(m.width),
-			address:      m.config.Address,
+			transport:    m.config.Transport,
+			address:      m.config.ActiveAddress(),
 			state:        m.statusState,
 			health:       m.statusValue,
 			failure:      m.statusFailure,

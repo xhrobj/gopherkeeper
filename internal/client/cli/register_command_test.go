@@ -51,7 +51,7 @@ func TestRegisterCommand_ConfigurationAndInput(t *testing.T) {
 		t.Fatalf("run() error = %v", err)
 	}
 
-	wantConfig := config.Config{Address: "localhost:8082", CACertFile: "flag-ca.pem"}
+	wantConfig := config.Config{Transport: config.TransportHTTPS, GRPCAddress: "localhost:50051", Address: "localhost:8082", CACertFile: "flag-ca.pem"}
 	if gotConfig != wantConfig {
 		t.Errorf("configuration = %+v, want %+v", gotConfig, wantConfig)
 	}

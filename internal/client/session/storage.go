@@ -24,9 +24,6 @@ var (
 	// ErrExpired означает, что срок действия online-сессии истёк.
 	ErrExpired = errors.New("session expired")
 
-	// ErrServerMismatch означает, что сохранённая online-сессия относится к другому Серверу.
-	ErrServerMismatch = errors.New("session belongs to another server")
-
 	// ErrInvalid означает, что данные online-сессии повреждены или имеют неподдерживаемый формат.
 	ErrInvalid = errors.New("invalid session")
 )
@@ -35,9 +32,6 @@ type nowFunc func() time.Time
 
 // Session содержит данные online-сессии Клиента.
 type Session struct {
-	// ServerAddress содержит адрес Сервера, для которого сохранена сессия.
-	ServerAddress string `json:"server_address"`
-
 	// AccessToken содержит bearer token для авторизованных online-запросов.
 	AccessToken string `json:"access_token"`
 
@@ -145,11 +139,8 @@ func (s *FileStorage) Delete() error {
 	return nil
 }
 
-// Load читает online-сессию, проверяет срок действия и привязку к Серверу.
-func (s *FileStorage) Load(expectedServerAddress string) (Session, error) {
-	if expectedServerAddress == "" {
-		return Session{}, fmt.Errorf("%w: expected server address is required", ErrInvalid)
-	}
+// Load читает online-сессию и проверяет срок её действия.
+func (s *FileStorage) Load() (Session, error) {
 
 	data, err := os.ReadFile(s.path)
 	if err != nil {
@@ -175,10 +166,6 @@ func (s *FileStorage) Load(expectedServerAddress string) (Session, error) {
 	if err := s.validate(session); err != nil {
 		return Session{}, err
 	}
-	if session.ServerAddress != expectedServerAddress {
-		return Session{}, ErrServerMismatch
-	}
-
 	return session, nil
 }
 
@@ -196,9 +183,6 @@ func resolvePath(directory string) (string, error) {
 }
 
 func (s *FileStorage) validate(session Session) error {
-	if session.ServerAddress == "" {
-		return fmt.Errorf("%w: server address is required", ErrInvalid)
-	}
 	if session.AccessToken == "" {
 		return fmt.Errorf("%w: access token is required", ErrInvalid)
 	}

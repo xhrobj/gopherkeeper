@@ -14,6 +14,8 @@ import (
 )
 
 type applicationStub struct {
+	health            func(context.Context) (string, error)
+	close             func() error
 	register          func(context.Context, string, string) (model.User, error)
 	login             func(context.Context, string, string) (model.User, error)
 	whoami            func(context.Context) (model.User, error)
@@ -31,6 +33,12 @@ func newApplicationStub(t *testing.T) *applicationStub {
 	t.Helper()
 
 	return &applicationStub{
+		health: func(context.Context) (string, error) {
+			t.Helper()
+			t.Fatal("Health must not be called")
+			return "", nil
+		},
+		close: func() error { return nil },
 		register: func(context.Context, string, string) (model.User, error) {
 			t.Helper()
 			t.Fatal("Register must not be called")
@@ -91,6 +99,18 @@ func newApplicationStub(t *testing.T) *applicationStub {
 			return usecase.SyncResult{}, nil
 		},
 	}
+}
+
+func (s *applicationStub) Health(ctx context.Context) (string, error) {
+	return s.health(ctx)
+}
+
+func (s *applicationStub) Close() error {
+	if s.close == nil {
+		return nil
+	}
+
+	return s.close()
 }
 
 func (s *applicationStub) Register(ctx context.Context, login, password string) (model.User, error) {
@@ -161,10 +181,6 @@ func (s userLogoutterStub) Logout(ctx context.Context) error {
 	return s.logout(ctx)
 }
 
-type healthCheckerStub struct {
-	health func(context.Context) (string, error)
-}
-
 type tuiRunnerStub struct {
 	run func(context.Context, config.Config, string, buildinfo.Info, io.Reader, io.Writer) error
 }
@@ -180,15 +196,10 @@ func (s tuiRunnerStub) Run(
 	return s.run(ctx, cfg, configFile, info, input, output)
 }
 
-func (s healthCheckerStub) Health(ctx context.Context) (string, error) {
-	return s.health(ctx)
-}
-
 type clientFactoryStub struct {
 	newApplication        func(config.Config) (application, error)
 	newOfflineApplication func(config.Config) (offlineApplication, error)
 	newLogoutApplication  func(config.Config) (userLogoutter, error)
-	newHealthClient       func(config.Config) (healthChecker, error)
 }
 
 func newClientFactoryStub(t *testing.T) *clientFactoryStub {
@@ -210,11 +221,6 @@ func newClientFactoryStub(t *testing.T) *clientFactoryStub {
 			t.Fatal("logout application factory must not be called")
 			return nil, nil
 		},
-		newHealthClient: func(config.Config) (healthChecker, error) {
-			t.Helper()
-			t.Fatal("health client factory must not be called")
-			return nil, nil
-		},
 	}
 }
 
@@ -228,10 +234,6 @@ func (s *clientFactoryStub) NewOfflineApplication(cfg config.Config) (offlineApp
 
 func (s *clientFactoryStub) NewLogoutApplication(cfg config.Config) (userLogoutter, error) {
 	return s.newLogoutApplication(cfg)
-}
-
-func (s *clientFactoryStub) NewHealthClient(cfg config.Config) (healthChecker, error) {
-	return s.newHealthClient(cfg)
 }
 
 var testBuildInfo = buildinfo.Info{
@@ -248,7 +250,9 @@ func isolateClientConfig(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
 	t.Setenv("CONFIG", "")
+	t.Setenv("TRANSPORT", "")
 	t.Setenv("ADDRESS", "")
+	t.Setenv("GRPC_ADDRESS", "")
 	t.Setenv("CA_CERT_FILE", "")
 	t.Setenv("SESSION_DIR", "")
 	t.Setenv("CACHE_DIR", "")

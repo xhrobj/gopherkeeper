@@ -17,16 +17,12 @@ func (m model) updateConfig(key string) (tea.Model, tea.Cmd) {
 	case "shift+tab", "up":
 		m.configForm.move(-1)
 	case "left":
-		if m.configForm.activeField() != nil {
-			m.configForm.moveCursor(-1)
-		} else {
-			m.configForm.move(-1)
-		}
+		m.moveConfigHorizontal(-1)
 	case "right":
-		if m.configForm.activeField() != nil {
-			m.configForm.moveCursor(1)
-		} else {
-			m.configForm.move(1)
+		m.moveConfigHorizontal(1)
+	case " ", "space":
+		if m.configForm.focus == configTransport {
+			m.configForm.toggleTransport()
 		}
 	case "home":
 		m.configForm.moveCursorToStart()
@@ -37,19 +33,41 @@ func (m model) updateConfig(key string) (tea.Model, tea.Cmd) {
 	case "delete":
 		m.configForm.delete()
 	case "enter":
-		if m.configForm.activeField() != nil {
-			m.configForm.move(1)
-			return m, nil
-		}
-		if target, ok := configBrowseTarget(m.configForm.focus); ok {
-			return m.openConfigPathPicker(target)
-		}
-		return m.activateConfig()
+		return m.activateConfigFocus()
 	default:
 		m.configForm.insertKey(key)
 	}
 
 	return m, nil
+}
+
+func (m *model) moveConfigHorizontal(step int) {
+	switch {
+	case m.configForm.focus == configTransport:
+		m.configForm.moveTransport(step)
+	case m.configForm.activeField() != nil:
+		m.configForm.moveCursor(step)
+	default:
+		m.configForm.move(step)
+	}
+}
+
+func (m model) activateConfigFocus() (tea.Model, tea.Cmd) {
+	if m.configForm.focus == configTransport {
+		m.configForm.toggleTransport()
+		return m, nil
+	}
+
+	if m.configForm.activeField() != nil {
+		m.configForm.move(1)
+		return m, nil
+	}
+
+	if target, ok := configBrowseTarget(m.configForm.focus); ok {
+		return m.openConfigPathPicker(target)
+	}
+
+	return m.activateConfig()
 }
 
 func (m model) openConfigPathPicker(target pathPickerTarget) (tea.Model, tea.Cmd) {
@@ -219,22 +237,33 @@ func (m model) applyConfigForm() (tea.Model, tea.Cmd) {
 	}
 
 	candidate := normalizedClientConfig(m.configForm.config())
-	changed := candidate != m.config
+	configChanged := candidate != m.config
+	runtimeChanged := runtimeConfigChanged(m.config, candidate)
+	sessionChanged := candidate.SessionDir != m.config.SessionDir
 
-	nextBackend, err := m.backendForConfig(candidate, changed)
+	nextBackend, err := m.backendForConfig(candidate, runtimeChanged)
 	if err != nil {
 		m.configForm.errorMessage = cleanFailureMessage(err, "Unable to apply config")
 		return m, nil
 	}
 
-	if err := m.persistConfig(candidate); err != nil {
-		m.configForm.errorMessage = "Unable to save config file"
-		return m, nil
+	if configChanged {
+		if err := m.persistConfig(candidate); err != nil {
+			if runtimeChanged {
+				closeBackendTransport(nextBackend)
+			}
+			m.configForm.errorMessage = "Unable to save config file"
+			return m, nil
+		}
 	}
 
-	m.applyRuntimeConfig(candidate, nextBackend, changed)
-	if changed {
-		return m, m.beginCurrentUserCheck(currentUserCheckRestore)
+	m.applyRuntimeConfig(candidate, nextBackend, runtimeChanged)
+	if runtimeChanged {
+		checkMode := currentUserCheckReconfigure
+		if sessionChanged {
+			checkMode = currentUserCheckRestore
+		}
+		return m, m.beginCurrentUserCheck(checkMode)
 	}
 
 	return m, nil
@@ -242,13 +271,29 @@ func (m model) applyConfigForm() (tea.Model, tea.Cmd) {
 
 func normalizedClientConfig(candidate config.Config) config.Config {
 	candidate.Address = strings.TrimSpace(candidate.Address)
+	candidate.GRPCAddress = strings.TrimSpace(candidate.GRPCAddress)
 	candidate.CACertFile = strings.TrimSpace(candidate.CACertFile)
 
 	return candidate
 }
 
-func (m model) backendForConfig(candidate config.Config, changed bool) (Backend, error) {
-	if !changed {
+func runtimeConfigChanged(previous, candidate config.Config) bool {
+	if previous.Transport != candidate.Transport ||
+		previous.CACertFile != candidate.CACertFile ||
+		previous.SessionDir != candidate.SessionDir ||
+		previous.CacheDir != candidate.CacheDir {
+		return true
+	}
+
+	if candidate.Transport == config.TransportGRPC {
+		return previous.GRPCAddress != candidate.GRPCAddress
+	}
+
+	return previous.Address != candidate.Address
+}
+
+func (m model) backendForConfig(candidate config.Config, runtimeChanged bool) (Backend, error) {
+	if !runtimeChanged {
 		return m.backend, nil
 	}
 
@@ -263,18 +308,31 @@ func (m model) persistConfig(candidate config.Config) error {
 	return m.saveConfig(m.configFile, candidate)
 }
 
-func (m *model) applyRuntimeConfig(candidate config.Config, nextBackend Backend, changed bool) {
+func (m *model) applyRuntimeConfig(candidate config.Config, nextBackend Backend, runtimeChanged bool) {
+	previous := m.config
 	m.config = candidate
 
-	if changed {
+	if runtimeChanged {
+		oldBackend := m.backend
+		cacheChanged := candidate.CacheDir != previous.CacheDir
+
 		m.cancelAllRequests()
-		m.clearRecordState()
-		m.clearCacheState()
+		if cacheChanged || m.recordFeature.workspace.source == recordSourceServer {
+			m.clearRecordState()
+		}
+
+		if cacheChanged {
+			m.clearCacheState()
+		}
+
 		m.clearSyncState()
+
 		m.backend = nextBackend
 		m.statusState = serverStatusIdle
 		m.statusValue = ""
 		m.statusFailure = serverStatusFailure{}
+
+		closeBackendTransport(oldBackend)
 	}
 
 	m.closeConfigForm()

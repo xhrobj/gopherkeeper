@@ -27,7 +27,6 @@ func TestApplication_Register(t *testing.T) {
 			},
 		},
 		sessionStorageStub{},
-		"localhost:8080",
 	)
 
 	user, err := application.Register(context.Background(), " Alice ", testPassword)
@@ -49,7 +48,6 @@ func TestApplication_RegisterReturnsReadableDuplicateError(t *testing.T) {
 			},
 		},
 		sessionStorageStub{},
-		"localhost:8080",
 	)
 
 	_, err := application.Register(context.Background(), "ALICE", testPassword)
@@ -76,7 +74,6 @@ func TestApplication_RegisterDoesNotLeakPasswordInNetworkError(t *testing.T) {
 			},
 		},
 		sessionStorageStub{},
-		"localhost:8080",
 	)
 
 	_, err := application.Register(context.Background(), "eve", testPassword)
@@ -102,7 +99,6 @@ func TestApplication_RegisterDoesNotResolveSessionStorage(t *testing.T) {
 			t.Fatal("registration must not resolve session storage")
 			return nil, nil
 		},
-		serverAddress: "localhost:8080",
 	}
 
 	user, err := application.Register(context.Background(), "alice", testPassword)
@@ -127,7 +123,6 @@ func TestApplication_LoginResolvesSessionStorageBeforeRequest(t *testing.T) {
 		sessions: func() (SessionStorage, error) {
 			return nil, storageError
 		},
-		serverAddress: "localhost:8080",
 	}
 
 	_, err := application.Login(context.Background(), "alice", testPassword)
@@ -170,7 +165,6 @@ func TestApplication_LoginSavesSession(t *testing.T) {
 				return nil
 			},
 		},
-		"localhost:8080",
 	)
 
 	user, err := application.Login(context.Background(), "alice", testPassword)
@@ -182,9 +176,8 @@ func TestApplication_LoginSavesSession(t *testing.T) {
 		t.Errorf("login result user = %q, want alice", user.Login)
 	}
 	wantSession := session.Session{
-		ServerAddress: "localhost:8080",
-		AccessToken:   "test.jwt.token",
-		ExpiresAt:     expiresAt,
+		AccessToken: "test.jwt.token",
+		ExpiresAt:   expiresAt,
 	}
 	if savedSession != wantSession {
 		t.Errorf("saved session = %+v, want %+v", savedSession, wantSession)
@@ -205,7 +198,6 @@ func TestApplication_LoginReturnsReadableInvalidCredentialsError(t *testing.T) {
 				return nil
 			},
 		},
-		"localhost:8080",
 	)
 
 	_, err := application.Login(context.Background(), "eve", testPassword)
@@ -237,7 +229,6 @@ func TestApplication_LoginDoesNotLeakPasswordInNetworkError(t *testing.T) {
 				return nil
 			},
 		},
-		"localhost:8080",
 	)
 
 	_, err := application.Login(context.Background(), "eve", testPassword)
@@ -271,7 +262,6 @@ func TestApplication_LoginDoesNotLeakTokenInSaveError(t *testing.T) {
 		sessionStorageStub{
 			save: func(session.Session) error { return saveError },
 		},
-		"localhost:8080",
 	)
 
 	_, err := application.Login(context.Background(), "eve", testPassword)
@@ -299,15 +289,10 @@ func TestApplication_Whoami(t *testing.T) {
 			},
 		},
 		sessionStorageStub{
-			load: func(expectedServerAddress string) (session.Session, error) {
-				if expectedServerAddress != "localhost:8080" {
-					t.Errorf("expected server address = %q, want localhost:8080", expectedServerAddress)
-				}
-
+			load: func() (session.Session, error) {
 				return testOnlineSession(), nil
 			},
 		},
-		"localhost:8080",
 	)
 
 	user, err := application.Whoami(context.Background())
@@ -337,11 +322,6 @@ func TestApplication_WhoamiMapsSessionErrors(t *testing.T) {
 			want:    "session expired, please login again",
 		},
 		{
-			name:    "server mismatch",
-			loadErr: session.ErrServerMismatch,
-			want:    "not logged in",
-		},
-		{
 			name:    "invalid",
 			loadErr: session.ErrInvalid,
 			want:    "not logged in",
@@ -363,11 +343,10 @@ func TestApplication_WhoamiMapsSessionErrors(t *testing.T) {
 					},
 				},
 				sessionStorageStub{
-					load: func(string) (session.Session, error) {
+					load: func() (session.Session, error) {
 						return session.Session{}, tt.loadErr
 					},
 				},
-				"localhost:8080",
 			)
 
 			_, err := application.Whoami(context.Background())
@@ -403,11 +382,10 @@ func TestApplication_WhoamiMapsUnauthorizedError(t *testing.T) {
 			},
 		},
 		sessionStorageStub{
-			load: func(string) (session.Session, error) {
+			load: func() (session.Session, error) {
 				return testOnlineSession(), nil
 			},
 		},
-		"localhost:8080",
 	)
 
 	_, err := application.Whoami(context.Background())
@@ -437,11 +415,10 @@ func TestApplication_WhoamiDoesNotLeakTokenInNetworkError(t *testing.T) {
 			},
 		},
 		sessionStorageStub{
-			load: func(string) (session.Session, error) {
+			load: func() (session.Session, error) {
 				return testOnlineSession(), nil
 			},
 		},
-		"localhost:8080",
 	)
 
 	_, err := application.Whoami(context.Background())

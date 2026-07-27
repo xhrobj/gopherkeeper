@@ -18,11 +18,10 @@ var (
 func encryptedSyncCacheRepositoryProvider(baseDirectory string) usecase.SyncCacheRepositoryProvider {
 	return func(
 		ctx context.Context,
-		serverAddress string,
 		canonicalLogin string,
 		password []byte,
 	) (usecase.SyncCacheRepository, error) {
-		location, err := cache.ResolveLocation(baseDirectory, serverAddress, canonicalLogin)
+		location, err := cache.ResolveLocation(baseDirectory, canonicalLogin)
 		if err != nil {
 			return nil, fmt.Errorf("resolve encrypted local cache: %w", err)
 		}
@@ -39,11 +38,10 @@ func encryptedSyncCacheRepositoryProvider(baseDirectory string) usecase.SyncCach
 func encryptedOfflineCacheRepositoryProvider(baseDirectory string) usecase.OfflineCacheRepositoryProvider {
 	return func(
 		ctx context.Context,
-		serverAddress string,
 		canonicalLogin string,
 		password []byte,
 	) (usecase.OfflineCacheRepository, error) {
-		location, err := cache.ResolveLocation(baseDirectory, serverAddress, canonicalLogin)
+		location, err := cache.ResolveLocation(baseDirectory, canonicalLogin)
 		if err != nil {
 			return nil, fmt.Errorf("resolve encrypted local cache: %w", err)
 		}

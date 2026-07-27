@@ -13,7 +13,7 @@ func (a *OfflineApplication) ListCachedRecords(
 	ctx context.Context,
 	request OfflineReadRequest,
 ) (result OfflineListResult, err error) {
-	repository, err := openOfflineCache(ctx, a.offlineCaches, a.serverAddress, request)
+	repository, err := openOfflineCache(ctx, a.offlineCaches, request)
 	if err != nil {
 		return OfflineListResult{}, err
 	}
@@ -47,7 +47,7 @@ func (a *OfflineApplication) GetCachedRecord(
 		return OfflineGetResult{}, err
 	}
 
-	repository, err := openOfflineCache(ctx, a.offlineCaches, a.serverAddress, request)
+	repository, err := openOfflineCache(ctx, a.offlineCaches, request)
 	if err != nil {
 		return OfflineGetResult{}, err
 	}
@@ -77,7 +77,6 @@ func (a *OfflineApplication) GetCachedRecord(
 func openOfflineCache(
 	ctx context.Context,
 	offlineCaches OfflineCacheRepositoryProvider,
-	serverAddress string,
 	request OfflineReadRequest,
 ) (OfflineCacheRepository, error) {
 	canonicalLogin, err := model.CanonicalizeLogin(request.Login)
@@ -87,7 +86,6 @@ func openOfflineCache(
 
 	repository, err := offlineCaches(
 		ctx,
-		serverAddress,
 		canonicalLogin,
 		[]byte(request.Password),
 	)

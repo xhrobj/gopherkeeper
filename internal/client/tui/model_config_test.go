@@ -130,10 +130,12 @@ func TestRenderConfigInput_ShowsCursorOnlyForFocusedField(t *testing.T) {
 }
 func TestModel_SystemConfigMnemonicOpensPrefilledDialog(t *testing.T) {
 	cfg := config.Config{
-		Address:    "server.example:8443",
-		CACertFile: "/tmp/ca.pem",
-		SessionDir: "/tmp/session",
-		CacheDir:   "/tmp/cache",
+		Transport:   config.TransportGRPC,
+		Address:     "server.example:8443",
+		GRPCAddress: "server.example:9443",
+		CACertFile:  "/tmp/ca.pem",
+		SessionDir:  "/tmp/session",
+		CacheDir:    "/tmp/cache",
 	}
 	m := newTestModel(t, cfg, buildinfo.Info{})
 	m.menuFocused = true
@@ -151,8 +153,12 @@ func TestModel_SystemConfigMnemonicOpensPrefilledDialog(t *testing.T) {
 	}
 	assertViewContains(t, got.View().Content,
 		"Config",
-		"Address",
+		"Transport",
+		"[X] gRPC",
+		"HTTPS address",
 		"server.example:8443",
+		"gRPC address",
+		"server.example:9443",
 		"CA cert file",
 		"/tmp/ca.pem",
 		"Session dir",
@@ -281,7 +287,7 @@ func TestNewModel_CreatesBackendForInitialRuntime(t *testing.T) {
 	}
 }
 
-func TestConfigForm_SaveRequiresOnlyAddress(t *testing.T) {
+func TestConfigForm_SaveRequiresActiveTransportAddress(t *testing.T) {
 	tests := []struct {
 		name string
 		cfg  config.Config
@@ -291,6 +297,8 @@ func TestConfigForm_SaveRequiresOnlyAddress(t *testing.T) {
 		{name: "only address filled", cfg: config.Config{Address: "localhost:8888"}, want: true},
 		{name: "address empty", cfg: config.Config{CACertFile: "/tmp/ca.pem"}},
 		{name: "address contains only spaces", cfg: config.Config{Address: "  ", CACertFile: "/tmp/ca.pem"}},
+		{name: "gRPC address filled", cfg: config.Config{Transport: config.TransportGRPC, GRPCAddress: "localhost:9090"}, want: true},
+		{name: "gRPC address empty", cfg: config.Config{Transport: config.TransportGRPC, Address: "localhost:8080"}},
 	}
 
 	for _, test := range tests {
@@ -896,5 +904,427 @@ func TestConfigSelectedPath(t *testing.T) {
 				t.Fatalf("selected path = %q, want %q", got, test.want)
 			}
 		})
+	}
+}
+
+func TestRenderConfigWindow_UsesCheckboxTransportDesign(t *testing.T) {
+	view := ansi.Strip(renderConfigWindow(newTheme(), 82, newConfigForm(config.Config{
+		Transport:   config.TransportGRPC,
+		Address:     "localhost:8888",
+		GRPCAddress: "localhost:9090",
+	}), ""))
+
+	for _, want := range []string{"Transport", "[ ] HTTPS", "[X] gRPC", "HTTPS address", "gRPC address"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("Config view does not contain %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestModel_ConfigTransportKeyboardSelection(t *testing.T) {
+	m := newTestModel(t, config.Config{
+		Transport:   config.TransportHTTPS,
+		Address:     "localhost:8888",
+		GRPCAddress: "localhost:9090",
+	}, buildinfo.Info{})
+	m.dialog = dialogConfig
+	m.configForm = newConfigForm(m.config)
+	m.configForm.focus = configTransport
+
+	updated, _ := m.Update(keyPress("right"))
+	m = updated.(model)
+	if m.configForm.transport != config.TransportGRPC {
+		t.Fatalf("transport after Right = %q, want gRPC", m.configForm.transport)
+	}
+
+	updated, _ = m.Update(keyPress("left"))
+	m = updated.(model)
+	if m.configForm.transport != config.TransportHTTPS {
+		t.Fatalf("transport after Left = %q, want HTTPS", m.configForm.transport)
+	}
+
+	updated, _ = m.Update(keyPress(" "))
+	got := updated.(model)
+	if got.configForm.transport != config.TransportGRPC {
+		t.Fatalf("transport after Space = %q, want gRPC", got.configForm.transport)
+	}
+}
+
+func TestModel_ConfigTransportChangePreservesOpenCacheWorkspace(t *testing.T) {
+	initial := config.Config{
+		Transport:   config.TransportHTTPS,
+		Address:     "localhost:8888",
+		GRPCAddress: "localhost:9090",
+		CacheDir:    "/tmp/cache",
+	}
+	m := newTestModel(t, initial, buildinfo.Info{})
+	m.authentication.session = authSession{state: authAuthenticated, login: "alice"}
+	m.recordFeature.workspace = recordWorkspace{
+		source: recordSourceCache,
+		login:  " Alice ",
+		open:   true,
+		state:  recordListReady,
+	}
+	m.dialog = dialogConfig
+	m.configForm = newConfigForm(initial)
+	m.configForm.selectTransport(config.TransportGRPC)
+	m.configForm.focus = configSave
+	m.backendFactory = func(config.Config) (Backend, error) {
+		return backendStub{currentUser: func(context.Context) (string, error) {
+			return "alice", nil
+		}}, nil
+	}
+
+	updated, cmd := m.Update(keyPress("enter"))
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("transport change did not start session recheck")
+	}
+	if !m.recordFeature.workspace.open || m.recordFeature.workspace.source != recordSourceCache {
+		t.Fatalf("cache workspace was closed during transport switch: %#v", m.recordFeature.workspace)
+	}
+
+	updated, next := m.Update(commandResult[currentUserResultMsg](t, cmd))
+	got := updated.(model)
+	if next != nil {
+		t.Fatal("transport switch from an open cache started online record loading")
+	}
+	if !got.recordFeature.workspace.open || got.recordFeature.workspace.source != recordSourceCache {
+		t.Fatalf("cache workspace was not preserved after session recheck: %#v", got.recordFeature.workspace)
+	}
+}
+
+func TestModel_ConfigSessionChangeClosesCacheForDifferentUser(t *testing.T) {
+	initial := config.Config{
+		Transport:   config.TransportHTTPS,
+		Address:     "localhost:8888",
+		GRPCAddress: "localhost:9090",
+		SessionDir:  "/tmp/alice-session",
+		CacheDir:    "/tmp/cache",
+	}
+	m := newTestModel(t, initial, buildinfo.Info{})
+	m.authentication.session = authSession{state: authAuthenticated, login: "alice"}
+	m.recordFeature.workspace = recordWorkspace{
+		source: recordSourceCache,
+		login:  "alice",
+		open:   true,
+		state:  recordListReady,
+	}
+	m.dialog = dialogConfig
+	m.configForm = newConfigForm(initial)
+	m.configForm.fields[configSessionDir].setValue("/tmp/bob-session")
+	m.configForm.focus = configSave
+
+	closeCacheCalls := 0
+	m.backendFactory = func(config.Config) (Backend, error) {
+		return backendStub{
+			currentUser: func(context.Context) (string, error) { return "bob", nil },
+			closeCache:  func() { closeCacheCalls++ },
+		}, nil
+	}
+
+	updated, command := m.Update(keyPress("enter"))
+	m = updated.(model)
+	if command == nil {
+		t.Fatal("session directory change did not start session restore")
+	}
+	if !m.recordFeature.workspace.open || m.recordFeature.workspace.login != "alice" {
+		t.Fatalf("cache workspace was closed before the new session was resolved: %#v", m.recordFeature.workspace)
+	}
+
+	updated, next := m.Update(commandResult[currentUserResultMsg](t, command))
+	got := updated.(model)
+	if closeCacheCalls != 1 {
+		t.Fatalf("cache close calls = %d, want 1", closeCacheCalls)
+	}
+	if !got.recordFeature.workspace.open || got.recordFeature.workspace.source != recordSourceServer {
+		t.Fatalf("Bob server workspace was not opened after closing Alice cache: %#v", got.recordFeature.workspace)
+	}
+	if !got.authentication.session.authenticated() || got.authentication.session.login != "bob" {
+		t.Fatalf("restored session = %#v, want authenticated bob", got.authentication.session)
+	}
+	if next == nil {
+		t.Fatal("restoring another user did not start loading that user's server records")
+	}
+}
+
+func TestModel_ConfigSessionChangeFailureClosesOpenCache(t *testing.T) {
+	initial := config.Config{
+		Transport:   config.TransportHTTPS,
+		Address:     "localhost:8888",
+		GRPCAddress: "localhost:9090",
+		SessionDir:  "/tmp/alice-session",
+		CacheDir:    "/tmp/cache",
+	}
+	m := newTestModel(t, initial, buildinfo.Info{})
+	m.authentication.session = authSession{state: authAuthenticated, login: "alice"}
+	m.recordFeature.workspace = recordWorkspace{
+		source: recordSourceCache,
+		login:  "alice",
+		open:   true,
+		state:  recordListReady,
+	}
+	m.dialog = dialogConfig
+	m.configForm = newConfigForm(initial)
+	m.configForm.fields[configSessionDir].setValue("/tmp/other-session")
+	m.configForm.focus = configSave
+
+	closeCacheCalls := 0
+	m.backendFactory = func(config.Config) (Backend, error) {
+		return backendStub{
+			currentUser: func(context.Context) (string, error) {
+				return "", errors.New("server unavailable")
+			},
+			closeCache: func() { closeCacheCalls++ },
+		}, nil
+	}
+
+	updated, command := m.Update(keyPress("enter"))
+	m = updated.(model)
+	if command == nil {
+		t.Fatal("session directory change did not start session restore")
+	}
+
+	updated, next := m.Update(commandResult[currentUserResultMsg](t, command))
+	got := updated.(model)
+	if next != nil {
+		t.Fatal("failed session restore started another command")
+	}
+	if closeCacheCalls != 1 {
+		t.Fatalf("cache close calls = %d, want 1", closeCacheCalls)
+	}
+	if got.recordFeature.workspace.open || got.recordFeature.workspace.source == recordSourceCache {
+		t.Fatalf("cache remained open after failed restore from another session directory: %#v", got.recordFeature.workspace)
+	}
+	if got.authentication.session.state != authGuest {
+		t.Fatalf("session state after failed restore = %d, want guest", got.authentication.session.state)
+	}
+}
+
+func TestModel_ConfigTransportFailurePreservesCurrentSession(t *testing.T) {
+	initial := config.Config{
+		Transport:   config.TransportHTTPS,
+		Address:     "localhost:8888",
+		GRPCAddress: "localhost:9090",
+		SessionDir:  "/tmp/session",
+	}
+	m := newTestModel(t, initial, buildinfo.Info{})
+	m.authentication.session = authSession{state: authAuthenticated, login: "alice"}
+	m.dialog = dialogConfig
+	m.configForm = newConfigForm(initial)
+	m.configForm.selectTransport(config.TransportGRPC)
+	m.configForm.focus = configSave
+	m.backendFactory = func(config.Config) (Backend, error) {
+		return backendStub{currentUser: func(context.Context) (string, error) {
+			return "", errors.New("gRPC unavailable")
+		}}, nil
+	}
+
+	updated, command := m.Update(keyPress("enter"))
+	m = updated.(model)
+	if command == nil {
+		t.Fatal("transport change did not start session check")
+	}
+	if m.authentication.currentUserCheck != currentUserCheckReconfigure {
+		t.Fatalf("current user check mode = %d, want reconfigure", m.authentication.currentUserCheck)
+	}
+	if !m.authentication.session.authenticated() || m.authentication.session.login != "alice" {
+		t.Fatalf("session was cleared before transport check: %#v", m.authentication.session)
+	}
+
+	updated, next := m.Update(commandResult[currentUserResultMsg](t, command))
+	got := updated.(model)
+	if next != nil {
+		t.Fatal("failed transport session check started another command")
+	}
+	if !got.authentication.session.authenticated() || got.authentication.session.login != "alice" {
+		t.Fatalf("session after transport failure = %#v, want authenticated alice", got.authentication.session)
+	}
+	if got.alert != alertError || got.alertTitle != "Session check failed" || got.alertReturnDialog != dialogNone {
+		t.Fatalf("alert after transport failure = state %d title %q return %d", got.alert, got.alertTitle, got.alertReturnDialog)
+	}
+}
+
+func TestRuntimeConfigChanged(t *testing.T) {
+	https := config.Config{
+		Transport:   config.TransportHTTPS,
+		Address:     "https.example:8443",
+		GRPCAddress: "grpc.example:9443",
+		CACertFile:  "/tmp/ca.pem",
+		SessionDir:  "/tmp/session",
+		CacheDir:    "/tmp/cache",
+	}
+	grpc := https
+	grpc.Transport = config.TransportGRPC
+
+	tests := []struct {
+		name      string
+		previous  config.Config
+		candidate config.Config
+		want      bool
+	}{
+		{name: "unchanged HTTPS", previous: https, candidate: https},
+		{name: "switch transport", previous: https, candidate: grpc, want: true},
+		{name: "HTTPS active address", previous: https, candidate: withConfigAddress(https, "other.example:8443"), want: true},
+		{name: "HTTPS inactive gRPC address", previous: https, candidate: withConfigGRPCAddress(https, "other.example:9443")},
+		{name: "gRPC active address", previous: grpc, candidate: withConfigGRPCAddress(grpc, "other.example:9443"), want: true},
+		{name: "gRPC inactive HTTPS address", previous: grpc, candidate: withConfigAddress(grpc, "other.example:8443")},
+		{name: "CA certificate", previous: https, candidate: withConfigCACertFile(https, "/tmp/other-ca.pem"), want: true},
+		{name: "session directory", previous: https, candidate: withConfigSessionDir(https, "/tmp/other-session"), want: true},
+		{name: "cache directory", previous: https, candidate: withConfigCacheDir(https, "/tmp/other-cache"), want: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := runtimeConfigChanged(test.previous, test.candidate); got != test.want {
+				t.Fatalf("runtimeConfigChanged() = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
+func withConfigAddress(cfg config.Config, value string) config.Config {
+	cfg.Address = value
+	return cfg
+}
+
+func withConfigGRPCAddress(cfg config.Config, value string) config.Config {
+	cfg.GRPCAddress = value
+	return cfg
+}
+
+func withConfigCACertFile(cfg config.Config, value string) config.Config {
+	cfg.CACertFile = value
+	return cfg
+}
+
+func withConfigSessionDir(cfg config.Config, value string) config.Config {
+	cfg.SessionDir = value
+	return cfg
+}
+
+func withConfigCacheDir(cfg config.Config, value string) config.Config {
+	cfg.CacheDir = value
+	return cfg
+}
+
+func TestModel_ConfigInactiveAddressChangeDoesNotReplaceRuntime(t *testing.T) {
+	initial := config.Config{
+		Transport:   config.TransportHTTPS,
+		Address:     "localhost:8888",
+		GRPCAddress: "localhost:9090",
+		SessionDir:  "/tmp/session",
+	}
+	m := newTestModel(t, initial, buildinfo.Info{})
+	m.authentication.session = authSession{state: authAuthenticated, login: "alice"}
+	closeTransportCalls := 0
+	currentBackend := &transportClosingBackendStub{
+		backendStub: backendStub{},
+		closeTransport: func() error {
+			closeTransportCalls++
+			return nil
+		},
+	}
+	m.backend = currentBackend
+	m.dialog = dialogConfig
+	m.configForm = newConfigForm(initial)
+	m.configForm.grpcAddress.setValue("grpc.example:9443")
+	m.configForm.focus = configSave
+	factoryCalls := 0
+	m.backendFactory = func(config.Config) (Backend, error) {
+		factoryCalls++
+		return backendStub{}, nil
+	}
+
+	updated, command := m.Update(keyPress("enter"))
+	got := updated.(model)
+	if command != nil {
+		t.Fatal("inactive gRPC address change started a session check")
+	}
+	if factoryCalls != 0 {
+		t.Fatalf("backend factory calls = %d, want 0", factoryCalls)
+	}
+	if closeTransportCalls != 0 {
+		t.Fatalf("active HTTPS transport close calls = %d, want 0", closeTransportCalls)
+	}
+	if got.backend != currentBackend {
+		t.Fatal("active runtime was replaced after changing inactive gRPC address")
+	}
+	if got.config.GRPCAddress != "grpc.example:9443" {
+		t.Fatalf("saved gRPC address = %q", got.config.GRPCAddress)
+	}
+	if !got.authentication.session.authenticated() || got.authentication.session.login != "alice" {
+		t.Fatalf("session changed after inactive address edit: %#v", got.authentication.session)
+	}
+}
+
+func TestModel_ConfigChangeClosesPreviousTransport(t *testing.T) {
+	initial := config.Config{Transport: config.TransportHTTPS, Address: "localhost:8888", GRPCAddress: "localhost:9090"}
+	m := newTestModel(t, initial, buildinfo.Info{})
+	oldCloseCalls := 0
+	oldBackend := &transportClosingBackendStub{
+		backendStub: backendStub{},
+		closeTransport: func() error {
+			oldCloseCalls++
+			return nil
+		},
+	}
+	m.backend = oldBackend
+	m.dialog = dialogConfig
+	m.configForm = newConfigForm(initial)
+	m.configForm.selectTransport(config.TransportGRPC)
+	m.configForm.focus = configSave
+	m.backendFactory = func(config.Config) (Backend, error) {
+		return backendStub{currentUser: func(context.Context) (string, error) { return "alice", nil }}, nil
+	}
+
+	updated, cmd := m.Update(keyPress("enter"))
+	got := updated.(model)
+	if cmd == nil {
+		t.Fatal("config change did not start session recheck")
+	}
+	if oldCloseCalls != 1 {
+		t.Fatalf("previous transport close calls = %d, want 1", oldCloseCalls)
+	}
+	if got.backend == oldBackend {
+		t.Fatal("backend was not replaced")
+	}
+}
+
+func TestModel_ConfigSaveFailureClosesPreparedTransportAndKeepsCurrentBackend(t *testing.T) {
+	initial := config.Config{Transport: config.TransportHTTPS, Address: "localhost:8888", GRPCAddress: "localhost:9090"}
+	m := newTestModel(t, initial, buildinfo.Info{})
+	m.configFile = "/tmp/client.json"
+	m.saveConfig = func(string, config.Config) error { return errors.New("write failed") }
+	m.dialog = dialogConfig
+	m.configForm = newConfigForm(initial)
+	m.configForm.selectTransport(config.TransportGRPC)
+	m.configForm.focus = configSave
+	currentBackend := &backendStub{}
+	m.backend = currentBackend
+	preparedCloseCalls := 0
+	m.backendFactory = func(config.Config) (Backend, error) {
+		return &transportClosingBackendStub{
+			backendStub: backendStub{},
+			closeTransport: func() error {
+				preparedCloseCalls++
+				return nil
+			},
+		}, nil
+	}
+
+	updated, cmd := m.Update(keyPress("enter"))
+	got := updated.(model)
+	if cmd != nil {
+		t.Fatal("failed config save started a command")
+	}
+	if preparedCloseCalls != 1 {
+		t.Fatalf("prepared transport close calls = %d, want 1", preparedCloseCalls)
+	}
+	if got.backend != currentBackend || got.config != initial {
+		t.Fatalf("runtime changed after save failure: backend changed=%t config=%#v", got.backend != currentBackend, got.config)
+	}
+	if got.configForm.errorMessage != "Unable to save config file" {
+		t.Fatalf("config error = %q", got.configForm.errorMessage)
 	}
 }

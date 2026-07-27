@@ -9,30 +9,41 @@ import (
 )
 
 const (
-	configFlag     = "config"
-	addressFlag    = "address"
-	caCertFlag     = "ca-cert"
-	sessionDirFlag = "session-dir"
-	cacheDirFlag   = "cache-dir"
+	configFlag      = "config"
+	transportFlag   = "transport"
+	addressFlag     = "address"
+	grpcAddressFlag = "grpc-address"
+	caCertFlag      = "ca-cert"
+	sessionDirFlag  = "session-dir"
+	cacheDirFlag    = "cache-dir"
 
-	clientConfigMetadataKey     = "client-config"
-	clientConfigFileMetadataKey = "client-config-file"
+	clientConfigMetadataKey      = "client-config"
+	clientConfigFileMetadataKey  = "client-config-file"
+	clientApplicationMetadataKey = "client-application"
 )
 
 func resolveClientConfigWithFile(command *urfavecli.Command) (config.Config, string, error) {
 	configFile := nonEmptyEnvironmentValue("CONFIG")
 	overrides := config.Overrides{
-		Address:    nonEmptyEnvironmentValue("ADDRESS"),
-		CACertFile: nonEmptyEnvironmentValue("CA_CERT_FILE"),
-		SessionDir: nonEmptyEnvironmentValue("SESSION_DIR"),
-		CacheDir:   nonEmptyEnvironmentValue("CACHE_DIR"),
+		Transport:   nonEmptyTransportEnvironmentValue("TRANSPORT"),
+		Address:     nonEmptyEnvironmentValue("ADDRESS"),
+		GRPCAddress: nonEmptyEnvironmentValue("GRPC_ADDRESS"),
+		CACertFile:  nonEmptyEnvironmentValue("CA_CERT_FILE"),
+		SessionDir:  nonEmptyEnvironmentValue("SESSION_DIR"),
+		CacheDir:    nonEmptyEnvironmentValue("CACHE_DIR"),
 	}
 
 	if value := explicitStringFlag(command, configFlag); value != nil {
 		configFile = value
 	}
+	if value := explicitTransportFlag(command, transportFlag); value != nil {
+		overrides.Transport = value
+	}
 	if value := explicitStringFlag(command, addressFlag); value != nil {
 		overrides.Address = value
+	}
+	if value := explicitStringFlag(command, grpcAddressFlag); value != nil {
+		overrides.GRPCAddress = value
 	}
 	if value := explicitStringFlag(command, caCertFlag); value != nil {
 		overrides.CACertFile = value
@@ -66,6 +77,16 @@ func explicitStringFlag(command *urfavecli.Command, name string) *string {
 	return &value
 }
 
+func explicitTransportFlag(command *urfavecli.Command, name string) *config.Transport {
+	value := explicitStringFlag(command, name)
+	if value == nil {
+		return nil
+	}
+
+	transport := config.Transport(*value)
+	return &transport
+}
+
 func nonEmptyEnvironmentValue(name string) *string {
 	value := os.Getenv(name)
 	if value == "" {
@@ -73,6 +94,16 @@ func nonEmptyEnvironmentValue(name string) *string {
 	}
 
 	return &value
+}
+
+func nonEmptyTransportEnvironmentValue(name string) *config.Transport {
+	value := nonEmptyEnvironmentValue(name)
+	if value == nil {
+		return nil
+	}
+
+	transport := config.Transport(*value)
+	return &transport
 }
 
 func configFromCommand(command *urfavecli.Command) (config.Config, error) {

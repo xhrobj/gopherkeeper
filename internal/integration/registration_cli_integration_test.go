@@ -16,8 +16,8 @@ import (
 
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	clientcli "github.com/xhrobj/gopherkeeper/internal/client/cli"
-	"github.com/xhrobj/gopherkeeper/internal/server/middleware"
 	"github.com/xhrobj/gopherkeeper/internal/server/migration"
+	"github.com/xhrobj/gopherkeeper/internal/server/transport/http/middleware"
 )
 
 func TestIntegration_CLIRegistrationFlow(t *testing.T) {

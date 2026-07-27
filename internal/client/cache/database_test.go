@@ -98,7 +98,7 @@ func TestOpen_RejectsUnsafeDatabaseFile(t *testing.T) {
 func testLocation(t *testing.T) Location {
 	t.Helper()
 
-	location, err := ResolveLocation(t.TempDir(), "localhost:8080", "alice")
+	location, err := ResolveLocation(t.TempDir(), "alice")
 	if err != nil {
 		t.Fatalf("ResolveLocation() error = %v", err)
 	}

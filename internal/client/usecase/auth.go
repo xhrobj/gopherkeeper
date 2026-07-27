@@ -37,9 +37,8 @@ func (a *Application) Login(ctx context.Context, login, password string) (model.
 	}
 
 	if err := sessions.Save(session.Session{
-		ServerAddress: a.serverAddress,
-		AccessToken:   result.AccessToken,
-		ExpiresAt:     result.ExpiresAt,
+		AccessToken: result.AccessToken,
+		ExpiresAt:   result.ExpiresAt,
 	}); err != nil {
 		return model.User{}, fmt.Errorf("save online session: %w", err)
 	}
@@ -68,7 +67,7 @@ func (a *Application) loadSession() (session.Session, error) {
 		return session.Session{}, err
 	}
 
-	storedSession, err := sessions.Load(a.serverAddress)
+	storedSession, err := sessions.Load()
 	if err != nil {
 		return session.Session{}, mapSessionLoadError(err)
 	}
@@ -81,7 +80,6 @@ func mapSessionLoadError(err error) error {
 	case errors.Is(err, session.ErrExpired):
 		return newUserError("session expired, please login again", errors.Join(ErrNotLoggedIn, err))
 	case errors.Is(err, session.ErrNotFound),
-		errors.Is(err, session.ErrServerMismatch),
 		errors.Is(err, session.ErrInvalid):
 		return newUserError("not logged in", errors.Join(ErrNotLoggedIn, err))
 	default:

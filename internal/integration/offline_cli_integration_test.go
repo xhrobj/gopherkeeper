@@ -102,7 +102,7 @@ func TestIntegration_CLIOfflineReadErrors(t *testing.T) {
 	prepareCLIOfflineCache(t, ctx, cfg, "alice", password, offlineCLIRecords()[:1])
 
 	t.Run("another login", func(t *testing.T) {
-		location, err := cache.ResolveLocation(cfg.CacheDir, cfg.Address, "bob")
+		location, err := cache.ResolveLocation(cfg.CacheDir, "bob")
 		if err != nil {
 			t.Fatalf("resolve Bob cache location: %v", err)
 		}
@@ -228,7 +228,7 @@ func prepareCLIOfflineCache(
 	if err != nil {
 		t.Fatalf("canonicalize cache login: %v", err)
 	}
-	location, err := cache.ResolveLocation(cfg.CacheDir, cfg.Address, canonicalLogin)
+	location, err := cache.ResolveLocation(cfg.CacheDir, canonicalLogin)
 	if err != nil {
 		t.Fatalf("resolve offline cache location: %v", err)
 	}

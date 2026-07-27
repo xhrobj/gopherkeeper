@@ -350,3 +350,92 @@ func assertServerStatusRow(t *testing.T, view, label, value string) {
 	}
 	t.Fatalf("status row %q = %q was not found:\n%s", label, value, view)
 }
+
+func TestModel_ServerStatusShowsActiveGRPCTransport(t *testing.T) {
+	m := newTestModel(t, config.Config{
+		Transport:   config.TransportGRPC,
+		Address:     "localhost:8888",
+		GRPCAddress: "localhost:9090",
+	}, buildinfo.Info{})
+	m.width = 100
+	m.height = 32
+	m.dialog = dialogServerStatus
+	m.statusState = serverStatusReady
+	m.statusValue = "ok"
+
+	view := m.View().Content
+	assertViewContains(t, view, "Transport", "gRPC", "Address", "localhost:9090")
+	assertViewExcludes(t, view, "localhost:8888")
+}
+
+func TestRenderServerStatus_InsertsBlankLineBeforeStatusBlock(t *testing.T) {
+	theme := newTheme()
+	view := ansi.Strip(renderServerStatusWindow(theme, serverStatusWindowOptions{
+		width:        58,
+		transport:    config.TransportHTTPS,
+		address:      "localhost:8888",
+		state:        serverStatusReady,
+		health:       "ok",
+		activeButton: 1,
+	}))
+
+	assertBlankLineBetweenRows(t, view, "Address", "Status")
+}
+
+func assertBlankLineBetweenRows(t *testing.T, view, upperLabel, lowerLabel string) {
+	t.Helper()
+	lines := strings.Split(view, "\n")
+	upperIndex := -1
+	lowerIndex := -1
+	for index, line := range lines {
+		if upperIndex == -1 && serverStatusLineHasLabel(line, upperLabel) {
+			upperIndex = index
+		}
+		if lowerIndex == -1 && serverStatusLineHasLabel(line, lowerLabel) {
+			lowerIndex = index
+		}
+	}
+	if upperIndex == -1 || lowerIndex == -1 {
+		t.Fatalf("rows %q or %q were not found:\n%s", upperLabel, lowerLabel, view)
+	}
+	if lowerIndex-upperIndex < 2 {
+		t.Fatalf("rows %q and %q are adjacent, want blank line between them:\n%s", upperLabel, lowerLabel, view)
+	}
+	for _, segment := range lines[upperIndex+1 : lowerIndex] {
+		if strings.TrimSpace(segment) != "" {
+			t.Fatalf("expected blank line between %q and %q, got %q", upperLabel, lowerLabel, segment)
+		}
+	}
+}
+
+func serverStatusLineHasLabel(line, label string) bool {
+	return strings.HasPrefix(strings.TrimSpace(line), label+" ")
+}
+
+func TestRenderServerStatus_AlwaysShowsTransportAndAddress(t *testing.T) {
+	theme := newTheme()
+	states := []serverStatusWindowOptions{
+		{
+			width:     58,
+			transport: config.TransportGRPC,
+			address:   "localhost:9090",
+			pending:   true,
+		},
+		{
+			width:     58,
+			transport: config.TransportGRPC,
+			address:   "localhost:9090",
+			state:     serverStatusFailed,
+			failure:   serverStatusFailure{status: "Unreachable", reason: "Connection refused"},
+		},
+	}
+
+	for index, options := range states {
+		view := ansi.Strip(renderServerStatusWindow(theme, options))
+		for _, want := range []string{"Transport", "gRPC", "Address", "localhost:9090"} {
+			if !strings.Contains(view, want) {
+				t.Fatalf("state %d does not contain %q:\n%s", index, want, view)
+			}
+		}
+	}
+}

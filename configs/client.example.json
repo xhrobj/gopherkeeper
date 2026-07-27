@@ -1,5 +1,7 @@
 {
+  "transport": "https",
   "address": "localhost:8080",
+  "grpc_address": "localhost:50051",
   "ca_cert_file": "",
   "session_dir": "",
   "cache_dir": ""

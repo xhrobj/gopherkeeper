@@ -24,7 +24,6 @@ type SyncCacheRepository interface {
 // аккаунта только после успешной повторной аутентификации пользователя.
 type SyncCacheRepositoryProvider func(
 	ctx context.Context,
-	serverAddress string,
 	canonicalLogin string,
 	password []byte,
 ) (SyncCacheRepository, error)

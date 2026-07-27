@@ -1,4 +1,4 @@
-// Package main запускает HTTPS-сервер GophKeeper.
+// Package main запускает HTTPS/gRPC-серверы GophKeeper.
 package main
 
 import (
@@ -12,14 +12,16 @@ import (
 
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/logger"
+	serverapp "github.com/xhrobj/gopherkeeper/internal/server/app"
 	"github.com/xhrobj/gopherkeeper/internal/server/auth"
 	"github.com/xhrobj/gopherkeeper/internal/server/config"
-	"github.com/xhrobj/gopherkeeper/internal/server/httpserver"
-	"github.com/xhrobj/gopherkeeper/internal/server/middleware"
 	"github.com/xhrobj/gopherkeeper/internal/server/migration"
 	"github.com/xhrobj/gopherkeeper/internal/server/postgres"
 	"github.com/xhrobj/gopherkeeper/internal/server/recordcrypto"
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
+	grpcserver "github.com/xhrobj/gopherkeeper/internal/server/transport/grpc"
+	httpserver "github.com/xhrobj/gopherkeeper/internal/server/transport/http"
+	"github.com/xhrobj/gopherkeeper/internal/server/transport/http/middleware"
 	"go.uber.org/zap"
 )
 
@@ -95,22 +97,52 @@ func run(ctx context.Context, args []string) error {
 		lg,
 	)
 
-	server := httpserver.NewServer(cfg.Address, handler)
-
-	lg.Info("https server starting", zap.String("server_address", cfg.Address))
-
-	if err := httpserver.ServeTLS(
-		ctx,
-		server,
+	httpServer := httpserver.NewServer(cfg.HTTPAddress, handler)
+	grpcServer, err := grpcserver.NewServer(
 		cfg.TLSCertFile,
 		cfg.TLSKeyFile,
-	); err != nil {
+		grpcserver.Dependencies{
+			Database:          pool,
+			Registerer:        registrationService,
+			Authenticator:     authenticationService,
+			TokenValidator:    tokenManager,
+			CurrentUserReader: userRepository,
+			Records:           recordService,
+		},
+		lg,
+	)
+	if err != nil {
 		return err
 	}
 
-	lg.Info("https server stopped")
+	return serverapp.ServeTransports(
+		ctx,
+		serverapp.Transport{
+			Name: "HTTPS",
+			Serve: func(ctx context.Context) error {
+				lg.Info("https server starting", zap.String("server_address", cfg.HTTPAddress))
+				err := httpserver.ServeTLS(
+					ctx,
+					httpServer,
+					cfg.TLSCertFile,
+					cfg.TLSKeyFile,
+				)
+				lg.Info("https server stopped")
 
-	return nil
+				return err
+			},
+		},
+		serverapp.Transport{
+			Name: "gRPC",
+			Serve: func(ctx context.Context) error {
+				lg.Info("grpc server starting", zap.String("server_address", cfg.GRPCAddress))
+				err := grpcserver.Serve(ctx, cfg.GRPCAddress, grpcServer)
+				lg.Info("grpc server stopped")
+
+				return err
+			},
+		},
+	)
 }
 
 func printIntro(output io.Writer) error {

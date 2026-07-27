@@ -16,14 +16,12 @@ type Application struct {
 	sessions      SessionStorageProvider
 	syncCaches    SyncCacheRepositoryProvider
 	offlineCaches OfflineCacheRepositoryProvider
-	serverAddress string
 }
 
 // OfflineApplication выполняет только offline read-only сценарии поверх
 // существующего зашифрованного локального кеша.
 type OfflineApplication struct {
 	offlineCaches OfflineCacheRepositoryProvider
-	serverAddress string
 }
 
 // HealthChecker описывает удалённую проверку доступности Сервера.
@@ -41,7 +39,7 @@ type UserGateway interface {
 // SessionStorage описывает локальное хранилище online-сессии.
 type SessionStorage interface {
 	Save(stored session.Session) error
-	Load(expectedServerAddress string) (session.Session, error)
+	Load() (session.Session, error)
 	Delete() error
 }
 
@@ -56,7 +54,6 @@ func New(
 	sessions SessionStorageProvider,
 	syncCaches SyncCacheRepositoryProvider,
 	offlineCaches OfflineCacheRepositoryProvider,
-	serverAddress string,
 ) *Application {
 	return &Application{
 		health:        health,
@@ -65,7 +62,6 @@ func New(
 		sessions:      sessions,
 		syncCaches:    syncCaches,
 		offlineCaches: offlineCaches,
-		serverAddress: serverAddress,
 	}
 }
 
@@ -73,10 +69,8 @@ func New(
 // зашифрованного локального кеша без сетевых и session-зависимостей.
 func NewOffline(
 	offlineCaches OfflineCacheRepositoryProvider,
-	serverAddress string,
 ) *OfflineApplication {
 	return &OfflineApplication{
 		offlineCaches: offlineCaches,
-		serverAddress: serverAddress,
 	}
 }

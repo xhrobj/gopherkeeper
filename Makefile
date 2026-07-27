@@ -1,6 +1,6 @@
 .PHONY: \
 	show-coverage \
-	gen-tls-certs gen-jwt-secret gen-record-master-key \
+	gen-proto gen-tls-certs gen-jwt-secret gen-record-master-key \
 	check-client-config \
 	build build-server build-client build-client-cross \
 	db-up db-down db-connect db-erase \
@@ -21,11 +21,15 @@ ENV_FILE ?= .env
 
 -include $(ENV_FILE)
 
+# параметры генерации protobuf-кода
+GO_MODULE := github.com/xhrobj/gopherkeeper
+PROTO_FILE := api/gopherkeeper.proto
+
 # передать уровень логирования для Сервера и Клиента (читается из env-файла)
 export LOG_LEVEL
 
 # данные о сборке подставляются в бинарники Клиента и Сервера через ldflags
-BUILD_VERSION ?= v0.9.1
+BUILD_VERSION ?= v1.0.0
 BUILD_DATE ?= $(shell date +%Y-%m-%d)
 BUILD_COMMIT ?= $(shell git rev-parse --short HEAD)
 
@@ -67,6 +71,7 @@ COMPOSE := docker compose --env-file $(ENV_FILE)
 
 # параметры локального запуска Сервера и Клиента
 ADDRESS ?= localhost:8080
+GRPC_ADDRESS ?= localhost:50051
 DATABASE_DSN ?= postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST):$(POSTGRES_PORT)/$(POSTGRES_DB)?sslmode=disable
 
 # !!!: строка подключения к локальному PostgreSQL собирается из POSTGRES_* и передается Серверу через окружение
@@ -84,6 +89,17 @@ CLIENT_CONFIG ?= configs/client.json
 # обновить профиль покрытия и вывести общий процент
 show-coverage: coverage
 	go tool cover -func=coverage.out | tail -n 1
+
+# сгенерировать Go-код protobuf-сообщений и gRPC-сервиса
+gen-proto:
+	protoc \
+		--proto_path=. \
+		--go_out=. \
+		--go_opt=module=$(GO_MODULE) \
+		--go_opt=default_api_level=API_OPAQUE \
+		--go-grpc_out=. \
+		--go-grpc_opt=module=$(GO_MODULE) \
+		$(PROTO_FILE)
 
 # сгенерировать (при необходимости) локальный CA и TLS-сертификат Сервера
 gen-tls-certs:
@@ -169,6 +185,7 @@ db-erase:
 run-server: db-up gen-tls-certs build-server
 	$(SERVER) \
 		-a $(ADDRESS) \
+		-g $(GRPC_ADDRESS) \
 		--tls-cert $(TLS_SERVER_CERT) \
 		--tls-key $(TLS_SERVER_KEY)
 
@@ -230,6 +247,8 @@ coverage: db-up
 		-covermode=atomic \
 		-coverprofile=coverage.out \
 		./...
+	grep -v '/internal/proto/' coverage.out > coverage.tmp
+	mv coverage.tmp coverage.out
 
 # выполнить стандартный статический анализ Go-кода
 vet:

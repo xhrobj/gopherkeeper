@@ -16,6 +16,38 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/client/failure"
 )
 
+type idleConnectionCloserStub struct {
+	calls int
+}
+
+func (stub *idleConnectionCloserStub) CloseIdleConnections() {
+	stub.calls++
+}
+
+func TestClient_CloseClosesIdleConnections(t *testing.T) {
+	closer := &idleConnectionCloserStub{}
+	client := &Client{idleConnections: closer}
+
+	if err := client.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if closer.calls != 1 {
+		t.Fatalf("CloseIdleConnections() calls = %d, want 1", closer.calls)
+	}
+}
+
+func TestClient_CloseAllowsNilClientAndTransport(t *testing.T) {
+	var nilClient *Client
+
+	if err := nilClient.Close(); err != nil {
+		t.Fatalf("nil Client.Close() error = %v", err)
+	}
+
+	if err := (&Client{}).Close(); err != nil {
+		t.Fatalf("Client without transport Close() error = %v", err)
+	}
+}
+
 func TestClient_HealthWithAdditionalCA(t *testing.T) {
 	server := newHealthTLSServer(t, http.StatusOK, `{"status":"ok"}`)
 	defer server.Close()
@@ -130,27 +162,6 @@ func TestHealthStatusFailureKind_ReturnsExpectedKind(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestNew_ReturnsCertificateErrors(t *testing.T) {
-	t.Run("missing file", func(t *testing.T) {
-		_, err := New("localhost:8080", "missing-ca.pem")
-		if err == nil {
-			t.Fatal("New() error = nil, want file error")
-		}
-	})
-
-	t.Run("invalid PEM", func(t *testing.T) {
-		path := t.TempDir() + "/ca.pem"
-		if err := os.WriteFile(path, []byte("not a certificate"), 0o600); err != nil {
-			t.Fatalf("write CA certificate: %v", err)
-		}
-
-		_, err := New("localhost:8080", path)
-		if err == nil {
-			t.Fatal("New() error = nil, want PEM parsing error")
-		}
-	})
 }
 
 func newHealthTLSServer(t *testing.T, status int, body string) *httptest.Server {

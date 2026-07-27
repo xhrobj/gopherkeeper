@@ -156,3 +156,16 @@ func staticBackendFactory(backend Backend) BackendFactory {
 		return backend, nil
 	}
 }
+
+type transportClosingBackendStub struct {
+	backendStub
+	closeTransport func() error
+}
+
+func (stub *transportClosingBackendStub) CloseTransport() error {
+	if stub.closeTransport == nil {
+		return nil
+	}
+
+	return stub.closeTransport()
+}

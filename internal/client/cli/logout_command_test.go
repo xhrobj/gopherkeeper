@@ -39,9 +39,11 @@ func TestLogoutCommand_Configuration(t *testing.T) {
 	}
 
 	wantConfig := config.Config{
-		Address:    "localhost:8082",
-		CACertFile: "flag-ca.pem",
-		SessionDir: "flag-session",
+		Transport:   config.TransportHTTPS,
+		GRPCAddress: "localhost:50051",
+		Address:     "localhost:8082",
+		CACertFile:  "flag-ca.pem",
+		SessionDir:  "flag-session",
 	}
 	if gotConfig != wantConfig {
 		t.Errorf("configuration = %+v, want %+v", gotConfig, wantConfig)

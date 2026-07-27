@@ -27,10 +27,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 	"github.com/xhrobj/gopherkeeper/internal/server/auth"
-	"github.com/xhrobj/gopherkeeper/internal/server/httpserver"
 	"github.com/xhrobj/gopherkeeper/internal/server/postgres"
 	"github.com/xhrobj/gopherkeeper/internal/server/recordcrypto"
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
+	httpserver "github.com/xhrobj/gopherkeeper/internal/server/transport/http"
 )
 
 const (

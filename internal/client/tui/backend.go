@@ -48,6 +48,20 @@ type Backend interface {
 	Sync(context.Context, string) (SyncSummary, error)
 }
 
+// backendTransportCloser закрывает только сетевой transport Backend, не затрагивая локальный кеш.
+type backendTransportCloser interface {
+	CloseTransport() error
+}
+
+func closeBackendTransport(backend Backend) {
+	closer, ok := backend.(backendTransportCloser)
+	if !ok || closer == nil {
+		return
+	}
+
+	_ = closer.CloseTransport()
+}
+
 // BackendFactory создаёт runtime-зависимости TUI для переданной конфигурации.
 type BackendFactory func(config.Config) (Backend, error)
 
