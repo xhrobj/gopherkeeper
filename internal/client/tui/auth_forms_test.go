@@ -157,3 +157,49 @@ func assertAuthFormView(t *testing.T, view string, parts ...string) {
 		}
 	}
 }
+
+func TestRenderRegisterWindow_ShowsCenteredHintForFocusedControl(t *testing.T) {
+	theme := newTheme()
+
+	tests := []struct {
+		name  string
+		focus registerFocus
+		want  string
+	}{
+		{name: "login", focus: registerName, want: registerLoginHint},
+		{name: "password", focus: registerPassword, want: registerPasswordHint},
+		{name: "repeat password", focus: registerRepeatPassword, want: registerRepeatPasswordHint},
+		{name: "register button", focus: registerSubmit, want: registerWelcomeHint},
+		{name: "close button", focus: registerClose, want: registerCloseWelcomeHint},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			form := newRegisterForm()
+			form.focus = tt.focus
+
+			view := ansi.Strip(renderRegisterWindow(theme, 56, form, false, false, ""))
+			lines := strings.Split(view, "\n")
+			lineIndex := -1
+			for index, line := range lines {
+				if strings.TrimSpace(line) == tt.want {
+					lineIndex = index
+					break
+				}
+			}
+			if lineIndex < 1 || lineIndex+1 >= len(lines) {
+				t.Fatalf("hint %q is missing or not separated by rows:\n%s", tt.want, view)
+			}
+			if strings.TrimSpace(lines[lineIndex-1]) != "" || strings.TrimSpace(lines[lineIndex+1]) != "" {
+				t.Fatalf("hint %q is not surrounded by empty rows:\n%s", tt.want, view)
+			}
+
+			line := lines[lineIndex]
+			left := len(line) - len(strings.TrimLeft(line, " "))
+			right := len(line) - len(strings.TrimRight(line, " "))
+			if left-right < -1 || left-right > 1 {
+				t.Fatalf("hint %q is not centered: left padding %d, right padding %d", tt.want, left, right)
+			}
+		})
+	}
+}

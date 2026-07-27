@@ -204,7 +204,13 @@ const (
 	registerFirstFieldRow = 2
 	registerFieldRowStep  = 2
 	registerButtonGap     = 3
-	registerButtonRow     = 8
+	registerButtonRow     = 10
+
+	registerLoginHint          = `^[A-Za-z0-9][A-Za-z0-9._-]{2,31}$`
+	registerPasswordHint       = `^[!-~]{8,64}$`
+	registerRepeatPasswordHint = `== password`
+	registerWelcomeHint        = `Welcome (^-^)/`
+	registerCloseWelcomeHint   = `\(O_O)/`
 )
 
 type registerForm struct {
@@ -336,6 +342,8 @@ func renderRegisterWindow(
 		t.windowBody.Width(contentWidth).Render(""),
 		renderRegisterField(t, "Repeat password", form.repeatPassword, inputWidth, form.focus == registerRepeatPassword && !blocked),
 		t.windowBody.Width(contentWidth).Render(""),
+		renderRegisterHint(t, contentWidth, form.focus),
+		t.windowBody.Width(contentWidth).Render(""),
 		renderRegisterButtons(t, contentWidth, form.focus, !form.canSubmit(), blocked),
 	}
 
@@ -344,13 +352,37 @@ func renderRegisterWindow(
 		Width(width).
 		Padding(1, 2).
 		Render(strings.Join(rows, "\n"))
+
 	return lipgloss.JoinVertical(lipgloss.Left, title, body)
 }
 
 func renderRegisterField(t theme, label string, field textField, inputWidth int, active bool) string {
 	labelPart := t.label.Width(registerLabelWidth).Render(label)
 	gap := t.windowBody.Width(2).Render("")
+
 	return labelPart + gap + renderTextField(t, field, inputWidth, active)
+}
+
+func renderRegisterHint(t theme, width int, focus registerFocus) string {
+	return t.recordInfo.
+		Width(width).
+		AlignHorizontal(lipgloss.Center).
+		Render(registerHint(focus))
+}
+
+func registerHint(focus registerFocus) string {
+	switch focus {
+	case registerName:
+		return registerLoginHint
+	case registerPassword:
+		return registerPasswordHint
+	case registerRepeatPassword:
+		return registerRepeatPasswordHint
+	case registerClose:
+		return registerCloseWelcomeHint
+	default:
+		return registerWelcomeHint
+	}
 }
 
 func registerButtonsLayout(
