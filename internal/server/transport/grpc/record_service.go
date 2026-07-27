@@ -59,13 +59,13 @@ func (server *recordService) ListRecords(
 	ctx context.Context,
 	request *gopherkeeperpb.ListRecordsRequest,
 ) (*gopherkeeperpb.ListRecordsResponse, error) {
-	if request == nil {
-		return nil, transportError(errInvalidRequest)
-	}
-
 	userID, ok := userIDFromContext(ctx)
 	if !ok {
 		return nil, unauthenticatedError()
+	}
+
+	if request == nil {
+		return nil, transportError(errInvalidRequest)
 	}
 	if server.records == nil {
 		return nil, transportError(errInvalidDependencies)

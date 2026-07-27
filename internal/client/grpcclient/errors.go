@@ -132,7 +132,7 @@ func mapListRecordsError(err error) error {
 		Message:     grpcStatus.Message(),
 		operation:   "list records",
 		transport:   err,
-		kind:        failure.Unknown,
+		kind:        failure.TooLarge,
 		userMessage: "Server response is too large",
 	}
 }

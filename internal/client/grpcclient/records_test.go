@@ -188,6 +188,9 @@ func TestClient_ListRecordsDoesNotReportLargeResponseAsPayloadError(t *testing.T
 	if errors.Is(err, model.ErrPayloadTooLarge) {
 		t.Fatalf("ListRecords() error = %v, must not be payload-too-large", err)
 	}
+	if got := failure.KindOf(err); got != failure.TooLarge {
+		t.Fatalf("failure.KindOf() = %d, want %d", got, failure.TooLarge)
+	}
 	if got := failure.Message(err); got != "Server response is too large" {
 		t.Fatalf("failure.Message() = %q", got)
 	}

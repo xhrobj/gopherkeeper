@@ -158,63 +158,92 @@ func recordPayloadFromProto(payload *gopherkeeperpb.RecordPayload) (model.Record
 		return nil, errRecordPayloadRequired
 	}
 
-	var result model.RecordPayload
-	switch payload.WhichValue() {
-	case gopherkeeperpb.RecordPayload_Credentials_case:
-		value := payload.GetCredentials()
-		if value == nil {
-			return nil, model.ErrInvalidCredentialsPayload
-		}
-		result = &model.CredentialsPayload{
-			Login:    value.GetLogin(),
-			Password: value.GetPassword(),
-			URL:      value.GetUrl(),
-			Metadata: value.GetMetadata(),
-		}
-	case gopherkeeperpb.RecordPayload_Card_case:
-		value := payload.GetCard()
-		if value == nil {
-			return nil, model.ErrInvalidCardPayload
-		}
-		card := &model.CardPayload{
-			Number:     value.GetNumber(),
-			Cardholder: value.GetCardholder(),
-			CVV:        value.GetCvv(),
-			Metadata:   value.GetMetadata(),
-		}
-		if value.GetExpiryMonth() != nil {
-			month := int(value.GetExpiryMonth().GetValue())
-			card.ExpiryMonth = &month
-		}
-		if value.GetExpiryYear() != nil {
-			year := int(value.GetExpiryYear().GetValue())
-			card.ExpiryYear = &year
-		}
-		result = card
-	case gopherkeeperpb.RecordPayload_Text_case:
-		value := payload.GetText()
-		if value == nil {
-			return nil, model.ErrInvalidTextPayload
-		}
-		result = &model.TextPayload{Text: value.GetText(), Metadata: value.GetMetadata()}
-	case gopherkeeperpb.RecordPayload_Binary_case:
-		value := payload.GetBinary()
-		if value == nil || !value.HasData() {
-			return nil, model.ErrInvalidBinaryPayload
-		}
-		result = &model.BinaryPayload{
-			Filename: value.GetFilename(),
-			Data:     bytes.Clone(value.GetData()),
-			Metadata: value.GetMetadata(),
-		}
-	default:
-		return nil, model.ErrRecordTypeUnsupported
+	result, err := decodeRecordPayload(payload)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := result.Validate(); err != nil {
 		return nil, err
 	}
+
 	return result, nil
+}
+
+func decodeRecordPayload(payload *gopherkeeperpb.RecordPayload) (model.RecordPayload, error) {
+	switch payload.WhichValue() {
+	case gopherkeeperpb.RecordPayload_Credentials_case:
+		return credentialsPayloadFromProto(payload.GetCredentials())
+	case gopherkeeperpb.RecordPayload_Card_case:
+		return cardPayloadFromProto(payload.GetCard())
+	case gopherkeeperpb.RecordPayload_Text_case:
+		return textPayloadFromProto(payload.GetText())
+	case gopherkeeperpb.RecordPayload_Binary_case:
+		return binaryPayloadFromProto(payload.GetBinary())
+	default:
+		return nil, model.ErrRecordTypeUnsupported
+	}
+}
+
+func credentialsPayloadFromProto(value *gopherkeeperpb.CredentialsPayload) (model.RecordPayload, error) {
+	if value == nil {
+		return nil, model.ErrInvalidCredentialsPayload
+	}
+
+	return &model.CredentialsPayload{
+		Login:    value.GetLogin(),
+		Password: value.GetPassword(),
+		URL:      value.GetUrl(),
+		Metadata: value.GetMetadata(),
+	}, nil
+}
+
+func cardPayloadFromProto(value *gopherkeeperpb.CardPayload) (model.RecordPayload, error) {
+	if value == nil {
+		return nil, model.ErrInvalidCardPayload
+	}
+
+	card := &model.CardPayload{
+		Number:     value.GetNumber(),
+		Cardholder: value.GetCardholder(),
+		CVV:        value.GetCvv(),
+		Metadata:   value.GetMetadata(),
+	}
+
+	if value.GetExpiryMonth() != nil {
+		month := int(value.GetExpiryMonth().GetValue())
+		card.ExpiryMonth = &month
+	}
+
+	if value.GetExpiryYear() != nil {
+		year := int(value.GetExpiryYear().GetValue())
+		card.ExpiryYear = &year
+	}
+
+	return card, nil
+}
+
+func textPayloadFromProto(value *gopherkeeperpb.TextPayload) (model.RecordPayload, error) {
+	if value == nil {
+		return nil, model.ErrInvalidTextPayload
+	}
+
+	return &model.TextPayload{
+		Text:     value.GetText(),
+		Metadata: value.GetMetadata(),
+	}, nil
+}
+
+func binaryPayloadFromProto(value *gopherkeeperpb.BinaryPayload) (model.RecordPayload, error) {
+	if value == nil || !value.HasData() {
+		return nil, model.ErrInvalidBinaryPayload
+	}
+
+	return &model.BinaryPayload{
+		Filename: value.GetFilename(),
+		Data:     bytes.Clone(value.GetData()),
+		Metadata: value.GetMetadata(),
+	}, nil
 }
 
 func timeFromProto(value *timestamppb.Timestamp) (time.Time, error) {

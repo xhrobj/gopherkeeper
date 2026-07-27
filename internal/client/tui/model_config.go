@@ -17,21 +17,9 @@ func (m model) updateConfig(key string) (tea.Model, tea.Cmd) {
 	case "shift+tab", "up":
 		m.configForm.move(-1)
 	case "left":
-		if m.configForm.focus == configTransport {
-			m.configForm.moveTransport(-1)
-		} else if m.configForm.activeField() != nil {
-			m.configForm.moveCursor(-1)
-		} else {
-			m.configForm.move(-1)
-		}
+		m.moveConfigHorizontal(-1)
 	case "right":
-		if m.configForm.focus == configTransport {
-			m.configForm.moveTransport(1)
-		} else if m.configForm.activeField() != nil {
-			m.configForm.moveCursor(1)
-		} else {
-			m.configForm.move(1)
-		}
+		m.moveConfigHorizontal(1)
 	case " ", "space":
 		if m.configForm.focus == configTransport {
 			m.configForm.toggleTransport()
@@ -45,23 +33,41 @@ func (m model) updateConfig(key string) (tea.Model, tea.Cmd) {
 	case "delete":
 		m.configForm.delete()
 	case "enter":
-		if m.configForm.focus == configTransport {
-			m.configForm.toggleTransport()
-			return m, nil
-		}
-		if m.configForm.activeField() != nil {
-			m.configForm.move(1)
-			return m, nil
-		}
-		if target, ok := configBrowseTarget(m.configForm.focus); ok {
-			return m.openConfigPathPicker(target)
-		}
-		return m.activateConfig()
+		return m.activateConfigFocus()
 	default:
 		m.configForm.insertKey(key)
 	}
 
 	return m, nil
+}
+
+func (m *model) moveConfigHorizontal(step int) {
+	switch {
+	case m.configForm.focus == configTransport:
+		m.configForm.moveTransport(step)
+	case m.configForm.activeField() != nil:
+		m.configForm.moveCursor(step)
+	default:
+		m.configForm.move(step)
+	}
+}
+
+func (m model) activateConfigFocus() (tea.Model, tea.Cmd) {
+	if m.configForm.focus == configTransport {
+		m.configForm.toggleTransport()
+		return m, nil
+	}
+
+	if m.configForm.activeField() != nil {
+		m.configForm.move(1)
+		return m, nil
+	}
+
+	if target, ok := configBrowseTarget(m.configForm.focus); ok {
+		return m.openConfigPathPicker(target)
+	}
+
+	return m.activateConfig()
 }
 
 func (m model) openConfigPathPicker(target pathPickerTarget) (tea.Model, tea.Cmd) {

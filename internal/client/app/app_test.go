@@ -121,28 +121,33 @@ func TestNewRuntime_SelectsConfiguredTransport(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := config.Default()
-			cfg.Transport = tt.transport
-			cfg.SessionDir = t.TempDir()
-
-			runtime, err := NewRuntime(cfg)
-			if err != nil {
-				t.Fatalf("NewRuntime() error = %v", err)
-			}
-
-			if runtime == nil || runtime.Application == nil {
-				t.Fatal("NewRuntime() runtime or application = nil")
-			}
-			if runtime.closer == nil {
-				t.Fatal("runtime transport closer = nil")
-			}
-			if err := runtime.Close(); err != nil {
-				t.Fatalf("Close() error = %v", err)
-			}
-			if err := runtime.Close(); err != nil {
-				t.Fatalf("second Close() error = %v", err)
-			}
+			assertConfiguredRuntime(t, tt.transport)
 		})
+	}
+}
+
+func assertConfiguredRuntime(t *testing.T, transport config.Transport) {
+	t.Helper()
+
+	cfg := config.Default()
+	cfg.Transport = transport
+	cfg.SessionDir = t.TempDir()
+
+	runtime, err := NewRuntime(cfg)
+	if err != nil {
+		t.Fatalf("NewRuntime() error = %v", err)
+	}
+	if runtime == nil || runtime.Application == nil {
+		t.Fatal("NewRuntime() runtime or application = nil")
+	}
+	if runtime.closer == nil {
+		t.Fatal("runtime transport closer = nil")
+	}
+	if err := runtime.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if err := runtime.Close(); err != nil {
+		t.Fatalf("second Close() error = %v", err)
 	}
 }
 

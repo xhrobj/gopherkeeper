@@ -27,7 +27,7 @@ type connectionCloser interface {
 	Close() error
 }
 
-type healthClient interface {
+type healthChecker interface {
 	Check(context.Context, *healthpb.HealthCheckRequest, ...grpc.CallOption) (*healthpb.HealthCheckResponse, error)
 }
 
@@ -48,7 +48,7 @@ type recordClient interface {
 // Client выполняет gRPC-вызовы к Серверу GophKeeper.
 type Client struct {
 	connection connectionCloser
-	health     healthClient
+	health     healthChecker
 	auth       authClient
 	records    recordClient
 }

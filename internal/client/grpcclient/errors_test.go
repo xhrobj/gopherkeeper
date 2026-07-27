@@ -32,24 +32,37 @@ func TestMapRPCError(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := mapRPCError("test", status.Error(test.code, "message"), test.cause)
-			if err == nil {
-				t.Fatal("mapRPCError() error = nil")
-			}
-			if got := failure.KindOf(err); got != test.wantKind {
-				t.Fatalf("failure.KindOf() = %d, want %d", got, test.wantKind)
-			}
-			if got := failure.Message(err); got != test.wantMessage {
-				t.Fatalf("failure.Message() = %q, want %q", got, test.wantMessage)
-			}
-			if test.cause != nil && !errors.Is(err, test.cause) {
-				t.Fatalf("mapRPCError() does not preserve cause %v: %v", test.cause, err)
-			}
-			var rpcError *RPCError
-			if !errors.As(err, &rpcError) || rpcError.Code != test.code {
-				t.Fatalf("mapRPCError() RPCError = %#v, want code %s", rpcError, test.code)
-			}
+			assertMappedRPCError(t, test.code, test.cause, test.wantKind, test.wantMessage)
 		})
+	}
+}
+
+func assertMappedRPCError(
+	t *testing.T,
+	code codes.Code,
+	cause error,
+	wantKind failure.Kind,
+	wantMessage string,
+) {
+	t.Helper()
+
+	err := mapRPCError("test", status.Error(code, "message"), cause)
+	if err == nil {
+		t.Fatal("mapRPCError() error = nil")
+	}
+	if got := failure.KindOf(err); got != wantKind {
+		t.Fatalf("failure.KindOf() = %d, want %d", got, wantKind)
+	}
+	if got := failure.Message(err); got != wantMessage {
+		t.Fatalf("failure.Message() = %q, want %q", got, wantMessage)
+	}
+	if cause != nil && !errors.Is(err, cause) {
+		t.Fatalf("mapRPCError() does not preserve cause %v: %v", cause, err)
+	}
+
+	var rpcError *RPCError
+	if !errors.As(err, &rpcError) || rpcError.Code != code {
+		t.Fatalf("mapRPCError() RPCError = %#v, want code %s", rpcError, code)
 	}
 }
 
