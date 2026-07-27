@@ -84,21 +84,6 @@ func TestWrap(t *testing.T) {
 	}
 }
 
-func TestNew(t *testing.T) {
-	cause := errors.New("invalid value")
-	err := New(Validation, "Invalid data", cause)
-
-	if got := Message(err); got != "Invalid data" {
-		t.Errorf("Message() = %q, want Invalid data", got)
-	}
-	if got := err.Error(); got != "Invalid data: invalid value" {
-		t.Errorf("Error() = %q", got)
-	}
-	if !errors.Is(err, cause) {
-		t.Fatal("New() did not preserve cause")
-	}
-}
-
 func TestKindOf(t *testing.T) {
 	certificate := &x509.Certificate{DNSNames: []string{"example.com"}}
 	tests := []struct {

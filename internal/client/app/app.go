@@ -10,17 +10,6 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 )
 
-// New создаёт HTTPS application-приложение из runtime-конфигурации.
-// Выбор удалённого transport'а для CLI выполняет NewRuntime.
-func New(cfg config.Config) (*usecase.Application, error) {
-	client, err := httpclient.New(cfg.Address, cfg.CACertFile)
-	if err != nil {
-		return nil, err
-	}
-
-	return newApplication(cfg, client, client, client), nil
-}
-
 // NewRuntime создаёт online application и выбранный удалённый transport.
 func NewRuntime(cfg config.Config) (*Runtime, error) {
 	switch cfg.Transport {

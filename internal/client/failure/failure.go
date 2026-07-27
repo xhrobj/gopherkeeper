@@ -68,12 +68,6 @@ type Error struct {
 	cause       error
 }
 
-// New создаёт типизированную клиентскую ошибку с одинаковым диагностическим
-// и пользовательским сообщением.
-func New(kind Kind, message string, cause error) error {
-	return Wrap(kind, message, message, cause)
-}
-
 // Wrap создаёт типизированную ошибку, сохраняя отдельные диагностический
 // контекст и безопасное пользовательское сообщение.
 func Wrap(kind Kind, detail, userMessage string, cause error) error {
