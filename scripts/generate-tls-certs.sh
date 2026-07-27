@@ -2,6 +2,15 @@
 
 set -euo pipefail
 
+# Git Bash преобразует аргументы OpenSSL вида /CN=... в Windows-пути.
+# Отключаем это преобразование внутри скрипта, чтобы пользователю не
+# приходилось настраивать MSYS2_ARG_CONV_EXCL вручную.
+case "${MSYSTEM:-}" in
+	MINGW* | MSYS*)
+		export MSYS2_ARG_CONV_EXCL='*'
+		;;
+esac
+
 CERT_DIR=".local/certs"
 CERT_DAYS=3650
 
