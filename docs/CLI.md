@@ -1,26 +1,26 @@
-# Консольный интерфейс GophKeeper
+# 💻 Консольный интерфейс GophKeeper
 
 Отдельные CLI-команды предназначены для автоматизации, диагностики и работы без TUI. Они используют те же application use cases, HTTP-клиент, online-сессию и локальный зашифрованный кеш, что и терминальный интерфейс.
 
-Перед использованием выполните [локальную настройку Сервера и Клиента](SETUP.md). Требования и ограничения собраны в [отдельном документе](PROJECT_REQUIREMENTS.md).
+Перед использованием выполните [🤓 настройку Сервера и Клиента](SETUP.md). Требования и ограничения собраны в [⚖️ отдельном документе](PROJECT_REQUIREMENTS.md).
 
 ## Доступные команды
 
-- `client`, `client -h`, `client --help`, `client help` — баннер и общая справка;
-- `client health --help`, `client help health` — справка команды `health` без баннера;
-- `client -v`, `client --version` — баннер и полная информация о сборке;
-- `client health` — только результат команды;
-- `client register` — регистрация пользователя;
-- `client login` — вход пользователя и сохранение локальной online-сессии;
-- `client whoami` — проверка текущего пользователя по сохранённой online-сессии;
-- `client tui` — запуск интерактивного терминального интерфейса;
-- `client sync` — явная синхронизация зашифрованного локального кеша с Сервером;
-- `client records create-text` / `update-text` — создание и изменение text-записей;
-- `client records create-credentials` / `update-credentials` — создание и изменение credentials-записей;
-- `client records create-card` / `update-card` — создание и изменение card-записей;
-- `client records create-binary` / `update-binary` — создание и изменение binary-записей;
-- `client records list`, `get`, `delete` — online-операции для всех реализованных типов записей;
-- `client records list/get --offline --login <login>` — явное read-only чтение ранее синхронизированного зашифрованного кеша.
+- `gkeep`, `gkeep -h`, `gkeep --help`, `gkeep help` — баннер и общая справка;
+- `gkeep health --help`, `gkeep help health` — справка команды `health` без баннера;
+- `gkeep -v`, `gkeep --version` — баннер и полная информация о сборке;
+- `gkeep health` — только результат команды;
+- `gkeep register` — регистрация пользователя;
+- `gkeep login` — вход пользователя и сохранение локальной online-сессии;
+- `gkeep whoami` — проверка текущего пользователя по сохранённой online-сессии;
+- `gkeep tui` — запуск интерактивного терминального интерфейса;
+- `gkeep sync` — явная синхронизация зашифрованного локального кеша с Сервером;
+- `gkeep records create-text` / `update-text` — создание и изменение text-записей;
+- `gkeep records create-credentials` / `update-credentials` — создание и изменение credentials-записей;
+- `gkeep records create-card` / `update-card` — создание и изменение card-записей;
+- `gkeep records create-binary` / `update-binary` — создание и изменение binary-записей;
+- `gkeep records list`, `get`, `delete` — online-операции для всех реализованных типов записей;
+- `gkeep records list/get --offline --login <login>` — явное read-only чтение ранее синхронизированного зашифрованного кеша.
 
 ## Проверить доступность Сервера
 
