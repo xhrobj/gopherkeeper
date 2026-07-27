@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/base64"
 	"errors"
 	"flag"
@@ -57,6 +58,7 @@ func Parse(args []string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+
 	if err := parseServerFlags(args, &cfg); err != nil {
 		return Config{}, err
 	}
@@ -71,6 +73,9 @@ func Parse(args []string) (Config, error) {
 	}
 	if err := configureRecordMasterKey(&cfg, recordMasterKeyRaw); err != nil {
 		return Config{}, err
+	}
+	if bytes.Equal(cfg.JWTSecret, cfg.RecordMasterKey) {
+		return Config{}, errors.New("JWT secret and record master key must differ")
 	}
 	if err := normalizeRecordKeyID(&cfg); err != nil {
 		return Config{}, err
