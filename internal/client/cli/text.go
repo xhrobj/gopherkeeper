@@ -23,22 +23,16 @@ func newCreateTextRecordCommand(factory clientFactory) *urfavecli.Command {
 	return &urfavecli.Command{
 		Name:  "create-text",
 		Usage: "create a private text record",
-		Flags: []urfavecli.Flag{
-			&urfavecli.StringFlag{
-				Name:     titleFlag,
-				Usage:    "record title",
-				Required: true,
-			},
+		Flags: recordMutationFlags(
+			false,
+			recordTitleUsage,
+			recordMetadataFileUsage,
 			&urfavecli.StringFlag{
 				Name:     textFileFlag,
 				Usage:    "path to file with private text payload",
 				Required: true,
 			},
-			&urfavecli.StringFlag{
-				Name:  metadataFileFlag,
-				Usage: "path to optional file with private metadata",
-			},
-		},
+		),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			application, err := applicationFromCommand(command, factory)
 			if err != nil {
@@ -61,28 +55,16 @@ func newUpdateTextRecordCommand(factory clientFactory) *urfavecli.Command {
 		Name:      "update-text",
 		Usage:     "update a private text record",
 		ArgsUsage: recordIDArgsUsage,
-		Flags: []urfavecli.Flag{
-			&urfavecli.Int64Flag{
-				Name:     revisionFlag,
-				Aliases:  []string{"r"},
-				Usage:    "expected record revision",
-				Required: true,
-			},
-			&urfavecli.StringFlag{
-				Name:     titleFlag,
-				Usage:    "new record title",
-				Required: true,
-			},
+		Flags: recordMutationFlags(
+			true,
+			"new record title",
+			"path to optional file with new private metadata",
 			&urfavecli.StringFlag{
 				Name:     textFileFlag,
 				Usage:    "path to file with new private text payload",
 				Required: true,
 			},
-			&urfavecli.StringFlag{
-				Name:  metadataFileFlag,
-				Usage: "path to optional file with new private metadata",
-			},
-		},
+		),
 		Action: func(ctx context.Context, command *urfavecli.Command) error {
 			recordID := command.Args().First()
 			if recordID == "" {

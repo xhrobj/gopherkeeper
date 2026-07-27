@@ -85,8 +85,8 @@ gkeep --config configs/client.json tui
   <img src="docs/images/tui/05-record-menu-preview.png" alt="Record menu">
 </a>
 
-<a href="docs/images/tui/06-card-view.png">
-  <img src="docs/images/tui/06-card-view-preview.png" alt="Card view">
+<a href="docs/images/tui/06-card-view.jpg">
+  <img src="docs/images/tui/06-card-view-preview.jpg" alt="Card view">
 </a>
 
 ### 6. Синхронизируйте локальный кеш

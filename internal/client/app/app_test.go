@@ -12,19 +12,6 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 )
 
-func TestNew(t *testing.T) {
-	application, err := New(config.Config{
-		Address:    "localhost:8080",
-		SessionDir: t.TempDir(),
-	})
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-	if application == nil {
-		t.Fatal("New() application = nil")
-	}
-}
-
 func TestNewOffline_DoesNotLoadNetworkOrSessionDependencies(t *testing.T) {
 	cacheDirectory := filepath.Join(t.TempDir(), "encrypted-cache")
 
@@ -55,20 +42,21 @@ func TestNewLogout(t *testing.T) {
 	}
 }
 
-func TestNew_DoesNotOpenEncryptedCache(t *testing.T) {
+func TestNewRuntime_DoesNotOpenEncryptedCache(t *testing.T) {
 	cacheDirectory := filepath.Join(t.TempDir(), "encrypted-cache")
+	cfg := config.Default()
+	cfg.SessionDir = t.TempDir()
+	cfg.CacheDir = cacheDirectory
 
-	application, err := New(config.Config{
-		Address:    "localhost:8080",
-		SessionDir: t.TempDir(),
-		CacheDir:   cacheDirectory,
-	})
+	runtime, err := NewRuntime(cfg)
 	if err != nil {
-		t.Fatalf("New() error = %v", err)
+		t.Fatalf("NewRuntime() error = %v", err)
 	}
-	if application == nil {
-		t.Fatal("New() application = nil")
-	}
+	t.Cleanup(func() {
+		if err := runtime.Close(); err != nil {
+			t.Errorf("Close() error = %v", err)
+		}
+	})
 
 	if _, err := os.Stat(cacheDirectory); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("cache directory stat error = %v, want os.ErrNotExist", err)

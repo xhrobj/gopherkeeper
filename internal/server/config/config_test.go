@@ -308,6 +308,25 @@ func TestParse_ReturnsInvalidRecordMasterKeyError(t *testing.T) {
 	}
 }
 
+func TestParse_ReturnsEqualSecretsError(t *testing.T) {
+	setEnvironment(t, Config{
+		DatabaseDSN:     "postgres://test",
+		TLSCertFile:     "server.pem",
+		TLSKeyFile:      "server-key.pem",
+		JWTSecret:       testJWTSecret,
+		RecordMasterKey: testJWTSecret,
+	})
+
+	_, err := Parse(nil)
+	if err == nil {
+		t.Fatal("Parse() error = nil, want equal secrets error")
+	}
+
+	if !strings.Contains(err.Error(), "JWT secret and record master key must differ") {
+		t.Fatalf("Parse() error = %q, want equal secrets error", err)
+	}
+}
+
 func TestParse_ReturnsInvalidRecordKeyIDError(t *testing.T) {
 	setEnvironment(t, Config{
 		DatabaseDSN:     "postgres://test",

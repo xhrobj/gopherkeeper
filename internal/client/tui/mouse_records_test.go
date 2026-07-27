@@ -103,3 +103,36 @@ func TestModel_ResizeKeepsRecordMouseHitboxInSyncWithVisiblePage(t *testing.T) {
 		t.Fatal("single click after resize unexpectedly started GetRecord")
 	}
 }
+
+func TestModel_RecordRowAtRejectsUnavailableRows(t *testing.T) {
+	m := newRecordsTestModel(t, config.Config{}, recordsBackendStub{})
+	if _, ok := m.recordRowAt(0, 0); ok {
+		t.Fatal("record row exists without workspace placement")
+	}
+
+	m.width = 100
+	m.height = 30
+	m.recordFeature.workspace = recordWorkspace{open: true, state: recordListLoading}
+	if _, ok := m.recordRowAt(10, 10); ok {
+		t.Fatal("record row exists while list is loading")
+	}
+
+	m.recordFeature.workspace = recordWorkspace{
+		open:    true,
+		state:   recordListReady,
+		records: []recordmodel.RecordMetadata{{ID: "one"}},
+	}
+	window, ok := m.workspacePlacement()
+	if !ok {
+		t.Fatal("workspace placement is unavailable")
+	}
+	if _, ok := m.recordRowAt(window.x-1, window.y-1); ok {
+		t.Fatal("record row exists outside workspace")
+	}
+
+	layout := newRecordWorkspaceLayout(window.width, window.height)
+	rows := layout.rowBounds.translated(window.x, window.y)
+	if _, ok := m.recordRowAt(rows.x, rows.y+1); ok {
+		t.Fatal("record row exists beyond available records")
+	}
+}
