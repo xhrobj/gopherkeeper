@@ -9,6 +9,9 @@ case "${MSYSTEM:-}" in
 	MINGW* | MSYS*)
 		export MSYS2_ARG_CONV_EXCL='*'
 		;;
+	*)
+		:
+		;;
 esac
 
 CERT_DIR=".local/certs"
