@@ -54,12 +54,23 @@ func TestConfigBrowseTarget_MapsBrowseFields(t *testing.T) {
 	}
 }
 
-func TestConfigTargetFieldHelpers_ReturnConfiguredField(t *testing.T) {
-	if got := configTargetFieldFocus(pathPickerSessionDirectory); got != configSessionDir {
-		t.Fatalf("configTargetFieldFocus() = %d, want %d", got, configSessionDir)
+func TestConfigTargetFieldFocus_MapsConfigTargets(t *testing.T) {
+	tests := []struct {
+		target pathPickerTarget
+		want   configFocus
+		ok     bool
+	}{
+		{target: pathPickerCACert, want: configCACertFile, ok: true},
+		{target: pathPickerSessionDirectory, want: configSessionDir, ok: true},
+		{target: pathPickerCacheDirectory, want: configCacheDir, ok: true},
+		{target: pathPickerBinarySaveDirectory, ok: false},
 	}
-	if got := configTargetFieldIndex(pathPickerCacheDirectory); got != 3 {
-		t.Fatalf("configTargetFieldIndex() = %d, want 3", got)
+
+	for _, test := range tests {
+		got, ok := configTargetFieldFocus(test.target)
+		if got != test.want || ok != test.ok {
+			t.Fatalf("configTargetFieldFocus(%d) = (%d, %v), want (%d, %v)", test.target, got, ok, test.want, test.ok)
+		}
 	}
 }
 

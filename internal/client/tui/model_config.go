@@ -71,12 +71,17 @@ func (m model) activateConfigFocus() (tea.Model, tea.Cmd) {
 }
 
 func (m model) openConfigPathPicker(target pathPickerTarget) (tea.Model, tea.Cmd) {
-	fieldIndex := configTargetFieldIndex(target)
+	fieldFocus, ok := configTargetFieldFocus(target)
+	if !ok {
+		return m, nil
+	}
+
 	picker, command := newPathPicker(
 		target,
-		m.configForm.fields[fieldIndex].value,
+		m.configForm.fields[fieldFocus].value,
 		m.height,
 	)
+
 	m.pathPicker = picker
 	m.dialog = dialogPathPicker
 
@@ -211,10 +216,14 @@ func (m *model) applyPathSelection(path string) {
 		return
 	}
 
-	fieldIndex := configTargetFieldIndex(target)
+	fieldFocus, ok := configTargetFieldFocus(target)
+	if !ok {
+		m.closePathPicker()
+		return
+	}
 
-	m.configForm.fields[fieldIndex].setValue(value)
-	m.configForm.setFocus(configTargetFieldFocus(target))
+	m.configForm.fields[fieldFocus].setValue(value)
+	m.configForm.setFocus(fieldFocus)
 	m.configForm.errorMessage = ""
 	m.pathPicker = pathPicker{}
 	m.dialog = dialogConfig

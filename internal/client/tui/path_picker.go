@@ -22,17 +22,14 @@ const (
 )
 
 type pathPickerMode struct {
-	title       string
-	filePicker  bool
-	configFocus configFocus
-	browseFocus configFocus
-	configIndex int
+	title      string
+	filePicker bool
 }
 
 var pathPickerModes = map[pathPickerTarget]pathPickerMode{
-	pathPickerCACert:              {title: "Select CA certificate", filePicker: true, configFocus: configCACertFile, browseFocus: configCACertBrowse, configIndex: 1},
-	pathPickerSessionDirectory:    {title: "Select session directory", configFocus: configSessionDir, browseFocus: configSessionBrowse, configIndex: 2},
-	pathPickerCacheDirectory:      {title: "Select cache directory", configFocus: configCacheDir, browseFocus: configCacheBrowse, configIndex: 3},
+	pathPickerCACert:              {title: "Select CA certificate", filePicker: true},
+	pathPickerSessionDirectory:    {title: "Select session directory"},
+	pathPickerCacheDirectory:      {title: "Select cache directory"},
 	pathPickerBinarySaveDirectory: {title: "Select save directory"},
 	pathPickerBinaryCreateFile:    {title: "Select binary file", filePicker: true},
 	pathPickerBinaryEditFile:      {title: "Select binary file", filePicker: true},
@@ -226,6 +223,7 @@ func (picker *pathPicker) moveFocus(step int) {
 		}
 
 		picker.focus = candidate
+
 		return
 	}
 }
