@@ -7,6 +7,7 @@ import (
 	"io"
 
 	urfavecli "github.com/urfave/cli/v3"
+	"github.com/xhrobj/gopherkeeper/internal/client/binaryfile"
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
@@ -226,7 +227,7 @@ func writeBinaryRecord(output io.Writer, record model.Record, outputPath string)
 	if outputPath == "" {
 		return errors.New("output path is required for binary record")
 	}
-	if err := writeBinaryFile(outputPath, payload.Data); err != nil {
+	if err := binaryfile.Write(outputPath, payload.Data); err != nil {
 		return err
 	}
 	if err := writeRecordHeader(output, record.Metadata); err != nil {

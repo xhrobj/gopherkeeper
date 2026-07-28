@@ -242,7 +242,7 @@ func assertRPCErrorUsesAPIErrorDetails(
 	transportErr := grpcErrorWithAPIErrorCode(t, grpcCode, message, apiCode)
 	err := mapRPCError("test", transportErr)
 
-	assertRPCErrorCause(t, err, apiCode, wantCause)
+	assertRPCErrorCause(t, err, wantCause)
 	if got := failure.KindOf(err); got != wantKind {
 		t.Fatalf("failure.KindOf() = %d, want %d", got, wantKind)
 	}
@@ -256,12 +256,16 @@ func assertRPCErrorUsesAPIErrorDetails(
 	}
 }
 
-func assertRPCErrorCause(t *testing.T, err error, apiCode apierror.Code, wantCause error) {
+func assertRPCErrorCause(t *testing.T, err error, wantCause error) {
 	t.Helper()
 
+	var rpcError *RPCError
+	if !errors.As(err, &rpcError) {
+		t.Fatalf("mapRPCError() error = %T, want *RPCError", err)
+	}
 	if wantCause == nil {
-		if got := failure.CauseFromAPIErrorCode(apiCode); got != nil {
-			t.Fatalf("CauseFromAPIErrorCode() = %v, want nil", got)
+		if rpcError.cause != nil {
+			t.Fatalf("mapRPCError() cause = %v, want nil", rpcError.cause)
 		}
 		return
 	}

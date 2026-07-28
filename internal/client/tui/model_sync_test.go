@@ -12,6 +12,15 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 )
 
+type syncWindowButtonGeometryExpectation struct {
+	width   int
+	focus   syncFocus
+	pending bool
+	blocked bool
+	labels  []string
+	styles  []lipgloss.Style
+}
+
 func TestModel_SyncMenuAvailability(t *testing.T) {
 	m := newSyncTestModel(t, backendStub{})
 	definitions := m.currentMenuDefinitions()
@@ -194,16 +203,14 @@ func TestSyncWindowLayout_UsesRenderedButtonGeometry(t *testing.T) {
 	labels := []string{"< Sync >", "< Cancel >"}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			assertSyncWindowButtonGeometry(
-				t,
-				theme,
-				width,
-				test.focus,
-				test.pending,
-				test.blocked,
-				labels,
-				test.expectedStyles,
-			)
+			assertSyncWindowButtonGeometry(t, theme, syncWindowButtonGeometryExpectation{
+				width:   width,
+				focus:   test.focus,
+				pending: test.pending,
+				blocked: test.blocked,
+				labels:  labels,
+				styles:  test.expectedStyles,
+			})
 		})
 	}
 }
@@ -285,30 +292,41 @@ func assertMenuActionDisabledState(t *testing.T, definition menuDefinition, acti
 func assertSyncWindowButtonGeometry(
 	t *testing.T,
 	theme theme,
-	width int,
-	focus syncFocus,
-	pending bool,
-	blocked bool,
-	labels []string,
-	expectedStyles []lipgloss.Style,
+	expectation syncWindowButtonGeometryExpectation,
 ) {
 	t.Helper()
 
 	form := newSyncForm()
 	form.password.setValue(syncFormTestPassword)
-	form.focus = focus
-	layout := newSyncWindowLayout(theme, width, "alice", form, pending, blocked, "*")
-	if len(layout.buttonBounds) != len(labels) {
-		t.Fatalf("button bounds = %d, want %d", len(layout.buttonBounds), len(labels))
+	form.focus = expectation.focus
+	layout := newSyncWindowLayout(
+		theme,
+		expectation.width,
+		"alice",
+		form,
+		expectation.pending,
+		expectation.blocked,
+		"*",
+	)
+	if len(layout.buttonBounds) != len(expectation.labels) {
+		t.Fatalf("button bounds = %d, want %d", len(layout.buttonBounds), len(expectation.labels))
 	}
 
 	lines := strings.Split(ansi.Strip(layout.content), "\n")
-	buttonRow := lineIndexContaining(lines, labels[0])
+	buttonRow := lineIndexContaining(lines, expectation.labels[0])
 	if buttonRow < 0 {
 		t.Fatal("rendered Sync buttons were not found")
 	}
 	for index, bounds := range layout.buttonBounds {
-		assertSyncButtonGeometry(t, lines[buttonRow], buttonRow, index, bounds, labels[index], expectedStyles[index])
+		assertSyncButtonGeometry(
+			t,
+			lines[buttonRow],
+			buttonRow,
+			index,
+			bounds,
+			expectation.labels[index],
+			expectation.styles[index],
+		)
 	}
 }
 

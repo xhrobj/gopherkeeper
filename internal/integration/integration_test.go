@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -37,6 +38,11 @@ const (
 	integrationTestTimeout   = 30 * time.Second
 	testRegistrationPassword = "correct-horse-battery-staple"
 )
+
+type apiErrorResponse struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
 
 type restartableHTTPSServer struct {
 	t              *testing.T
@@ -221,6 +227,30 @@ func openTestPostgres(
 	}
 
 	return pool
+}
+
+func newTrustedHTTPSClient(t *testing.T, caCertFile string) *http.Client {
+	t.Helper()
+
+	caPEM, err := os.ReadFile(caCertFile)
+	if err != nil {
+		t.Fatalf("read CA certificate: %v", err)
+	}
+
+	rootCAs := x509.NewCertPool()
+	if !rootCAs.AppendCertsFromPEM(caPEM) {
+		t.Fatal("append CA certificate")
+	}
+
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    rootCAs,
+		},
+	}
+	t.Cleanup(transport.CloseIdleConnections)
+
+	return &http.Client{Transport: transport}
 }
 
 func startHTTPSServer(

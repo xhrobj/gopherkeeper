@@ -44,6 +44,22 @@ func TestRead_AcceptsEmptyFile(t *testing.T) {
 	}
 }
 
+func TestRead_AcceptsMaximumSize(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "maximum.bin")
+	want := bytes.Repeat([]byte{0x2a}, model.BinaryPayloadMaxSize)
+	if err := os.WriteFile(path, want, 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	_, data, err := Read(path)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if !bytes.Equal(data, want) {
+		t.Fatal("Read() changed maximum-size data")
+	}
+}
+
 func TestRead_RejectsDirectoryAndOversizedFile(t *testing.T) {
 	t.Run("directory", func(t *testing.T) {
 		_, _, err := Read(t.TempDir())

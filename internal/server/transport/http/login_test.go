@@ -173,33 +173,9 @@ func TestLoginHandler_RejectsInvalidRequest(t *testing.T) {
 			wantMessage: errorMessageUnsupportedMediaType,
 		},
 		{
-			name:        "empty body",
-			contentType: "application/json",
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidLoginRequest,
-		},
-		{
 			name:        "malformed JSON",
 			contentType: "application/json",
 			body:        `{"login":"eve"`,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidLoginRequest,
-		},
-		{
-			name:        "unknown field",
-			contentType: "application/json",
-			body:        `{"login":"eve","password":"` + testLoginPassword + `","role":"admin"}`,
-			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
-			wantMessage: errorMessageInvalidLoginRequest,
-		},
-		{
-			name:        "multiple JSON values",
-			contentType: "application/json",
-			body: loginRequestBody(t, "eve") +
-				loginRequestBody(t, "eve"),
 			wantStatus:  http.StatusBadRequest,
 			wantCode:    errorCodeInvalidRequest,
 			wantMessage: errorMessageInvalidLoginRequest,

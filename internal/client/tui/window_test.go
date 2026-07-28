@@ -8,6 +8,13 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+type alertWindowLayoutCase struct {
+	name      string
+	state     alertState
+	message   string
+	highlight string
+}
+
 func TestRenderControls_RendersGroupedAlignedRows(t *testing.T) {
 	const width = 46
 	if controlsColumnGap != 1 {
@@ -188,12 +195,7 @@ func TestRenderErrorAlert_DoesNotSplitRevisionConflictWords(t *testing.T) {
 
 func TestAlertWindowLayout_UsesRenderedButtonGeometry(t *testing.T) {
 	theme := newTheme()
-	tests := []struct {
-		name      string
-		state     alertState
-		message   string
-		highlight string
-	}{
+	tests := []alertWindowLayoutCase{
 		{name: "notice", state: alertNotice, message: "Saved"},
 		{name: "wrapped error", state: alertError, message: strings.Repeat("save failed ", 12)},
 		{name: "highlight", state: alertNotice, message: "Registered as alice", highlight: "alice"},
@@ -201,31 +203,36 @@ func TestAlertWindowLayout_UsesRenderedButtonGeometry(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			layout := newAlertWindowLayout(theme, tt.state, "Alert", tt.message, tt.highlight)
-			if len(layout.buttonBounds) != 1 {
-				t.Fatalf("button bounds = %d, want 1", len(layout.buttonBounds))
-			}
-
-			lines := strings.Split(ansi.Strip(layout.content), "\n")
-			buttonRow := lineIndexContaining(lines, okButtonLabel)
-			if buttonRow < 0 {
-				t.Fatal("rendered OK button was not found")
-			}
-
-			bounds := layout.buttonBounds[0]
-			if bounds.y != buttonRow {
-				t.Fatalf("button y = %d, want rendered row %d", bounds.y, buttonRow)
-			}
-
-			buttonStyle := theme.aboutButtonActive
-			if tt.state == alertError {
-				buttonStyle = theme.errorButton
-			}
-			wantWidth := lipgloss.Width(buttonStyle.Render(okButtonLabel))
-			if bounds.width != wantWidth {
-				t.Fatalf("button width = %d, want rendered width %d", bounds.width, wantWidth)
-			}
+			assertAlertWindowButtonGeometry(t, theme, tt)
 		})
+	}
+}
+
+func assertAlertWindowButtonGeometry(t *testing.T, theme theme, test alertWindowLayoutCase) {
+	t.Helper()
+
+	layout := newAlertWindowLayout(theme, test.state, "Alert", test.message, test.highlight)
+	if len(layout.buttonBounds) != 1 {
+		t.Fatalf("button bounds = %d, want 1", len(layout.buttonBounds))
+	}
+
+	lines := strings.Split(ansi.Strip(layout.content), "\n")
+	buttonRow := lineIndexContaining(lines, okButtonLabel)
+	if buttonRow < 0 {
+		t.Fatal("rendered OK button was not found")
+	}
+
+	bounds := layout.buttonBounds[0]
+	if bounds.y != buttonRow {
+		t.Fatalf("button y = %d, want rendered row %d", bounds.y, buttonRow)
+	}
+
+	buttonStyle := theme.aboutButtonActive
+	if test.state == alertError {
+		buttonStyle = theme.errorButton
+	}
+	if wantWidth := lipgloss.Width(buttonStyle.Render(okButtonLabel)); bounds.width != wantWidth {
+		t.Fatalf("button width = %d, want rendered width %d", bounds.width, wantWidth)
 	}
 }
 

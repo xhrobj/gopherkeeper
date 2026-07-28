@@ -6,6 +6,7 @@ import (
 	"io"
 
 	urfavecli "github.com/urfave/cli/v3"
+	"github.com/xhrobj/gopherkeeper/internal/client/binaryfile"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
@@ -135,7 +136,7 @@ func executeUpdateBinaryRecord(
 }
 
 func readBinaryPayload(binaryFile, metadataFile string) (model.BinaryPayload, error) {
-	filename, data, err := readBinaryFile(binaryFile)
+	filename, data, err := binaryfile.Read(binaryFile)
 	if err != nil {
 		return model.BinaryPayload{}, err
 	}

@@ -31,6 +31,14 @@ func TestRecordViewButtonLabels_ReflectRecordState(t *testing.T) {
 			want: []string{"< Reveal >", closeButtonLabel},
 		},
 		{
+			name: "card masked",
+			state: recordViewState{status: recordViewReady, record: recordmodel.Record{
+				Metadata: recordmodel.RecordMetadata{Type: recordmodel.RecordTypeCard},
+				Payload:  &recordmodel.CardPayload{Number: "4111111111111111"},
+			}},
+			want: []string{"< Reveal >", closeButtonLabel},
+		},
+		{
 			name: "card revealed",
 			state: recordViewState{status: recordViewReady, revealed: true, record: recordmodel.Record{
 				Metadata: recordmodel.RecordMetadata{Type: recordmodel.RecordTypeCard},
@@ -81,23 +89,49 @@ func TestWrapRecordViewText_AccountsForWideRunes(t *testing.T) {
 	}
 }
 
-func TestRecordViewTextAreaRange_FindsContiguousArea(t *testing.T) {
-	lines := []recordViewLine{
-		{label: "Title"},
-		{textArea: true},
-		{textArea: true},
-		{label: "Notes"},
+func TestRecordViewTextAreaRange(t *testing.T) {
+	tests := []struct {
+		name      string
+		lines     []recordViewLine
+		wantStart int
+		wantEnd   int
+		wantOK    bool
+	}{
+		{
+			name: "contiguous area",
+			lines: []recordViewLine{
+				{label: "Title"},
+				{textArea: true},
+				{textArea: true},
+				{label: "Notes"},
+			},
+			wantStart: 1,
+			wantEnd:   3,
+			wantOK:    true,
+		},
+		{
+			name:      "missing area",
+			lines:     []recordViewLine{{label: "Title"}},
+			wantStart: -1,
+			wantEnd:   -1,
+		},
 	}
-	start, end, ok := recordViewTextAreaRange(lines)
-	if start != 1 || end != 3 || !ok {
-		t.Fatalf("recordViewTextAreaRange() = (%d, %d, %v), want (1, 3, true)", start, end, ok)
-	}
-}
 
-func TestRecordViewTextAreaRange_ReportsMissingArea(t *testing.T) {
-	start, end, ok := recordViewTextAreaRange([]recordViewLine{{label: "Title"}})
-	if start != -1 || end != -1 || ok {
-		t.Fatalf("recordViewTextAreaRange() = (%d, %d, %v), want (-1, -1, false)", start, end, ok)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			start, end, ok := recordViewTextAreaRange(tt.lines)
+			if start != tt.wantStart || end != tt.wantEnd || ok != tt.wantOK {
+				t.Fatalf(
+					"recordViewTextAreaRange() = (%d, %d, %v), want (%d, %d, %v)",
+					start,
+					end,
+					ok,
+					tt.wantStart,
+					tt.wantEnd,
+					tt.wantOK,
+				)
+			}
+		})
 	}
 }
 
@@ -134,17 +168,5 @@ func TestRecordViewFormattingHelpers_FormatValues(t *testing.T) {
 	}
 	if got := groupCardDigits("12345"); got != "1234 5" {
 		t.Fatalf("groupCardDigits() = %q, want %q", got, "1234 5")
-	}
-}
-
-func TestRecordViewButtonLabels_OfferRevealForSensitiveTypes(t *testing.T) {
-	states := []recordViewState{
-		{status: recordViewReady, record: recordmodel.Record{Metadata: recordmodel.RecordMetadata{Type: recordmodel.RecordTypeCredentials}, Payload: &recordmodel.CredentialsPayload{}}},
-		{status: recordViewReady, record: recordmodel.Record{Metadata: recordmodel.RecordMetadata{Type: recordmodel.RecordTypeCard}, Payload: &recordmodel.CardPayload{}}},
-	}
-	for _, state := range states {
-		if got := recordViewButtonLabels(state); !slices.Equal(got, []string{"< Reveal >", closeButtonLabel}) {
-			t.Fatalf("recordViewButtonLabels() = %#v, want Reveal and Close", got)
-		}
 	}
 }
