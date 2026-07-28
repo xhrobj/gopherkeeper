@@ -7,8 +7,6 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
 )
 
-type configFocus int
-
 const (
 	configAddress configFocus = iota
 	configCACertFile
@@ -24,6 +22,44 @@ const (
 	configFocusCount
 )
 
+const (
+	configLabelWidth    = 15
+	configBrowseGap     = 1
+	configBrowseLabel   = "<...>"
+	configButtonGap     = 3
+	configTransportGap  = 3
+	configFileNotPassed = "not provided (in-memory only; use --config for persistence)"
+)
+
+type configFocus int
+
+type configForm struct {
+	fields       [4]textField
+	grpcAddress  textField
+	transport    config.Transport
+	focus        configFocus
+	errorMessage string
+}
+
+type configWindowLayout struct {
+	content         string
+	transportBounds []layoutBounds
+	fieldBounds     []layoutBounds
+	fieldFocus      []configFocus
+	browseBounds    []layoutBounds
+	buttonBounds    []layoutBounds
+}
+
+type configPathFieldOptions struct {
+	label         string
+	required      bool
+	requiredStyle lipgloss.Style
+	field         textField
+	inputWidth    int
+	fieldActive   bool
+	browseActive  bool
+}
+
 var configFocusOrder = [...]configFocus{
 	configTransport,
 	configAddress,
@@ -36,26 +72,6 @@ var configFocusOrder = [...]configFocus{
 	configCacheBrowse,
 	configSave,
 	configCancel,
-}
-
-const (
-	configLabelWidth      = 15
-	configBrowseGap       = 1
-	configBrowseLabel     = "<...>"
-	configButtonGap       = 3
-	configFirstControlRow = 2
-	configControlRowStep  = 2
-	configButtonRow       = 16
-	configTransportGap    = 3
-	configFileNotPassed   = "not provided (in-memory only; use --config for persistence)"
-)
-
-type configForm struct {
-	fields       [4]textField
-	grpcAddress  textField
-	transport    config.Transport
-	focus        configFocus
-	errorMessage string
 }
 
 func newConfigForm(cfg config.Config) configForm {
@@ -224,146 +240,145 @@ func configInputWidths(t theme, contentWidth int) (int, int) {
 	return inputWidth, pathInputWidth
 }
 
-type configWindowLayout struct {
-	contentWidth    int
-	inputWidth      int
-	pathInputWidth  int
-	transportBounds []layoutBounds
-	fieldBounds     []layoutBounds
-	fieldFocus      []configFocus
-	browseBounds    []layoutBounds
-}
+func newConfigWindowLayout(
+	t theme,
+	windowWidth int,
+	form configForm,
+	configFile string,
+) configWindowLayout {
+	const (
+		horizontalPadding = 2
+		verticalPadding   = 1
+		fieldGap          = 2
+	)
 
-type configPathFieldOptions struct {
-	label         string
-	required      bool
-	requiredStyle lipgloss.Style
-	field         textField
-	inputWidth    int
-	fieldActive   bool
-	browseActive  bool
-}
-
-func newConfigWindowLayout(t theme, windowWidth int) configWindowLayout {
-	contentWidth := max(1, windowWidth-4)
+	contentWidth := max(1, windowWidth-horizontalPadding*2)
 	inputWidth, pathInputWidth := configInputWidths(t, contentWidth)
-	inputX := 2 + configLabelWidth + 2
+	inputX := horizontalPadding + configLabelWidth + fieldGap
+	title := t.windowTitle.Width(windowWidth).Render("Config")
+	firstContentRow := lipgloss.Height(title) + verticalPadding
+	blankRow := t.windowBody.Width(contentWidth).Render("")
 
-	fieldFocus := []configFocus{
-		configAddress,
-		configGRPCAddress,
-		configCACertFile,
-		configSessionDir,
-		configCacheDir,
+	rows := make([]string, 0, 15)
+	appendRow := func(row string) int {
+		y := firstContentRow + len(rows)
+		rows = append(rows, row)
+		return y
 	}
-	fieldWidths := []int{inputWidth, inputWidth, pathInputWidth, pathInputWidth, pathInputWidth}
-	fields := make([]layoutBounds, len(fieldFocus))
-	for index, width := range fieldWidths {
-		fields[index] = layoutBounds{
-			x:      inputX,
-			y:      configFirstControlRow + (index+1)*configControlRowStep,
-			width:  width,
-			height: 1,
-		}
+	appendSpacer := func() {
+		rows = append(rows, blankRow)
 	}
+
+	transportRow := appendRow(renderConfigTransport(t, form.transport, form.focus == configTransport))
+	appendSpacer()
+	addressRow := appendRow(renderConfigField(
+		t,
+		"HTTPS address",
+		form.transport == config.TransportHTTPS,
+		t.configRequiredYellow,
+		form.fields[configAddress],
+		inputWidth,
+		form.focus == configAddress,
+	))
+	appendSpacer()
+	grpcAddressRow := appendRow(renderConfigField(
+		t,
+		"gRPC address",
+		form.transport == config.TransportGRPC,
+		t.configRequiredYellow,
+		form.grpcAddress,
+		inputWidth,
+		form.focus == configGRPCAddress,
+	))
+	appendSpacer()
+	caCertRow := appendRow(renderConfigPathField(t, configPathFieldOptions{
+		label:         "CA cert file",
+		required:      true,
+		requiredStyle: t.configRequiredYellow,
+		field:         form.fields[configCACertFile],
+		inputWidth:    pathInputWidth,
+		fieldActive:   form.focus == configCACertFile,
+		browseActive:  form.focus == configCACertBrowse,
+	}))
+	appendSpacer()
+	sessionRow := appendRow(renderConfigPathField(t, configPathFieldOptions{
+		label:        "Session dir",
+		field:        form.fields[configSessionDir],
+		inputWidth:   pathInputWidth,
+		fieldActive:  form.focus == configSessionDir,
+		browseActive: form.focus == configSessionBrowse,
+	}))
+	appendSpacer()
+	cacheRow := appendRow(renderConfigPathField(t, configPathFieldOptions{
+		label:        "Cache dir",
+		field:        form.fields[configCacheDir],
+		inputWidth:   pathInputWidth,
+		fieldActive:  form.focus == configCacheDir,
+		browseActive: form.focus == configCacheBrowse,
+	}))
+	appendSpacer()
+	appendRow(renderConfigFileField(t, configFile, inputWidth))
+	appendRow(renderConfigStatus(t, contentWidth, form.errorMessage))
+
+	buttonLayout := configButtonsLayout(t, contentWidth, form.focus, form.canSave()).
+		positioned(horizontalPadding, firstContentRow+len(rows))
+	rows = append(rows, buttonLayout.content)
+
+	body := t.windowBody.
+		Width(windowWidth).
+		Padding(verticalPadding, horizontalPadding).
+		Render(strings.Join(rows, "\n"))
 
 	browseWidth := lipgloss.Width(t.button.Render(configBrowseLabel))
 	browseX := inputX + pathInputWidth + configBrowseGap
-	browse := make([]layoutBounds, 3)
-	for index := range browse {
-		browse[index] = layoutBounds{
-			x:      browseX,
-			y:      configFirstControlRow + (index+3)*configControlRowStep,
-			width:  browseWidth,
-			height: 1,
-		}
-	}
-
 	httpsLabel := "[ ] HTTPS"
 	grpcLabel := "[ ] gRPC"
-	transportBounds := []layoutBounds{
-		{x: inputX, y: configFirstControlRow, width: lipgloss.Width(httpsLabel), height: 1},
-		{x: inputX + lipgloss.Width(httpsLabel) + configTransportGap, y: configFirstControlRow, width: lipgloss.Width(grpcLabel), height: 1},
-	}
 
 	return configWindowLayout{
-		contentWidth:    contentWidth,
-		inputWidth:      inputWidth,
-		pathInputWidth:  pathInputWidth,
-		transportBounds: transportBounds,
-		fieldBounds:     fields,
-		fieldFocus:      fieldFocus,
-		browseBounds:    browse,
+		content: lipgloss.JoinVertical(lipgloss.Left, title, body),
+		transportBounds: []layoutBounds{
+			{x: inputX, y: transportRow, width: lipgloss.Width(httpsLabel), height: 1},
+			{
+				x:      inputX + lipgloss.Width(httpsLabel) + configTransportGap,
+				y:      transportRow,
+				width:  lipgloss.Width(grpcLabel),
+				height: 1,
+			},
+		},
+		fieldBounds: []layoutBounds{
+			{x: inputX, y: addressRow, width: inputWidth, height: 1},
+			{x: inputX, y: grpcAddressRow, width: inputWidth, height: 1},
+			{x: inputX, y: caCertRow, width: pathInputWidth, height: 1},
+			{x: inputX, y: sessionRow, width: pathInputWidth, height: 1},
+			{x: inputX, y: cacheRow, width: pathInputWidth, height: 1},
+		},
+		fieldFocus: []configFocus{
+			configAddress,
+			configGRPCAddress,
+			configCACertFile,
+			configSessionDir,
+			configCacheDir,
+		},
+		browseBounds: []layoutBounds{
+			{x: browseX, y: caCertRow, width: browseWidth, height: 1},
+			{x: browseX, y: sessionRow, width: browseWidth, height: 1},
+			{x: browseX, y: cacheRow, width: browseWidth, height: 1},
+		},
+		buttonBounds: buttonLayout.bounds,
 	}
 }
 
 func renderConfigWindow(t theme, width int, form configForm, configFile string) string {
-	layout := newConfigWindowLayout(t, width)
-	contentWidth := layout.contentWidth
-	inputWidth := layout.inputWidth
-	pathInputWidth := layout.pathInputWidth
+	return newConfigWindowLayout(t, width, form, configFile).content
+}
 
-	rows := []string{
-		renderConfigTransport(t, form.transport, form.focus == configTransport),
-		t.windowBody.Width(contentWidth).Render(""),
-		renderConfigField(
-			t,
-			"HTTPS address",
-			form.transport == config.TransportHTTPS,
-			t.configRequiredYellow,
-			form.fields[configAddress],
-			inputWidth,
-			form.focus == configAddress,
-		),
-		t.windowBody.Width(contentWidth).Render(""),
-		renderConfigField(
-			t,
-			"gRPC address",
-			form.transport == config.TransportGRPC,
-			t.configRequiredYellow,
-			form.grpcAddress,
-			inputWidth,
-			form.focus == configGRPCAddress,
-		),
-		t.windowBody.Width(contentWidth).Render(""),
-		renderConfigPathField(t, configPathFieldOptions{
-			label:         "CA cert file",
-			required:      true,
-			requiredStyle: t.configRequiredYellow,
-			field:         form.fields[configCACertFile],
-			inputWidth:    pathInputWidth,
-			fieldActive:   form.focus == configCACertFile,
-			browseActive:  form.focus == configCACertBrowse,
-		}),
-		t.windowBody.Width(contentWidth).Render(""),
-		renderConfigPathField(t, configPathFieldOptions{
-			label:        "Session dir",
-			field:        form.fields[configSessionDir],
-			inputWidth:   pathInputWidth,
-			fieldActive:  form.focus == configSessionDir,
-			browseActive: form.focus == configSessionBrowse,
-		}),
-		t.windowBody.Width(contentWidth).Render(""),
-		renderConfigPathField(t, configPathFieldOptions{
-			label:        "Cache dir",
-			field:        form.fields[configCacheDir],
-			inputWidth:   pathInputWidth,
-			fieldActive:  form.focus == configCacheDir,
-			browseActive: form.focus == configCacheBrowse,
-		}),
-		t.windowBody.Width(contentWidth).Render(""),
-		renderConfigFileField(t, configFile, inputWidth),
-		renderConfigStatus(t, contentWidth, form.errorMessage),
-		renderConfigButtons(t, contentWidth, form.focus, form.canSave()),
-	}
-
-	title := t.windowTitle.Width(width).Render("Config")
-	body := t.windowBody.
-		Width(width).
-		Padding(1, 2).
-		Render(strings.Join(rows, "\n"))
-
-	return lipgloss.JoinVertical(lipgloss.Left, title, body)
+func (m model) configWindowLayout() configWindowLayout {
+	return newConfigWindowLayout(
+		m.theme,
+		configWindowWidth(m.width),
+		m.configForm,
+		m.configFile,
+	)
 }
 
 func renderConfigTransport(t theme, transport config.Transport, active bool) string {
@@ -500,8 +515,4 @@ func configButtonsLayout(t theme, width int, focus configFocus, canSave bool) bu
 		{label: "< Save >", style: saveStyle},
 		{label: "< Cancel >", style: cancelStyle},
 	})
-}
-
-func renderConfigButtons(t theme, width int, focus configFocus, canSave bool) string {
-	return configButtonsLayout(t, width, focus, canSave).content
 }

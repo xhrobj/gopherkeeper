@@ -18,10 +18,6 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-var createdBinaryRecordPattern = regexp.MustCompile(
-	`^Created binary record ([0-9a-f-]+) with revision ([0-9]+)\.$`,
-)
-
 type binaryRecordFixture struct {
 	title        string
 	binaryFile   string
@@ -43,6 +39,10 @@ type binaryRequestErrorExpectation struct {
 	status int
 	code   string
 }
+
+var createdBinaryRecordPattern = regexp.MustCompile(
+	`^Created binary record ([0-9a-f-]+) with revision ([0-9]+)\.$`,
+)
 
 func TestIntegration_CLIBinaryRecordRoundTrip(t *testing.T) {
 	config, pool, httpLogs := newRecordCLIEnvironment(t)

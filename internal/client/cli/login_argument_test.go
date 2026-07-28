@@ -26,6 +26,8 @@ func TestCanonicalizeLoginArgument(t *testing.T) {
 		{name: "contains space", login: "e ve", wantErr: errInvalidLoginArgument},
 		{name: "contains unsupported character", login: "eve@example", wantErr: errInvalidLoginArgument},
 		{name: "contains Cyrillic characters", login: "ева", wantErr: errInvalidLoginArgument},
+		{name: "canonicalizes login", login: " Alice ", want: "alice"},
+		{name: "maps validation error", login: "eve@example", wantErr: errInvalidLoginArgument},
 	}
 
 	for _, tt := range tests {

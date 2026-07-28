@@ -4,12 +4,15 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 )
 
-const (
-	aboutButtonRow = 18
-	aboutButtonGap = 3
-)
+const aboutButtonGap = 3
+
+type aboutWindowLayout struct {
+	content      string
+	buttonBounds []layoutBounds
+}
 
 func aboutWindowWidth(screenWidth int) int {
 	return clamp(screenWidth-8, 58, 82)
@@ -23,17 +26,17 @@ func renderAboutWindow(
 	commit string,
 	activeButton int,
 ) string {
-	return renderAbout(t, width, version, date, commit, activeButton)
+	return newAboutWindowLayout(t, width, version, date, commit, activeButton).content
 }
 
-func renderAbout(
+func newAboutWindowLayout(
 	t theme,
 	width int,
 	version string,
 	date string,
 	commit string,
 	activeButton int,
-) string {
+) aboutWindowLayout {
 	rows := []string{
 		renderAboutEmptyRow(t, width),
 		renderAboutCenteredText(t.aboutTitle, width, "(^-^)/ GophKeeper"),
@@ -53,11 +56,27 @@ func renderAbout(
 		renderAboutEmptyRow(t, width),
 		renderAboutCenteredText(t.aboutText, width, aboutURL),
 		renderAboutEmptyRow(t, width),
-		renderAboutButtons(t, width, activeButton),
-		renderAboutEmptyRow(t, width),
 	}
 
-	return strings.Join(rows, "\n")
+	buttonRow := len(rows)
+	buttonLayout := aboutButtonsLayout(t, width, activeButton).positioned(0, buttonRow)
+	rows = append(rows, buttonLayout.content, renderAboutEmptyRow(t, width))
+
+	return aboutWindowLayout{
+		content:      strings.Join(rows, "\n"),
+		buttonBounds: buttonLayout.bounds,
+	}
+}
+
+func (m model) aboutWindowLayout() aboutWindowLayout {
+	return newAboutWindowLayout(
+		m.theme,
+		aboutWindowWidth(m.width),
+		buildinfo.Value(m.info.Version),
+		buildinfo.Value(m.info.Date),
+		buildinfo.Value(m.info.Commit),
+		m.activeButton,
+	)
 }
 
 func renderAboutEmptyRow(t theme, width int) string {
@@ -104,8 +123,4 @@ func aboutButtonsLayout(t theme, width, activeButton int) buttonRowLayout {
 		{label: "< Course >", style: courseStyle},
 		{label: okButtonLabel, style: okStyle},
 	})
-}
-
-func renderAboutButtons(t theme, width, activeButton int) string {
-	return aboutButtonsLayout(t, width, activeButton).content
 }

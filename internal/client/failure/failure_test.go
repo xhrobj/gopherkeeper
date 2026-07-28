@@ -6,16 +6,11 @@ import (
 	"crypto/x509"
 	"errors"
 	"net"
+	"net/http"
 	"net/url"
 	"syscall"
 	"testing"
 )
-
-type timeoutError struct{}
-
-func (timeoutError) Error() string   { return "request timed out" }
-func (timeoutError) Timeout() bool   { return true }
-func (timeoutError) Temporary() bool { return true }
 
 type classifiedError struct {
 	kind    Kind
@@ -23,10 +18,16 @@ type classifiedError struct {
 	cause   error
 }
 
+type timeoutError struct{}
+
 func (e classifiedError) Error() string       { return "classified error" }
 func (e classifiedError) Unwrap() error       { return e.cause }
 func (e classifiedError) FailureKind() Kind   { return e.kind }
 func (e classifiedError) UserMessage() string { return e.message }
+
+func (timeoutError) Error() string   { return "request timed out" }
+func (timeoutError) Timeout() bool   { return true }
+func (timeoutError) Temporary() bool { return true }
 
 func TestError(t *testing.T) {
 	cause := errors.New("low-level failure")
@@ -104,9 +105,11 @@ func TestKindOf(t *testing.T) {
 		{name: "host unreachable", err: syscall.EHOSTUNREACH, want: NetworkUnreachable},
 		{name: "DNS timeout", err: &net.DNSError{IsTimeout: true}, want: Timeout},
 		{name: "DNS lookup", err: &net.DNSError{Name: "missing.example"}, want: HostNotFound},
+		{name: "certificate verification", err: &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{Cert: certificate}}, want: TLSCertificate},
 		{name: "unknown CA", err: x509.UnknownAuthorityError{Cert: certificate}, want: TLSCertificate},
 		{name: "hostname", err: x509.HostnameError{Certificate: certificate, Host: "other.example"}, want: TLSCertificate},
 		{name: "invalid certificate", err: x509.CertificateInvalidError{Cert: certificate, Reason: x509.Expired}, want: TLSCertificate},
+		{name: "TLS alert", err: tls.AlertError(40), want: TLSHandshake},
 		{name: "TLS record", err: tls.RecordHeaderError{Msg: "invalid record"}, want: TLSHandshake},
 		{name: "network timeout", err: timeoutError{}, want: Timeout},
 		{
@@ -114,16 +117,34 @@ func TestKindOf(t *testing.T) {
 			err: &url.Error{
 				Op:  "Get",
 				URL: "https://localhost/health",
-				Err: errors.New("server gave HTTP response to HTTPS client"),
+				Err: http.ErrSchemeMismatch,
 			},
 			want: HTTPSRequired,
 		},
-		{name: "certificate text", err: errors.New("x509: certificate signed by unknown authority"), want: TLSCertificate},
-		{name: "TLS text", err: errors.New("remote error: tls: handshake failure"), want: TLSHandshake},
-		{name: "host text", err: errors.New("dial tcp: no such host"), want: HostNotFound},
-		{name: "network text", err: errors.New("dial tcp: network is unreachable"), want: NetworkUnreachable},
-		{name: "refused text", err: errors.New("dial tcp: connection refused"), want: Unavailable},
-		{name: "timeout text", err: errors.New("request timeout"), want: Timeout},
+		{
+			name: "URL wrapped HTTPS mismatch text is not classified",
+			err: &url.Error{
+				Op:  "Get",
+				URL: "https://localhost/health",
+				Err: errors.New("server gave HTTP response to HTTPS client"),
+			},
+			want: Unknown,
+		},
+		{
+			name: "URL wrapped untyped TLS alert",
+			err: &url.Error{
+				Op:  "Get",
+				URL: "https://localhost/health",
+				Err: errors.New("remote error: tls: handshake failure"),
+			},
+			want: TLSHandshake,
+		},
+		{name: "certificate text is not classified", err: errors.New("x509: certificate signed by unknown authority"), want: Unknown},
+		{name: "TLS text is not classified", err: errors.New("remote error: tls: handshake failure"), want: Unknown},
+		{name: "host text is not classified", err: errors.New("dial tcp: no such host"), want: Unknown},
+		{name: "network text is not classified", err: errors.New("dial tcp: network is unreachable"), want: Unknown},
+		{name: "refused text is not classified", err: errors.New("dial tcp: connection refused"), want: Unknown},
+		{name: "timeout text is not classified", err: errors.New("request timeout"), want: Unknown},
 		{name: "unknown", err: errors.New("socket closed"), want: Unknown},
 	}
 

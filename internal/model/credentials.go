@@ -2,11 +2,6 @@ package model
 
 import "errors"
 
-var (
-	// ErrInvalidCredentialsPayload сообщает, что credentials payload некорректен.
-	ErrInvalidCredentialsPayload = errors.New("invalid credentials payload")
-)
-
 // CredentialsPayload содержит приватную пару login/password и связанные данные.
 type CredentialsPayload struct {
 	// Login содержит имя пользователя или идентификатор учётной записи.
@@ -21,6 +16,11 @@ type CredentialsPayload struct {
 	// Metadata содержит необязательную произвольную текстовую метаинформацию.
 	Metadata string `json:"metadata,omitempty"`
 }
+
+var (
+	// ErrInvalidCredentialsPayload сообщает, что credentials payload некорректен.
+	ErrInvalidCredentialsPayload = errors.New("invalid credentials payload")
+)
 
 // Validate проверяет обязательные поля и ограничения credentials payload.
 func (payload *CredentialsPayload) Validate() error {

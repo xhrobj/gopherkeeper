@@ -265,19 +265,6 @@ func TestMenuDefinitions_UseDialogEllipsesConsistently(t *testing.T) {
 	}
 }
 
-func assertMenuLabel(t *testing.T, menu menuID, label string, disabled bool) {
-	t.Helper()
-	for _, item := range menus[menu].items {
-		if item.label == label {
-			if item.disabled != disabled {
-				t.Fatalf("menu %q disabled = %t, want %t", label, item.disabled, disabled)
-			}
-			return
-		}
-	}
-	t.Fatalf("menu item %q was not found", label)
-}
-
 func TestMenuItemByMnemonic_SelectsAccountActions(t *testing.T) {
 	tests := []struct {
 		key        rune
@@ -360,6 +347,7 @@ func TestRenderMenuBar_FillsWidth(t *testing.T) {
 		t.Fatal("menu bar contains legacy status text")
 	}
 }
+
 func TestMenuMnemonics(t *testing.T) {
 	definitions := testMenuDefinitions(dialogLogin)
 	tests := []struct {
@@ -388,6 +376,7 @@ func TestMenuMnemonics(t *testing.T) {
 		}
 	}
 }
+
 func TestModel_MenuNavigationSkipsDisabledMenus(t *testing.T) {
 	m := newTestModel(t, config.Config{}, buildinfo.Info{})
 	m.activeMenu = int(menuAccount)
@@ -402,6 +391,7 @@ func TestModel_MenuNavigationSkipsDisabledMenus(t *testing.T) {
 		t.Fatal("dropdown is closed after menu navigation")
 	}
 }
+
 func TestModel_MenuMnemonicOpensDropdown(t *testing.T) {
 	m := newTestModel(t, config.Config{}, buildinfo.Info{})
 	m.menuFocused = true
@@ -415,6 +405,7 @@ func TestModel_MenuMnemonicOpensDropdown(t *testing.T) {
 		t.Fatal("Account menu was not opened by mnemonic")
 	}
 }
+
 func TestMenuAltShortcut(t *testing.T) {
 	loginDefinitions := testMenuDefinitions(dialogLogin)
 	index, ok := menuIndexByAltKey(loginDefinitions, "alt+c")
@@ -438,4 +429,17 @@ func TestMenuAltShortcut(t *testing.T) {
 	if !ok || index != int(menuWindow) {
 		t.Fatalf("alt+w = (%d, %t), want Window", index, ok)
 	}
+}
+
+func assertMenuLabel(t *testing.T, menu menuID, label string, disabled bool) {
+	t.Helper()
+	for _, item := range menus[menu].items {
+		if item.label == label {
+			if item.disabled != disabled {
+				t.Fatalf("menu %q disabled = %t, want %t", label, item.disabled, disabled)
+			}
+			return
+		}
+	}
+	t.Fatalf("menu item %q was not found", label)
 }

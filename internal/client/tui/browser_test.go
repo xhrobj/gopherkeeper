@@ -39,6 +39,12 @@ func TestBrowserCommand(t *testing.T) {
 	}
 }
 
+func TestBrowserCommand_RejectsUnsupportedPlatform(t *testing.T) {
+	if _, err := browserCommand("plan9", aboutURL); err == nil {
+		t.Fatal("browserCommand() error = nil, want unsupported platform error")
+	}
+}
+
 func assertBrowserCommand(t *testing.T, goos, wantPath string, wantArgs []string) {
 	t.Helper()
 
@@ -51,11 +57,5 @@ func assertBrowserCommand(t *testing.T, goos, wantPath string, wantArgs []string
 	}
 	if !slices.Equal(command.Args, wantArgs) {
 		t.Fatalf("command args = %#v, want %#v", command.Args, wantArgs)
-	}
-}
-
-func TestBrowserCommand_RejectsUnsupportedPlatform(t *testing.T) {
-	if _, err := browserCommand("plan9", aboutURL); err == nil {
-		t.Fatal("browserCommand() error = nil, want unsupported platform error")
 	}
 }

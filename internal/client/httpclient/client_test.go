@@ -164,6 +164,40 @@ func TestHealthStatusFailureKind_ReturnsExpectedKind(t *testing.T) {
 	}
 }
 
+func TestClient_HealthReturnsDecodeError(t *testing.T) {
+	server := newHealthTLSServer(
+		t,
+		http.StatusOK,
+		`{"status":`,
+	)
+	defer server.Close()
+
+	client, err := New(serverAddress(server), writeServerCertificate(t, server))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, err = client.Health(context.Background())
+	if err == nil {
+		t.Fatal("Health() error = nil, want JSON decoding error")
+	}
+
+	if !strings.Contains(err.Error(), "decode health response") {
+		t.Errorf(
+			"Health() error = %q, want decode health response context",
+			err,
+		)
+	}
+
+	if got := failure.Message(err); got != "Invalid server health response" {
+		t.Errorf(
+			"failure.Message(Health() error) = %q, want %q",
+			got,
+			"Invalid server health response",
+		)
+	}
+}
+
 func newHealthTLSServer(t *testing.T, status int, body string) *httptest.Server {
 	t.Helper()
 
@@ -208,38 +242,4 @@ func writeServerCertificate(t *testing.T, server *httptest.Server) string {
 
 func serverAddress(server *httptest.Server) string {
 	return strings.TrimPrefix(server.URL, "https://")
-}
-
-func TestClient_HealthReturnsDecodeError(t *testing.T) {
-	server := newHealthTLSServer(
-		t,
-		http.StatusOK,
-		`{"status":`,
-	)
-	defer server.Close()
-
-	client, err := New(serverAddress(server), writeServerCertificate(t, server))
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	_, err = client.Health(context.Background())
-	if err == nil {
-		t.Fatal("Health() error = nil, want JSON decoding error")
-	}
-
-	if !strings.Contains(err.Error(), "decode health response") {
-		t.Errorf(
-			"Health() error = %q, want decode health response context",
-			err,
-		)
-	}
-
-	if got := failure.Message(err); got != "Invalid server health response" {
-		t.Errorf(
-			"failure.Message(Health() error) = %q, want %q",
-			got,
-			"Invalid server health response",
-		)
-	}
 }

@@ -9,25 +9,22 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/xhrobj/gopherkeeper/internal/apierror"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 	"github.com/xhrobj/gopherkeeper/internal/server/service"
+	"github.com/xhrobj/gopherkeeper/internal/server/transport/errorcode"
 	"github.com/xhrobj/gopherkeeper/internal/server/transport/http/middleware"
 )
 
 const (
-	errorCodeRecordNotFound       = "record_not_found"
-	errorCodeRevisionConflict     = "record_revision_conflict"
-	errorCodePreconditionRequired = "precondition_required"
+	errorCodeRecordNotFound       = string(apierror.RecordNotFound)
+	errorCodeRevisionConflict     = string(apierror.RecordRevisionConflict)
+	errorCodePreconditionRequired = string(apierror.PreconditionRequired)
 
 	errorMessageInvalidRecordRequest = "invalid record request"
 	errorMessageRecordNotFound       = "record not found"
 	errorMessageRevisionConflict     = "record revision conflict"
 	errorMessagePreconditionRequired = "record revision is required"
-)
-
-var (
-	revisionETagPattern      = regexp.MustCompile(`^[1-9][0-9]*$`)
-	errInvalidRecordResponse = errors.New("invalid record response")
 )
 
 // RecordManager выполняет серверные сценарии приватных записей.
@@ -77,6 +74,11 @@ type listRecordsResponse struct {
 	Records []recordMetadataResponse `json:"records"`
 }
 
+var (
+	revisionETagPattern      = regexp.MustCompile(`^[1-9][0-9]*$`)
+	errInvalidRecordResponse = errors.New("invalid record response")
+)
+
 func createRecordHandler(records RecordManager) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID, ok := middleware.UserIDFromContext(r.Context())
@@ -101,8 +103,8 @@ func createRecordHandler(records RecordManager) http.Handler {
 				writeErrorResponse(
 					w,
 					http.StatusRequestEntityTooLarge,
-					errorCodePayloadTooLarge,
-					errorMessagePayloadTooLarge,
+					errorCodeRequestTooLarge,
+					errorMessageRequestTooLarge,
 				)
 				return
 			}
@@ -196,7 +198,7 @@ func updateRecordHandler(records RecordManager) http.Handler {
 
 		expectedRevision, err := parseIfMatchRevision(r.Header.Get("If-Match"))
 		if err != nil {
-			writeRecordError(w, err)
+			writeRevisionRequestError(w, err)
 			return
 		}
 
@@ -216,8 +218,8 @@ func updateRecordHandler(records RecordManager) http.Handler {
 				writeErrorResponse(
 					w,
 					http.StatusRequestEntityTooLarge,
-					errorCodePayloadTooLarge,
-					errorMessagePayloadTooLarge,
+					errorCodeRequestTooLarge,
+					errorMessageRequestTooLarge,
 				)
 				return
 			}
@@ -259,7 +261,7 @@ func deleteRecordHandler(records RecordManager) http.Handler {
 
 		expectedRevision, err := parseIfMatchRevision(r.Header.Get("If-Match"))
 		if err != nil {
-			writeRecordError(w, err)
+			writeRevisionRequestError(w, err)
 			return
 		}
 
@@ -314,9 +316,18 @@ func parseIfMatchRevision(value string) (int64, error) {
 	return revision, nil
 }
 
+func writeRevisionRequestError(w http.ResponseWriter, err error) {
+	if errors.Is(err, model.ErrRecordPreconditionRequired) {
+		writeRecordError(w, err)
+		return
+	}
+
+	writeInvalidRecordRequest(w)
+}
+
 func writeRecordError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, model.ErrPayloadTooLarge):
+	switch errorcode.FromError(err) {
+	case apierror.PayloadTooLarge:
 		writeErrorResponse(
 			w,
 			http.StatusRequestEntityTooLarge,
@@ -324,7 +335,7 @@ func writeRecordError(w http.ResponseWriter, err error) {
 			errorMessagePayloadTooLarge,
 		)
 
-	case errors.Is(err, model.ErrRecordNotFound):
+	case apierror.RecordNotFound:
 		writeErrorResponse(
 			w,
 			http.StatusNotFound,
@@ -332,7 +343,7 @@ func writeRecordError(w http.ResponseWriter, err error) {
 			errorMessageRecordNotFound,
 		)
 
-	case errors.Is(err, model.ErrRecordRevisionConflict):
+	case apierror.RecordRevisionConflict:
 		writeErrorResponse(
 			w,
 			http.StatusConflict,
@@ -340,7 +351,15 @@ func writeRecordError(w http.ResponseWriter, err error) {
 			errorMessageRevisionConflict,
 		)
 
-	case errors.Is(err, model.ErrRecordPreconditionRequired):
+	case apierror.RecordDecryptionFailed:
+		writeErrorResponse(
+			w,
+			http.StatusInternalServerError,
+			errorCodeRecordDecryption,
+			errorMessageRecordDecryption,
+		)
+
+	case apierror.PreconditionRequired:
 		writeErrorResponse(
 			w,
 			http.StatusPreconditionRequired,
@@ -348,15 +367,8 @@ func writeRecordError(w http.ResponseWriter, err error) {
 			errorMessagePreconditionRequired,
 		)
 
-	case errors.Is(err, model.ErrInvalidRecordID),
-		errors.Is(err, model.ErrInvalidRecordRevision),
-		errors.Is(err, model.ErrInvalidRecordTitle),
-		errors.Is(err, model.ErrInvalidTextPayload),
-		errors.Is(err, model.ErrInvalidCredentialsPayload),
-		errors.Is(err, model.ErrInvalidCardPayload),
-		errors.Is(err, model.ErrInvalidBinaryPayload),
-		errors.Is(err, model.ErrRecordTypeUnsupported):
-		writeInvalidRecordRequest(w)
+	case apierror.InvalidRecordData:
+		writeInvalidRecordData(w)
 
 	default:
 		writeErrorResponse(
@@ -373,6 +385,15 @@ func writeInvalidRecordRequest(w http.ResponseWriter) {
 		w,
 		http.StatusBadRequest,
 		errorCodeInvalidRequest,
+		errorMessageInvalidRecordRequest,
+	)
+}
+
+func writeInvalidRecordData(w http.ResponseWriter) {
+	writeErrorResponse(
+		w,
+		http.StatusBadRequest,
+		errorCodeInvalidRecordData,
 		errorMessageInvalidRecordRequest,
 	)
 }

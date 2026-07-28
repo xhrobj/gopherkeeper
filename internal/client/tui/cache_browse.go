@@ -9,8 +9,6 @@ import (
 	recordmodel "github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-type cacheBrowseFocus int
-
 const (
 	cacheBrowseLogin cacheBrowseFocus = iota
 	cacheBrowsePassword
@@ -19,10 +17,19 @@ const (
 	cacheBrowseFocusCount
 )
 
+type cacheBrowseFocus int
+
 type cacheBrowseForm struct {
 	login    textField
 	password textField
 	focus    cacheBrowseFocus
+}
+
+type cacheOpenResultMsg struct {
+	requestID uint64
+	login     string
+	records   []recordmodel.RecordMetadata
+	err       error
 }
 
 func newCacheBrowseForm(login string) cacheBrowseForm {
@@ -118,13 +125,6 @@ func (form *cacheBrowseForm) moveCursorToEnd() {
 	if field := form.activeField(); field != nil {
 		field.moveCursorToEnd()
 	}
-}
-
-type cacheOpenResultMsg struct {
-	requestID uint64
-	login     string
-	records   []recordmodel.RecordMetadata
-	err       error
 }
 
 func cacheOpenCommand(

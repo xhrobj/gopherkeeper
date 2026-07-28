@@ -10,23 +10,33 @@ import (
 
 type databasePingerFunc func(context.Context) error
 
+type tokenValidatorFunc func(context.Context, string) (int64, error)
+
+type userRegistererFunc func(context.Context, string, string) (model.User, error)
+
+type userAuthenticatorFunc func(context.Context, string, string) (service.AuthenticationResult, error)
+
+type currentUserReaderFunc func(context.Context, int64) (model.User, error)
+
+type recordManagerStub struct {
+	create func(context.Context, service.CreateRecordRequest) (model.Record, error)
+	list   func(context.Context, int64) ([]model.RecordMetadata, error)
+	get    func(context.Context, int64, string) (model.Record, error)
+	update func(context.Context, service.UpdateRecordRequest) (model.Record, error)
+	delete func(context.Context, service.DeleteRecordRequest) error
+}
+
 func (fn databasePingerFunc) Ping(ctx context.Context) error {
 	return fn(ctx)
 }
-
-type tokenValidatorFunc func(context.Context, string) (int64, error)
 
 func (fn tokenValidatorFunc) Validate(ctx context.Context, token string) (int64, error) {
 	return fn(ctx, token)
 }
 
-type userRegistererFunc func(context.Context, string, string) (model.User, error)
-
 func (fn userRegistererFunc) Register(ctx context.Context, login, password string) (model.User, error) {
 	return fn(ctx, login, password)
 }
-
-type userAuthenticatorFunc func(context.Context, string, string) (service.AuthenticationResult, error)
 
 func (fn userAuthenticatorFunc) Authenticate(
 	ctx context.Context,
@@ -35,18 +45,8 @@ func (fn userAuthenticatorFunc) Authenticate(
 	return fn(ctx, login, password)
 }
 
-type currentUserReaderFunc func(context.Context, int64) (model.User, error)
-
 func (fn currentUserReaderFunc) FindByID(ctx context.Context, id int64) (model.User, error) {
 	return fn(ctx, id)
-}
-
-type recordManagerStub struct {
-	create func(context.Context, service.CreateRecordRequest) (model.Record, error)
-	list   func(context.Context, int64) ([]model.RecordMetadata, error)
-	get    func(context.Context, int64, string) (model.Record, error)
-	update func(context.Context, service.UpdateRecordRequest) (model.Record, error)
-	delete func(context.Context, service.DeleteRecordRequest) error
 }
 
 func (stub recordManagerStub) Create(

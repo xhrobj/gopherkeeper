@@ -6,10 +6,8 @@ import (
 
 	gopherkeeperpb "github.com/xhrobj/gopherkeeper/internal/proto"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 )
 
 const authorizationSchemeBearer = "Bearer"
@@ -29,12 +27,12 @@ func authenticationUnaryInterceptor(validator TokenValidator) grpc.UnaryServerIn
 
 		token, ok := bearerTokenFromMetadata(ctx)
 		if !ok || validator == nil {
-			return nil, status.Error(codes.Unauthenticated, "authentication required")
+			return nil, unauthenticatedError()
 		}
 
 		userID, err := validator.Validate(ctx, token)
 		if err != nil || userID <= 0 {
-			return nil, status.Error(codes.Unauthenticated, "authentication required")
+			return nil, unauthenticatedError()
 		}
 
 		return handler(context.WithValue(ctx, userIDContextKey{}, userID), req)

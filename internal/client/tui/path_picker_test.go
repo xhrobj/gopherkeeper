@@ -54,22 +54,36 @@ func TestConfigBrowseTarget_MapsBrowseFields(t *testing.T) {
 	}
 }
 
-func TestConfigTargetFieldHelpers_ReturnConfiguredField(t *testing.T) {
-	if got := configTargetFieldFocus(pathPickerSessionDirectory); got != configSessionDir {
-		t.Fatalf("configTargetFieldFocus() = %d, want %d", got, configSessionDir)
+func TestConfigTargetFieldFocus_MapsConfigTargets(t *testing.T) {
+	tests := []struct {
+		target pathPickerTarget
+		want   configFocus
+		ok     bool
+	}{
+		{target: pathPickerCACert, want: configCACertFile, ok: true},
+		{target: pathPickerSessionDirectory, want: configSessionDir, ok: true},
+		{target: pathPickerCacheDirectory, want: configCacheDir, ok: true},
+		{target: pathPickerBinarySaveDirectory, ok: false},
 	}
-	if got := configTargetFieldIndex(pathPickerCacheDirectory); got != 3 {
-		t.Fatalf("configTargetFieldIndex() = %d, want 3", got)
+
+	for _, test := range tests {
+		got, ok := configTargetFieldFocus(test.target)
+		if got != test.want || ok != test.ok {
+			t.Fatalf("configTargetFieldFocus(%d) = (%d, %v), want (%d, %v)", test.target, got, ok, test.want, test.ok)
+		}
 	}
 }
 
 func TestNewPathPickerWindowLayout_ClampsDimensions(t *testing.T) {
-	layout := newPathPickerWindowLayout(3, 0)
+	layout := newPathPickerWindowLayout(newTheme(), 3, pathPicker{})
 	if layout.contentWidth != 1 {
 		t.Fatalf("content width = %d, want 1", layout.contentWidth)
 	}
-	if layout.listBounds != (layoutBounds{x: 2, y: 4, width: 1, height: 1}) {
+	if layout.listBounds.x != 2 || layout.listBounds.width != 1 || layout.listBounds.height != 1 {
 		t.Fatalf("list bounds = %#v", layout.listBounds)
+	}
+	if len(layout.buttonBounds) != 2 {
+		t.Fatalf("button bounds count = %d, want 2", len(layout.buttonBounds))
 	}
 }
 

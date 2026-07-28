@@ -6,32 +6,6 @@ import (
 	recordmodel "github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-type recordTypePicker struct {
-	selected int
-}
-
-var recordCreateTypes = []recordmodel.RecordType{
-	recordmodel.RecordTypeCredentials,
-	recordmodel.RecordTypeCard,
-	recordmodel.RecordTypeText,
-	recordmodel.RecordTypeBinary,
-}
-
-func (picker *recordTypePicker) move(step int) {
-	count := len(recordCreateTypes) + 1
-	picker.selected = (picker.selected + step + count) % count
-}
-
-func (picker recordTypePicker) selectedType() (recordmodel.RecordType, bool) {
-	if picker.selected < 0 || picker.selected >= len(recordCreateTypes) {
-		return "", false
-	}
-
-	return recordCreateTypes[picker.selected], true
-}
-
-type recordFormControl int
-
 const (
 	recordFormTitle recordFormControl = iota
 	recordFormText
@@ -49,6 +23,12 @@ const (
 	recordFormReveal
 	recordFormCancel
 )
+
+type recordTypePicker struct {
+	selected int
+}
+
+type recordFormControl int
 
 type recordForm struct {
 	editing        bool
@@ -72,6 +52,26 @@ type recordForm struct {
 	binaryExisting bool
 	focus          int
 	revealed       bool
+}
+
+var recordCreateTypes = []recordmodel.RecordType{
+	recordmodel.RecordTypeCredentials,
+	recordmodel.RecordTypeCard,
+	recordmodel.RecordTypeText,
+	recordmodel.RecordTypeBinary,
+}
+
+func (picker *recordTypePicker) move(step int) {
+	count := len(recordCreateTypes) + 1
+	picker.selected = (picker.selected + step + count) % count
+}
+
+func (picker recordTypePicker) selectedType() (recordmodel.RecordType, bool) {
+	if picker.selected < 0 || picker.selected >= len(recordCreateTypes) {
+		return "", false
+	}
+
+	return recordCreateTypes[picker.selected], true
 }
 
 func newRecordCreateForm(recordType recordmodel.RecordType) recordForm {

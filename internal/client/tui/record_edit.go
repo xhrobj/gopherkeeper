@@ -8,18 +8,30 @@ import (
 	recordmodel "github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-type recordEditStatus int
-
 const (
 	recordEditLoading recordEditStatus = iota + 1
 	recordEditReady
 )
+
+type recordEditStatus int
 
 type recordEditState struct {
 	status       recordEditStatus
 	record       recordmodel.Record
 	form         recordForm
 	returnDialog dialogID
+}
+
+type recordEditLoadResultMsg struct {
+	requestID uint64
+	record    recordmodel.Record
+	err       error
+}
+
+type recordEditResultMsg struct {
+	requestID uint64
+	record    recordmodel.Record
+	err       error
 }
 
 func (state *recordEditState) begin(metadata recordmodel.RecordMetadata, returnDialog dialogID) {
@@ -38,18 +50,6 @@ func (state *recordEditState) apply(record recordmodel.Record, returnDialog dial
 
 func (state *recordEditState) clear() {
 	*state = recordEditState{}
-}
-
-type recordEditLoadResultMsg struct {
-	requestID uint64
-	record    recordmodel.Record
-	err       error
-}
-
-type recordEditResultMsg struct {
-	requestID uint64
-	record    recordmodel.Record
-	err       error
 }
 
 func recordEditLoadCommand(

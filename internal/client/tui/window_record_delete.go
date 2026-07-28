@@ -6,13 +6,60 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-const (
-	recordDeleteButtonRow = 10
-	recordDeleteButtonGap = 3
-)
+const recordDeleteButtonGap = 3
+
+type recordDeleteWindowLayout struct {
+	content      string
+	buttonBounds []layoutBounds
+}
 
 func recordDeleteWindowWidth(screenWidth int) int {
 	return clamp(screenWidth-28, 44, 62)
+}
+
+func newRecordDeleteWindowLayout(
+	t theme,
+	width int,
+	state recordDeleteState,
+	pending bool,
+	blocked bool,
+	spinnerFrame string,
+	activeButton int,
+) recordDeleteWindowLayout {
+	const (
+		horizontalPadding = 2
+		verticalPadding   = 1
+	)
+
+	contentWidth := max(1, width-2*horizontalPadding)
+	preview := recordViewMetadataLines(state.metadata, contentWidth)
+	if len(preview) > 5 {
+		preview = preview[:5]
+	}
+	preview = append(preview, recordViewLine{})
+	preview = appendRecordViewField(preview, "Title", state.metadata.Title, contentWidth)
+
+	title := "Delete Record"
+	if state.metadata.Type != "" {
+		title += " " + recordTypeTitle(state.metadata.Type)
+	}
+	titleLine := renderWindowTitle(t.windowTitle, width, title, spinnerFrame, pending)
+
+	rows := make([]string, 0, len(preview)+2)
+	for _, line := range preview {
+		rows = append(rows, renderRecordViewLineWithStyles(t.errorBody, t.errorLabel, contentWidth, line))
+	}
+	rows = append(rows, t.errorBody.Width(contentWidth).Render(""))
+	buttonLayout := recordDeleteButtonsLayout(t, contentWidth, blocked, activeButton).
+		positioned(horizontalPadding, lipgloss.Height(titleLine)+verticalPadding+len(rows))
+	rows = append(rows, buttonLayout.content)
+
+	body := t.errorBody.Width(width).Padding(verticalPadding, horizontalPadding).Render(strings.Join(rows, "\n"))
+
+	return recordDeleteWindowLayout{
+		content:      lipgloss.JoinVertical(lipgloss.Left, titleLine, body),
+		buttonBounds: buttonLayout.bounds,
+	}
 }
 
 func renderRecordDeleteWindow(
@@ -24,32 +71,7 @@ func renderRecordDeleteWindow(
 	spinnerFrame string,
 	activeButton int,
 ) string {
-	contentWidth := max(1, width-4)
-	preview := recordViewMetadataLines(state.metadata, contentWidth)
-	if len(preview) > 5 {
-		preview = preview[:5]
-	}
-	preview = append(preview, recordViewLine{})
-	preview = appendRecordViewField(preview, "Title", state.metadata.Title, contentWidth)
-
-	rows := make([]string, 0, len(preview)+2)
-	for _, line := range preview {
-		rows = append(rows, renderRecordViewLineWithStyles(t.errorBody, t.errorLabel, contentWidth, line))
-	}
-	rows = append(rows,
-		t.errorBody.Width(contentWidth).Render(""),
-		renderRecordDeleteButtons(t, contentWidth, blocked, activeButton),
-	)
-
-	title := "Delete Record"
-	if state.metadata.Type != "" {
-		title += " " + recordTypeTitle(state.metadata.Type)
-	}
-
-	titleLine := renderWindowTitle(t.windowTitle, width, title, spinnerFrame, pending)
-	body := t.errorBody.Width(width).Padding(1, 2).Render(strings.Join(rows, "\n"))
-
-	return lipgloss.JoinVertical(lipgloss.Left, titleLine, body)
+	return newRecordDeleteWindowLayout(t, width, state, pending, blocked, spinnerFrame, activeButton).content
 }
 
 func recordDeleteButtonsLayout(t theme, width int, blocked bool, activeButton int) buttonRowLayout {
@@ -70,8 +92,4 @@ func recordDeleteButtonsLayout(t theme, width int, blocked bool, activeButton in
 	}
 
 	return centeredButtonRowLayout(t.errorBody, width, recordDeleteButtonGap, buttons)
-}
-
-func renderRecordDeleteButtons(t theme, width int, blocked bool, activeButton int) string {
-	return recordDeleteButtonsLayout(t, width, blocked, activeButton).content
 }

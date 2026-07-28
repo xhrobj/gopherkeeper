@@ -10,24 +10,11 @@ import (
 	domainmodel "github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-type authState int
-
 const (
 	authUnknown authState = iota
 	authGuest
 	authAuthenticated
 )
-
-type authSession struct {
-	state authState
-	login string
-}
-
-func (session authSession) authenticated() bool {
-	return session.state == authAuthenticated
-}
-
-type currentUserCheckMode int
 
 const (
 	currentUserCheckRestore currentUserCheckMode = iota
@@ -35,10 +22,45 @@ const (
 	currentUserCheckManual
 )
 
+const (
+	sessionExpiredTitle   = "(+_+)~ Session Expired"
+	sessionExpiredMessage = "Please login again"
+)
+
+type authState int
+
+type authSession struct {
+	state authState
+	login string
+}
+
+type currentUserCheckMode int
+
 type currentUserResultMsg struct {
 	requestID uint64
 	login     string
 	err       error
+}
+
+type loginResultMsg struct {
+	requestID uint64
+	login     string
+	err       error
+}
+
+type registerResultMsg struct {
+	requestID uint64
+	login     string
+	err       error
+}
+
+type logoutResultMsg struct {
+	requestID uint64
+	err       error
+}
+
+func (session authSession) authenticated() bool {
+	return session.state == authAuthenticated
 }
 
 func currentUserCommand(
@@ -82,12 +104,6 @@ func cleanCurrentUserError(err error) string {
 	return cleanFailureMessage(err, "Unable to check the current session")
 }
 
-type loginResultMsg struct {
-	requestID uint64
-	login     string
-	err       error
-}
-
 func loginCommand(
 	ctx context.Context,
 	backend Backend,
@@ -117,12 +133,6 @@ func cleanLoginError(err error) string {
 	return cleanFailureMessage(err, "Unable to log in")
 }
 
-type registerResultMsg struct {
-	requestID uint64
-	login     string
-	err       error
-}
-
 func registerCommand(
 	ctx context.Context,
 	backend Backend,
@@ -150,11 +160,6 @@ func cleanRegisterError(err error) string {
 	}
 
 	return cleanFailureMessage(err, "Unable to register")
-}
-
-type logoutResultMsg struct {
-	requestID uint64
-	err       error
 }
 
 func logoutCommand(
@@ -336,11 +341,6 @@ func (m model) startLogout() (tea.Model, tea.Cmd) {
 
 	return m, m.operationCommand(operationLogout, logoutCommand(requestCtx, m.backend, requestID))
 }
-
-const (
-	sessionExpiredTitle   = "(+_+)~ Session Expired"
-	sessionExpiredMessage = "Please login again"
-)
 
 func (m *model) handleSessionExpired() {
 	m.cancelAllRequests()

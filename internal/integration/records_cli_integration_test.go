@@ -19,6 +19,35 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/server/transport/http/middleware"
 )
 
+type recordCLIConfig struct {
+	ctx        context.Context
+	address    string
+	caCertFile string
+	sessionDir string
+}
+
+type cliTextRecordFlow struct {
+	t                     *testing.T
+	ctx                   context.Context
+	serverAddress         string
+	caCertFile            string
+	pool                  *pgxpool.Pool
+	httpLogs              *bytes.Buffer
+	aliceSessionDir       string
+	aliceSecondSessionDir string
+	eveSessionDir         string
+	updatedTextFile       string
+	updatedMetadataFile   string
+}
+
+type textRecordUpdateCLIRequest struct {
+	recordID     string
+	revision     int64
+	title        string
+	textFile     string
+	metadataFile string
+}
+
 var createdTextRecordPattern = regexp.MustCompile(`^Created text record ([0-9a-f-]+) with revision ([0-9]+)\.$`)
 
 func TestIntegration_CLITextRecordConflictAndIsolationFlow(t *testing.T) {
@@ -34,13 +63,6 @@ func TestIntegration_CLITextRecordConflictAndIsolationFlow(t *testing.T) {
 	flow.deleteRecord(recordID)
 	flow.assertDeleted(recordID)
 	flow.assertHTTPLogsDoNotContainSecrets()
-}
-
-type recordCLIConfig struct {
-	ctx        context.Context
-	address    string
-	caCertFile string
-	sessionDir string
 }
 
 func newRecordCLIEnvironment(
@@ -68,20 +90,6 @@ func newRecordCLIEnvironment(
 		caCertFile: caCertFile,
 		sessionDir: sessionDir,
 	}, pool, httpLogs
-}
-
-type cliTextRecordFlow struct {
-	t                     *testing.T
-	ctx                   context.Context
-	serverAddress         string
-	caCertFile            string
-	pool                  *pgxpool.Pool
-	httpLogs              *bytes.Buffer
-	aliceSessionDir       string
-	aliceSecondSessionDir string
-	eveSessionDir         string
-	updatedTextFile       string
-	updatedMetadataFile   string
 }
 
 func newCLITextRecordFlow(t *testing.T) *cliTextRecordFlow {
@@ -359,14 +367,6 @@ func runCreateTextRecordCommand(
 	}
 
 	return runClientCommand(ctx, args)
-}
-
-type textRecordUpdateCLIRequest struct {
-	recordID     string
-	revision     int64
-	title        string
-	textFile     string
-	metadataFile string
 }
 
 func runUpdateTextRecordCommand(

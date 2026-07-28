@@ -8,8 +8,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-type pathPickerTarget int
-
 const (
 	pathPickerCACert pathPickerTarget = iota
 	pathPickerSessionDirectory
@@ -21,28 +19,17 @@ const (
 	pathPickerDoubleClickInterval = 350 * time.Millisecond
 )
 
+const (
+	pathPickerTree pathPickerFocus = iota
+	pathPickerSelect
+	pathPickerCancel
+)
+
+type pathPickerTarget int
+
 type pathPickerMode struct {
-	title       string
-	filePicker  bool
-	configFocus configFocus
-	browseFocus configFocus
-	configIndex int
-}
-
-var pathPickerModes = map[pathPickerTarget]pathPickerMode{
-	pathPickerCACert:              {title: "Select CA certificate", filePicker: true, configFocus: configCACertFile, browseFocus: configCACertBrowse, configIndex: 1},
-	pathPickerSessionDirectory:    {title: "Select session directory", configFocus: configSessionDir, browseFocus: configSessionBrowse, configIndex: 2},
-	pathPickerCacheDirectory:      {title: "Select cache directory", configFocus: configCacheDir, browseFocus: configCacheBrowse, configIndex: 3},
-	pathPickerBinarySaveDirectory: {title: "Select save directory"},
-	pathPickerBinaryCreateFile:    {title: "Select binary file", filePicker: true},
-	pathPickerBinaryEditFile:      {title: "Select binary file", filePicker: true},
-}
-
-func (target pathPickerTarget) mode() pathPickerMode {
-	if mode, ok := pathPickerModes[target]; ok {
-		return mode
-	}
-	return pathPickerMode{title: "Select path"}
+	title      string
+	filePicker bool
 }
 
 type pathPickerEntry struct {
@@ -52,12 +39,6 @@ type pathPickerEntry struct {
 }
 
 type pathPickerFocus int
-
-const (
-	pathPickerTree pathPickerFocus = iota
-	pathPickerSelect
-	pathPickerCancel
-)
 
 type pathPickerReadMsg struct {
 	rootDirectory    string
@@ -89,6 +70,22 @@ type pathPicker struct {
 	lastClickValid   bool
 	clickGeneration  uint64
 	fileName         string
+}
+
+var pathPickerModes = map[pathPickerTarget]pathPickerMode{
+	pathPickerCACert:              {title: "Select CA certificate", filePicker: true},
+	pathPickerSessionDirectory:    {title: "Select session directory"},
+	pathPickerCacheDirectory:      {title: "Select cache directory"},
+	pathPickerBinarySaveDirectory: {title: "Select save directory"},
+	pathPickerBinaryCreateFile:    {title: "Select binary file", filePicker: true},
+	pathPickerBinaryEditFile:      {title: "Select binary file", filePicker: true},
+}
+
+func (target pathPickerTarget) mode() pathPickerMode {
+	if mode, ok := pathPickerModes[target]; ok {
+		return mode
+	}
+	return pathPickerMode{title: "Select path"}
 }
 
 func newPathPicker(
@@ -226,6 +223,7 @@ func (picker *pathPicker) moveFocus(step int) {
 		}
 
 		picker.focus = candidate
+
 		return
 	}
 }

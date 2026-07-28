@@ -1,11 +1,10 @@
 package httpserver
 
 import (
-	"errors"
 	"net/http"
 
-	"github.com/xhrobj/gopherkeeper/internal/model"
-	"github.com/xhrobj/gopherkeeper/internal/server/service"
+	"github.com/xhrobj/gopherkeeper/internal/apierror"
+	"github.com/xhrobj/gopherkeeper/internal/server/transport/errorcode"
 )
 
 const (
@@ -36,8 +35,8 @@ func registerHandler(registerer UserRegisterer) http.HandlerFunc {
 				writeErrorResponse(
 					w,
 					http.StatusRequestEntityTooLarge,
-					errorCodePayloadTooLarge,
-					errorMessagePayloadTooLarge,
+					errorCodeRequestTooLarge,
+					errorMessageRequestTooLarge,
 				)
 				return
 			}
@@ -79,11 +78,8 @@ func decodeRegisterRequest(w http.ResponseWriter, r *http.Request) (registerRequ
 }
 
 func writeRegistrationError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, service.ErrInvalidLogin),
-		errors.Is(err, service.ErrInvalidPassword),
-		errors.Is(err, service.ErrPasswordTooShort),
-		errors.Is(err, service.ErrPasswordTooLong):
+	switch errorcode.FromError(err) {
+	case apierror.InvalidRequest:
 		writeErrorResponse(
 			w,
 			http.StatusBadRequest,
@@ -91,7 +87,7 @@ func writeRegistrationError(w http.ResponseWriter, err error) {
 			errorMessageInvalidRegistrationRequest,
 		)
 
-	case errors.Is(err, model.ErrLoginAlreadyExists):
+	case apierror.LoginAlreadyExists:
 		writeErrorResponse(
 			w,
 			http.StatusConflict,

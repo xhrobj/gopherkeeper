@@ -17,6 +17,12 @@ type recordCreateBackendStub struct {
 	createRecord func(context.Context, string, recordmodel.RecordPayload) (recordmodel.Record, error)
 }
 
+type recordCreateRecordsBackendStub struct {
+	backendStub
+	createRecord func(context.Context, string, recordmodel.RecordPayload) (recordmodel.Record, error)
+	listCalls    *int
+}
+
 func (stub recordCreateBackendStub) CreateRecord(
 	ctx context.Context,
 	title string,
@@ -26,21 +32,6 @@ func (stub recordCreateBackendStub) CreateRecord(
 		return recordmodel.Record{}, errors.New("unexpected CreateRecord call")
 	}
 	return stub.createRecord(ctx, title, payload)
-}
-
-func newRecordCreateTestModel(t *testing.T, backend recordCreateBackendStub) model {
-	m := mustNewModel(t,
-		context.Background(),
-		config.Config{},
-		"",
-		buildinfo.Info{},
-		staticBackendFactory(backend),
-	)
-	m.operations.cancel(operationCurrentUser)
-	m.startupCmd = nil
-	m.authentication.session = authSession{state: authAuthenticated, login: "alice"}
-	m.dialog = dialogNone
-	return m
 }
 
 func TestModel_RecordCreateMenuAvailability(t *testing.T) {
@@ -120,7 +111,7 @@ func TestModel_RecordCreateFlow(t *testing.T) {
 func TestModel_RecordCreateErrorKeepsForm(t *testing.T) {
 	backend := recordCreateBackendStub{
 		createRecord: func(context.Context, string, recordmodel.RecordPayload) (recordmodel.Record, error) {
-			return recordmodel.Record{}, errors.New("connection refused")
+			return recordmodel.Record{}, unavailableTestError()
 		},
 	}
 	m := newRecordCreateTestModel(t, backend)
@@ -185,12 +176,6 @@ func TestModel_CloseRecordCreateClearsSecretsAndCancelsRequest(t *testing.T) {
 	if m.operations.request(operationCreateRecord).pending || m.operations.request(operationCreateRecord).id == requestID {
 		t.Fatalf("request state = %#v", m.operations.request(operationCreateRecord))
 	}
-}
-
-type recordCreateRecordsBackendStub struct {
-	backendStub
-	createRecord func(context.Context, string, recordmodel.RecordPayload) (recordmodel.Record, error)
-	listCalls    *int
 }
 
 func (stub recordCreateRecordsBackendStub) CreateRecord(
@@ -300,4 +285,19 @@ func TestModel_RecordTypeWizardDefaultsToCredentialsAndUsesWizardOnlyForSelectio
 	}
 	assertViewContains(t, got.renderDialog(), "New Credentials Record")
 	assertViewExcludes(t, got.renderDialog(), "Wizard")
+}
+
+func newRecordCreateTestModel(t *testing.T, backend recordCreateBackendStub) model {
+	m := mustNewModel(t,
+		context.Background(),
+		config.Config{},
+		"",
+		buildinfo.Info{},
+		staticBackendFactory(backend),
+	)
+	m.operations.cancel(operationCurrentUser)
+	m.startupCmd = nil
+	m.authentication.session = authSession{state: authAuthenticated, login: "alice"}
+	m.dialog = dialogNone
+	return m
 }

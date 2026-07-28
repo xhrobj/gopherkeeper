@@ -13,14 +13,6 @@ type authService struct {
 	users      CurrentUserReader
 }
 
-func newAuthService(deps Dependencies) *authService {
-	return &authService{
-		registerer: deps.Registerer,
-		auth:       deps.Authenticator,
-		users:      deps.CurrentUserReader,
-	}
-}
-
 func (service *authService) Register(
 	ctx context.Context,
 	request *gopherkeeperpb.RegisterRequest,
@@ -114,4 +106,12 @@ func (service *authService) CurrentUser(
 	response.SetUser(responseUser)
 
 	return response, nil
+}
+
+func newAuthService(deps Dependencies) *authService {
+	return &authService{
+		registerer: deps.Registerer,
+		auth:       deps.Authenticator,
+		users:      deps.CurrentUserReader,
+	}
 }

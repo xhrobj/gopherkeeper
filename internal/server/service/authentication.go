@@ -9,9 +9,6 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-// ErrInvalidCredentials означает, что пользователь не прошёл аутентификацию.
-var ErrInvalidCredentials = errors.New("invalid credentials")
-
 // UserCredentialReader читает пользователя и хэш пароля для аутентификации.
 type UserCredentialReader interface {
 	// FindByLogin возвращает публичные данные пользователя и хэш пароля.
@@ -48,6 +45,9 @@ type AuthenticationService struct {
 	passwords PasswordChecker
 	tokens    TokenIssuer
 }
+
+// ErrInvalidCredentials означает, что пользователь не прошёл аутентификацию.
+var ErrInvalidCredentials = errors.New("invalid credentials")
 
 // NewAuthenticationService создаёт сервис аутентификации пользователя.
 func NewAuthenticationService(

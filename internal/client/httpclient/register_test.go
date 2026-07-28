@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xhrobj/gopherkeeper/internal/apierror"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
@@ -38,6 +39,85 @@ func TestClient_Register(t *testing.T) {
 	}
 	if !user.CreatedAt.Equal(createdAt) {
 		t.Errorf("user created at = %s, want %s", user.CreatedAt, createdAt)
+	}
+}
+
+func TestClient_RegisterReturnsAPIError(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{
+			"code":"login_already_exists",
+			"message":"login is already registered"
+		}`))
+	}))
+	defer server.Close()
+
+	client, err := New(serverAddress(server), writeServerCertificate(t, server))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, err = client.Register(context.Background(), "eve", testRegistrationPassword)
+	if err == nil {
+		t.Fatal("Register() error = nil, want API error")
+	}
+
+	var apiError *APIError
+	if !errors.As(err, &apiError) {
+		t.Fatalf("Register() error = %T, want *APIError", err)
+	}
+
+	if apiError.StatusCode != http.StatusConflict {
+		t.Errorf("status code = %d, want %d", apiError.StatusCode, http.StatusConflict)
+	}
+	if apiError.Code != apierror.LoginAlreadyExists {
+		t.Errorf("code = %q, want login_already_exists", apiError.Code)
+	}
+	if apiError.Message != "login is already registered" {
+		t.Errorf("message = %q, want login is already registered", apiError.Message)
+	}
+	if !errors.Is(err, model.ErrLoginAlreadyExists) {
+		t.Errorf("Register() error = %v, want ErrLoginAlreadyExists", err)
+	}
+	if strings.Contains(err.Error(), testRegistrationPassword) {
+		t.Error("registration error contains password")
+	}
+}
+
+func TestClient_RegisterDoesNotMapSharedCodesToRecordErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		code    string
+		status  int
+		wantNot error
+	}{
+		{name: "invalid request", code: "invalid_request", status: http.StatusBadRequest, wantNot: model.ErrInvalidRecordData},
+		{name: "request too large", code: "request_too_large", status: http.StatusRequestEntityTooLarge, wantNot: model.ErrPayloadTooLarge},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(`{"code":"` + tt.code + `","message":"safe message"}`))
+			}))
+			defer server.Close()
+
+			client, err := New(serverAddress(server), writeServerCertificate(t, server))
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+
+			_, err = client.Register(context.Background(), "alice", testRegistrationPassword)
+			if err == nil {
+				t.Fatal("Register() error = nil, want API error")
+			}
+			if errors.Is(err, tt.wantNot) {
+				t.Errorf("Register() error = %v, must not match %v", err, tt.wantNot)
+			}
+		})
 	}
 }
 
@@ -94,83 +174,4 @@ func assertRegistrationRequest(t *testing.T, r *http.Request) bool {
 	}
 
 	return valid
-}
-
-func TestClient_RegisterReturnsAPIError(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		_, _ = w.Write([]byte(`{
-			"code":"login_already_exists",
-			"message":"login is already registered"
-		}`))
-	}))
-	defer server.Close()
-
-	client, err := New(serverAddress(server), writeServerCertificate(t, server))
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	_, err = client.Register(context.Background(), "eve", testRegistrationPassword)
-	if err == nil {
-		t.Fatal("Register() error = nil, want API error")
-	}
-
-	var apiError *APIError
-	if !errors.As(err, &apiError) {
-		t.Fatalf("Register() error = %T, want *APIError", err)
-	}
-
-	if apiError.StatusCode != http.StatusConflict {
-		t.Errorf("status code = %d, want %d", apiError.StatusCode, http.StatusConflict)
-	}
-	if apiError.Code != "login_already_exists" {
-		t.Errorf("code = %q, want login_already_exists", apiError.Code)
-	}
-	if apiError.Message != "login is already registered" {
-		t.Errorf("message = %q, want login is already registered", apiError.Message)
-	}
-	if !errors.Is(err, model.ErrLoginAlreadyExists) {
-		t.Errorf("Register() error = %v, want ErrLoginAlreadyExists", err)
-	}
-	if strings.Contains(err.Error(), testRegistrationPassword) {
-		t.Error("registration error contains password")
-	}
-}
-
-func TestClient_RegisterDoesNotMapSharedCodesToRecordErrors(t *testing.T) {
-	tests := []struct {
-		name    string
-		code    string
-		status  int
-		wantNot error
-	}{
-		{name: "invalid request", code: "invalid_request", status: http.StatusBadRequest, wantNot: model.ErrInvalidRecordData},
-		{name: "payload too large", code: "payload_too_large", status: http.StatusRequestEntityTooLarge, wantNot: model.ErrPayloadTooLarge},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(tt.status)
-				_, _ = w.Write([]byte(`{"code":"` + tt.code + `","message":"safe message"}`))
-			}))
-			defer server.Close()
-
-			client, err := New(serverAddress(server), writeServerCertificate(t, server))
-			if err != nil {
-				t.Fatalf("New() error = %v", err)
-			}
-
-			_, err = client.Register(context.Background(), "alice", testRegistrationPassword)
-			if err == nil {
-				t.Fatal("Register() error = nil, want API error")
-			}
-			if errors.Is(err, tt.wantNot) {
-				t.Errorf("Register() error = %v, must not match %v", err, tt.wantNot)
-			}
-		})
-	}
 }

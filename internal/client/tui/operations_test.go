@@ -91,15 +91,6 @@ func TestOperationCoordinator_CancelAllIncludesLocalOperations(t *testing.T) {
 	assertContextCanceled(t, syncContext)
 }
 
-func assertContextCanceled(t *testing.T, ctx context.Context) {
-	t.Helper()
-	select {
-	case <-ctx.Done():
-	default:
-		t.Fatal("operation context was not canceled")
-	}
-}
-
 func TestModel_CurrentNetworkBusyStateCoversBlockingOperations(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -165,36 +156,6 @@ func TestModel_CurrentNetworkBusyStateCoversBlockingOperations(t *testing.T) {
 			assertBlockingOperationState(t, test.prepare, test.operation, test.message, test.inline)
 		})
 	}
-}
-
-func assertBlockingOperationState(
-	t *testing.T,
-	prepare func(*model),
-	operation operationKind,
-	message string,
-	inline bool,
-) {
-	t.Helper()
-	m := newTestModel(t, config.Config{}, buildinfo.Info{})
-	prepare(&m)
-
-	state := m.currentNetworkBusyState()
-	if state.operation != operation || state.message != message || state.inline != inline {
-		t.Fatalf("busy state = %#v, want operation %d message %q inline %t", state, operation, message, inline)
-	}
-	if !m.networkBusy() || !m.interactionBlocked() || !m.spinnerPending() {
-		t.Fatal("network operation did not activate the global busy state")
-	}
-
-	_, visible := m.networkBusyPlacement()
-	if visible == inline {
-		t.Fatalf("busy overlay visible = %t, want %t", visible, !inline)
-	}
-	if inline {
-		assertViewExcludes(t, m.View().Content, "Please wait")
-		return
-	}
-	assertViewContains(t, m.View().Content, "Please wait", message+"...", m.spinnerFrameValue())
 }
 
 func TestRenderNetworkBusyWindow_KeepsSpinnerInTitleAndUsesASCIIDotsInBody(t *testing.T) {
@@ -307,7 +268,7 @@ func TestRenderWindowTitle_KeepsBaseTitleCenteredWhileSpinnerIsVisible(t *testin
 
 func TestRenderLoginButtons_DisablesBothButtonsAndPreservesFocusWhileBlocked(t *testing.T) {
 	theme := newTheme()
-	rendered := renderLoginButtons(theme, 40, loginSubmit, false, true)
+	rendered := loginButtonsLayout(theme, 40, loginSubmit, false, true).content
 	plain := ansi.Strip(rendered)
 
 	if !strings.Contains(rendered, theme.buttonDisabledActive.Render("< Login >")) {
@@ -359,4 +320,43 @@ func TestModel_SpinnerTickAdvancesOnlyWhileOperationPending(t *testing.T) {
 	if got.activitySpinner.View() != stoppedFrame || command != nil {
 		t.Fatalf("stopped spinner state = frame %q command %t", got.activitySpinner.View(), command != nil)
 	}
+}
+
+func assertContextCanceled(t *testing.T, ctx context.Context) {
+	t.Helper()
+	select {
+	case <-ctx.Done():
+	default:
+		t.Fatal("operation context was not canceled")
+	}
+}
+
+func assertBlockingOperationState(
+	t *testing.T,
+	prepare func(*model),
+	operation operationKind,
+	message string,
+	inline bool,
+) {
+	t.Helper()
+	m := newTestModel(t, config.Config{}, buildinfo.Info{})
+	prepare(&m)
+
+	state := m.currentNetworkBusyState()
+	if state.operation != operation || state.message != message || state.inline != inline {
+		t.Fatalf("busy state = %#v, want operation %d message %q inline %t", state, operation, message, inline)
+	}
+	if !m.networkBusy() || !m.interactionBlocked() || !m.spinnerPending() {
+		t.Fatal("network operation did not activate the global busy state")
+	}
+
+	_, visible := m.networkBusyPlacement()
+	if visible == inline {
+		t.Fatalf("busy overlay visible = %t, want %t", visible, !inline)
+	}
+	if inline {
+		assertViewExcludes(t, m.View().Content, "Please wait")
+		return
+	}
+	assertViewContains(t, m.View().Content, "Please wait", message+"...", m.spinnerFrameValue())
 }

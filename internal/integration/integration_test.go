@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -38,6 +39,123 @@ const (
 	testRegistrationPassword = "correct-horse-battery-staple"
 )
 
+type apiErrorResponse struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+type restartableHTTPSServer struct {
+	t              *testing.T
+	handlerFactory func() http.Handler
+	certFile       string
+	keyFile        string
+	address        string
+	server         *http.Server
+	serveErr       chan error
+	running        bool
+}
+
+type integrationAuthenticatorFunc func(
+	ctx context.Context,
+	login string,
+	password string,
+) (service.AuthenticationResult, error)
+
+type integrationTokenValidatorFunc func(context.Context, string) (int64, error)
+
+type integrationCurrentUserReaderFunc func(context.Context, int64) (model.User, error)
+
+var integrationJWTSecret = []byte("0123456789abcdef0123456789abcdef")
+
+var unusedIntegrationAuthenticator = integrationAuthenticatorFunc(func(
+	context.Context,
+	string,
+	string,
+) (service.AuthenticationResult, error) {
+	return service.AuthenticationResult{}, errors.New("unexpected authentication call")
+})
+
+var unusedIntegrationTokenValidator = integrationTokenValidatorFunc(func(
+	context.Context,
+	string,
+) (int64, error) {
+	return 0, errors.New("unexpected token validation call")
+})
+
+var unusedIntegrationCurrentUserReader = integrationCurrentUserReaderFunc(func(
+	context.Context,
+	int64,
+) (model.User, error) {
+	return model.User{}, errors.New("unexpected current user read call")
+})
+
+func (fixture *restartableHTTPSServer) Address() string {
+	return fixture.address
+}
+
+func (fixture *restartableHTTPSServer) Start() {
+	fixture.t.Helper()
+
+	if fixture.running {
+		fixture.t.Fatal("start HTTPS server: server is already running")
+	}
+
+	listener, err := net.Listen("tcp", fixture.address)
+	if err != nil {
+		fixture.t.Fatalf("listen on HTTPS server address %s: %v", fixture.address, err)
+	}
+
+	fixture.start(listener)
+}
+
+func (fixture *restartableHTTPSServer) Stop() {
+	fixture.t.Helper()
+
+	if !fixture.running {
+		return
+	}
+
+	server := fixture.server
+	serveErr := fixture.serveErr
+	fixture.server = nil
+	fixture.serveErr = nil
+	fixture.running = false
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), integrationTestTimeout)
+	defer cancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		fixture.t.Errorf("shutdown HTTPS server: %v", err)
+		if closeErr := server.Close(); closeErr != nil {
+			fixture.t.Errorf("close HTTPS server after shutdown failure: %v", closeErr)
+		}
+	}
+
+	select {
+	case err := <-serveErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			fixture.t.Errorf("serve HTTPS: %v", err)
+		}
+	case <-shutdownCtx.Done():
+		fixture.t.Errorf("wait for HTTPS server shutdown: %v", shutdownCtx.Err())
+	}
+}
+
+func (f integrationAuthenticatorFunc) Authenticate(
+	ctx context.Context,
+	login string,
+	password string,
+) (service.AuthenticationResult, error) {
+	return f(ctx, login, password)
+}
+
+func (f integrationTokenValidatorFunc) Validate(ctx context.Context, token string) (int64, error) {
+	return f(ctx, token)
+}
+
+func (f integrationCurrentUserReaderFunc) FindByID(ctx context.Context, id int64) (model.User, error) {
+	return f(ctx, id)
+}
 func isolateClientConfig(t *testing.T) {
 	t.Helper()
 
@@ -47,8 +165,6 @@ func isolateClientConfig(t *testing.T) {
 	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
 	t.Setenv("CONFIG", "")
 }
-
-var integrationJWTSecret = []byte("0123456789abcdef0123456789abcdef")
 
 func openPostgres(t *testing.T, ctx context.Context, dsn string) *pgxpool.Pool {
 	t.Helper()
@@ -113,6 +229,30 @@ func openTestPostgres(
 	return pool
 }
 
+func newTrustedHTTPSClient(t *testing.T, caCertFile string) *http.Client {
+	t.Helper()
+
+	caPEM, err := os.ReadFile(caCertFile)
+	if err != nil {
+		t.Fatalf("read CA certificate: %v", err)
+	}
+
+	rootCAs := x509.NewCertPool()
+	if !rootCAs.AppendCertsFromPEM(caPEM) {
+		t.Fatal("append CA certificate")
+	}
+
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    rootCAs,
+		},
+	}
+	t.Cleanup(transport.CloseIdleConnections)
+
+	return &http.Client{Transport: transport}
+}
+
 func startHTTPSServer(
 	t *testing.T,
 	handler http.Handler,
@@ -150,17 +290,6 @@ func startHTTPSServer(
 	return listener.Addr().String(), stop
 }
 
-type restartableHTTPSServer struct {
-	t              *testing.T
-	handlerFactory func() http.Handler
-	certFile       string
-	keyFile        string
-	address        string
-	server         *http.Server
-	serveErr       chan error
-	running        bool
-}
-
 func newRestartableHTTPSServer(
 	t *testing.T,
 	handlerFactory func() http.Handler,
@@ -185,58 +314,6 @@ func newRestartableHTTPSServer(
 	t.Cleanup(fixture.Stop)
 
 	return fixture
-}
-
-func (fixture *restartableHTTPSServer) Address() string {
-	return fixture.address
-}
-
-func (fixture *restartableHTTPSServer) Start() {
-	fixture.t.Helper()
-
-	if fixture.running {
-		fixture.t.Fatal("start HTTPS server: server is already running")
-	}
-
-	listener, err := net.Listen("tcp", fixture.address)
-	if err != nil {
-		fixture.t.Fatalf("listen on HTTPS server address %s: %v", fixture.address, err)
-	}
-
-	fixture.start(listener)
-}
-
-func (fixture *restartableHTTPSServer) Stop() {
-	fixture.t.Helper()
-
-	if !fixture.running {
-		return
-	}
-
-	server := fixture.server
-	serveErr := fixture.serveErr
-	fixture.server = nil
-	fixture.serveErr = nil
-	fixture.running = false
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), integrationTestTimeout)
-	defer cancel()
-
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		fixture.t.Errorf("shutdown HTTPS server: %v", err)
-		if closeErr := server.Close(); closeErr != nil {
-			fixture.t.Errorf("close HTTPS server after shutdown failure: %v", closeErr)
-		}
-	}
-
-	select {
-	case err := <-serveErr:
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			fixture.t.Errorf("serve HTTPS: %v", err)
-		}
-	case <-shutdownCtx.Done():
-		fixture.t.Errorf("wait for HTTPS server shutdown: %v", shutdownCtx.Err())
-	}
 }
 
 func (fixture *restartableHTTPSServer) start(listener net.Listener) {
@@ -390,54 +467,6 @@ func newAuthenticatedServerHandler(t *testing.T, pool *pgxpool.Pool) http.Handle
 		CurrentUserReader: userRepository,
 		Records:           recordService,
 	})
-}
-
-var unusedIntegrationAuthenticator = integrationAuthenticatorFunc(func(
-	context.Context,
-	string,
-	string,
-) (service.AuthenticationResult, error) {
-	return service.AuthenticationResult{}, errors.New("unexpected authentication call")
-})
-
-type integrationAuthenticatorFunc func(
-	ctx context.Context,
-	login string,
-	password string,
-) (service.AuthenticationResult, error)
-
-func (f integrationAuthenticatorFunc) Authenticate(
-	ctx context.Context,
-	login string,
-	password string,
-) (service.AuthenticationResult, error) {
-	return f(ctx, login, password)
-}
-
-var unusedIntegrationTokenValidator = integrationTokenValidatorFunc(func(
-	context.Context,
-	string,
-) (int64, error) {
-	return 0, errors.New("unexpected token validation call")
-})
-
-type integrationTokenValidatorFunc func(context.Context, string) (int64, error)
-
-func (f integrationTokenValidatorFunc) Validate(ctx context.Context, token string) (int64, error) {
-	return f(ctx, token)
-}
-
-var unusedIntegrationCurrentUserReader = integrationCurrentUserReaderFunc(func(
-	context.Context,
-	int64,
-) (model.User, error) {
-	return model.User{}, errors.New("unexpected current user read call")
-})
-
-type integrationCurrentUserReaderFunc func(context.Context, int64) (model.User, error)
-
-func (f integrationCurrentUserReaderFunc) FindByID(ctx context.Context, id int64) (model.User, error) {
-	return f(ctx, id)
 }
 
 func assertStoredRegistration(

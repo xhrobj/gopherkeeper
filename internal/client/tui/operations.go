@@ -8,8 +8,6 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-type operationKind uint8
-
 const (
 	operationNone operationKind = iota
 	operationCurrentUser
@@ -30,6 +28,8 @@ const (
 	operationCount
 )
 
+type operationKind uint8
+
 type requestState struct {
 	pending bool
 	id      uint64
@@ -38,6 +38,44 @@ type requestState struct {
 
 type operationCoordinator struct {
 	requests [operationCount]requestState
+}
+
+type networkBusyState struct {
+	operation operationKind
+	message   string
+	inline    bool
+}
+
+var networkOperationPriority = [...]operationKind{
+	operationSync,
+	operationOpenCache,
+	operationCreateRecord,
+	operationEditRecord,
+	operationDeleteRecord,
+	operationCurrentUser,
+	operationLogin,
+	operationRegister,
+	operationServerStatus,
+	operationListRecords,
+	operationViewRecord,
+	operationViewCachedRecord,
+	operationLoadRecordForEdit,
+}
+
+var networkBusyStates = [operationCount]networkBusyState{
+	operationCurrentUser:       {operation: operationCurrentUser, message: "Checking current user", inline: true},
+	operationLogin:             {operation: operationLogin, message: "Logging in", inline: true},
+	operationRegister:          {operation: operationRegister, message: "Registering", inline: true},
+	operationServerStatus:      {operation: operationServerStatus, message: "Checking server", inline: true},
+	operationListRecords:       {operation: operationListRecords, message: "Loading records", inline: true},
+	operationOpenCache:         {operation: operationOpenCache, message: "Opening local cache", inline: true},
+	operationViewRecord:        {operation: operationViewRecord, message: "Loading record", inline: true},
+	operationViewCachedRecord:  {operation: operationViewCachedRecord, message: "Loading cached record", inline: true},
+	operationLoadRecordForEdit: {operation: operationLoadRecordForEdit, message: "Loading record", inline: true},
+	operationCreateRecord:      {operation: operationCreateRecord, message: "Creating record", inline: true},
+	operationEditRecord:        {operation: operationEditRecord, message: "Saving record", inline: true},
+	operationDeleteRecord:      {operation: operationDeleteRecord, message: "Deleting record", inline: true},
+	operationSync:              {operation: operationSync, message: "Synchronizing local cache", inline: true},
 }
 
 func (operations *operationCoordinator) begin(parentDone <-chan struct{}, kind operationKind) (context.Context, uint64) {
@@ -149,44 +187,6 @@ func (m *model) cancelRecordEditRequests() {
 
 func (m *model) cancelAllRequests() {
 	m.operations.cancelAll()
-}
-
-type networkBusyState struct {
-	operation operationKind
-	message   string
-	inline    bool
-}
-
-var networkOperationPriority = [...]operationKind{
-	operationSync,
-	operationOpenCache,
-	operationCreateRecord,
-	operationEditRecord,
-	operationDeleteRecord,
-	operationCurrentUser,
-	operationLogin,
-	operationRegister,
-	operationServerStatus,
-	operationListRecords,
-	operationViewRecord,
-	operationViewCachedRecord,
-	operationLoadRecordForEdit,
-}
-
-var networkBusyStates = [operationCount]networkBusyState{
-	operationCurrentUser:       {operation: operationCurrentUser, message: "Checking current user", inline: true},
-	operationLogin:             {operation: operationLogin, message: "Logging in", inline: true},
-	operationRegister:          {operation: operationRegister, message: "Registering", inline: true},
-	operationServerStatus:      {operation: operationServerStatus, message: "Checking server", inline: true},
-	operationListRecords:       {operation: operationListRecords, message: "Loading records", inline: true},
-	operationOpenCache:         {operation: operationOpenCache, message: "Opening local cache", inline: true},
-	operationViewRecord:        {operation: operationViewRecord, message: "Loading record", inline: true},
-	operationViewCachedRecord:  {operation: operationViewCachedRecord, message: "Loading cached record", inline: true},
-	operationLoadRecordForEdit: {operation: operationLoadRecordForEdit, message: "Loading record", inline: true},
-	operationCreateRecord:      {operation: operationCreateRecord, message: "Creating record", inline: true},
-	operationEditRecord:        {operation: operationEditRecord, message: "Saving record", inline: true},
-	operationDeleteRecord:      {operation: operationDeleteRecord, message: "Deleting record", inline: true},
-	operationSync:              {operation: operationSync, message: "Synchronizing local cache", inline: true},
 }
 
 func (m model) currentNetworkBusyState() networkBusyState {

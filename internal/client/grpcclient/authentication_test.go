@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xhrobj/gopherkeeper/internal/apierror"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 	gopherkeeperpb "github.com/xhrobj/gopherkeeper/internal/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -43,7 +43,12 @@ func TestClient_RegisterMapsAlreadyExists(t *testing.T) {
 		*gopherkeeperpb.RegisterRequest,
 		...grpc.CallOption,
 	) (*gopherkeeperpb.RegisterResponse, error) {
-		return nil, status.Error(codes.AlreadyExists, "login is already registered")
+		return nil, grpcErrorWithAPIErrorCode(
+			t,
+			codes.AlreadyExists,
+			"login is already registered",
+			apierror.LoginAlreadyExists,
+		)
 	}}}
 
 	_, err := client.Register(context.Background(), "alice", "secret")
@@ -86,7 +91,12 @@ func TestClient_LoginMapsInvalidCredentials(t *testing.T) {
 		*gopherkeeperpb.LoginRequest,
 		...grpc.CallOption,
 	) (*gopherkeeperpb.LoginResponse, error) {
-		return nil, status.Error(codes.Unauthenticated, "invalid login or password")
+		return nil, grpcErrorWithAPIErrorCode(
+			t,
+			codes.Unauthenticated,
+			"invalid login or password",
+			apierror.InvalidCredentials,
+		)
 	}}}
 
 	_, err := client.Login(context.Background(), "alice", "wrong")
@@ -122,7 +132,12 @@ func TestClient_CurrentUserMapsUnauthorized(t *testing.T) {
 		*gopherkeeperpb.CurrentUserRequest,
 		...grpc.CallOption,
 	) (*gopherkeeperpb.CurrentUserResponse, error) {
-		return nil, status.Error(codes.Unauthenticated, "authentication required")
+		return nil, grpcErrorWithAPIErrorCode(
+			t,
+			codes.Unauthenticated,
+			"authentication required",
+			apierror.Unauthorized,
+		)
 	}}}
 
 	_, err := client.CurrentUser(context.Background(), "token")

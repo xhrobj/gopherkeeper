@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/xhrobj/gopherkeeper/internal/apierror"
 	"github.com/xhrobj/gopherkeeper/internal/client/failure"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 	gopherkeeperpb "github.com/xhrobj/gopherkeeper/internal/proto"
@@ -136,14 +137,15 @@ func TestClient_RecordMethodsMapErrors(t *testing.T) {
 	tests := []struct {
 		name    string
 		code    codes.Code
+		apiCode apierror.Code
 		wantErr error
 	}{
-		{name: "unauthorized", code: codes.Unauthenticated, wantErr: model.ErrUnauthorized},
-		{name: "not found", code: codes.NotFound, wantErr: model.ErrRecordNotFound},
-		{name: "conflict", code: codes.Aborted, wantErr: model.ErrRecordRevisionConflict},
-		{name: "precondition", code: codes.FailedPrecondition, wantErr: model.ErrRecordPreconditionRequired},
-		{name: "too large", code: codes.ResourceExhausted, wantErr: model.ErrPayloadTooLarge},
-		{name: "invalid", code: codes.InvalidArgument, wantErr: model.ErrInvalidRecordData},
+		{name: "unauthorized", code: codes.Unauthenticated, apiCode: apierror.Unauthorized, wantErr: model.ErrUnauthorized},
+		{name: "not found", code: codes.NotFound, apiCode: apierror.RecordNotFound, wantErr: model.ErrRecordNotFound},
+		{name: "conflict", code: codes.Aborted, apiCode: apierror.RecordRevisionConflict, wantErr: model.ErrRecordRevisionConflict},
+		{name: "precondition", code: codes.FailedPrecondition, apiCode: apierror.PreconditionRequired, wantErr: model.ErrRecordPreconditionRequired},
+		{name: "too large", code: codes.ResourceExhausted, apiCode: apierror.PayloadTooLarge, wantErr: model.ErrPayloadTooLarge},
+		{name: "invalid", code: codes.InvalidArgument, apiCode: apierror.InvalidRecordData, wantErr: model.ErrInvalidRecordData},
 	}
 
 	for _, test := range tests {
@@ -153,7 +155,7 @@ func TestClient_RecordMethodsMapErrors(t *testing.T) {
 				*gopherkeeperpb.GetRecordRequest,
 				...grpc.CallOption,
 			) (*gopherkeeperpb.Record, error) {
-				return nil, status.Error(test.code, test.name)
+				return nil, grpcErrorWithAPIErrorCode(t, test.code, test.name, test.apiCode)
 			}}}
 
 			_, err := client.GetRecord(context.Background(), "token", testRecordID)

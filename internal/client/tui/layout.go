@@ -13,25 +13,6 @@ type layoutBounds struct {
 	height int
 }
 
-func (bounds layoutBounds) contains(x, y int) bool {
-	return x >= bounds.x && x < bounds.x+bounds.width &&
-		y >= bounds.y && y < bounds.y+bounds.height
-}
-
-func (bounds layoutBounds) translated(x, y int) layoutBounds {
-	bounds.x += x
-	bounds.y += y
-	return bounds
-}
-
-func translateLayoutBounds(bounds []layoutBounds, x, y int) []layoutBounds {
-	translated := make([]layoutBounds, len(bounds))
-	for index, bound := range bounds {
-		translated[index] = bound.translated(x, y)
-	}
-	return translated
-}
-
 type styledButton struct {
 	label string
 	style lipgloss.Style
@@ -40,6 +21,42 @@ type styledButton struct {
 type buttonRowLayout struct {
 	content string
 	bounds  []layoutBounds
+}
+
+type windowPlacement struct {
+	content string
+	x       int
+	y       int
+	width   int
+	height  int
+}
+
+type labeledFieldColumnLayout struct {
+	contentWidth int
+	inputWidth   int
+	bounds       []layoutBounds
+}
+
+func (bounds layoutBounds) contains(x, y int) bool {
+	return x >= bounds.x && x < bounds.x+bounds.width &&
+		y >= bounds.y && y < bounds.y+bounds.height
+}
+
+func (bounds layoutBounds) translated(x, y int) layoutBounds {
+	bounds.x += x
+	bounds.y += y
+
+	return bounds
+}
+
+func translateLayoutBounds(bounds []layoutBounds, x, y int) []layoutBounds {
+	translated := make([]layoutBounds, len(bounds))
+
+	for index, bound := range bounds {
+		translated[index] = bound.translated(x, y)
+	}
+
+	return translated
 }
 
 func centeredButtonRowLayout(
@@ -83,14 +100,6 @@ func (layout buttonRowLayout) positioned(x, y int) buttonRowLayout {
 	return layout
 }
 
-type windowPlacement struct {
-	content string
-	x       int
-	y       int
-	width   int
-	height  int
-}
-
 func centeredWindowPlacement(content string, screenWidth, screenHeight int) (windowPlacement, bool) {
 	if content == "" {
 		return windowPlacement{}, false
@@ -116,8 +125,16 @@ func (m model) dialogPlacement() (windowPlacement, bool) {
 	return centeredWindowPlacement(m.renderDialog(), m.width, m.height)
 }
 
+func (m model) alertWindowLayout() alertWindowLayout {
+	if m.alert == alertNone {
+		return alertWindowLayout{}
+	}
+
+	return newAlertWindowLayout(m.theme, m.alert, m.alertTitle, m.alertMessage, m.alertHighlight)
+}
+
 func (m model) alertPlacement() (windowPlacement, bool) {
-	return centeredWindowPlacement(m.renderAlert(), m.width, m.height)
+	return centeredWindowPlacement(m.alertWindowLayout().content, m.width, m.height)
 }
 
 func (m model) workspacePlacement() (windowPlacement, bool) {
@@ -135,12 +152,6 @@ func (m model) workspacePlacement() (windowPlacement, bool) {
 		m.spinnerFrameValue(),
 	)
 	return centeredWindowPlacement(content, m.width, m.height)
-}
-
-type labeledFieldColumnLayout struct {
-	contentWidth int
-	inputWidth   int
-	bounds       []layoutBounds
 }
 
 func newLabeledFieldColumnLayout(

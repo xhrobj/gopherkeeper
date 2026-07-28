@@ -1,19 +1,33 @@
 package tui
 
+type configPathPickerBinding struct {
+	target      pathPickerTarget
+	fieldFocus  configFocus
+	browseFocus configFocus
+}
+
+var configPathPickerBindings = [...]configPathPickerBinding{
+	{target: pathPickerCACert, fieldFocus: configCACertFile, browseFocus: configCACertBrowse},
+	{target: pathPickerSessionDirectory, fieldFocus: configSessionDir, browseFocus: configSessionBrowse},
+	{target: pathPickerCacheDirectory, fieldFocus: configCacheDir, browseFocus: configCacheBrowse},
+}
+
 func configBrowseTarget(focus configFocus) (pathPickerTarget, bool) {
-	for target, mode := range pathPickerModes {
-		if mode.browseFocus != 0 && focus == mode.browseFocus {
-			return target, true
+	for _, binding := range configPathPickerBindings {
+		if focus == binding.browseFocus {
+			return binding.target, true
 		}
 	}
 
 	return 0, false
 }
 
-func configTargetFieldFocus(target pathPickerTarget) configFocus {
-	return target.mode().configFocus
-}
+func configTargetFieldFocus(target pathPickerTarget) (configFocus, bool) {
+	for _, binding := range configPathPickerBindings {
+		if target == binding.target {
+			return binding.fieldFocus, true
+		}
+	}
 
-func configTargetFieldIndex(target pathPickerTarget) int {
-	return target.mode().configIndex
+	return 0, false
 }

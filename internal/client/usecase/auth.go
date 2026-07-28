@@ -10,6 +10,14 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
+type userError struct {
+	message string
+	cause   error
+}
+
+// ErrNotLoggedIn означает, что Клиент не имеет действующей online-сессии.
+var ErrNotLoggedIn = errors.New("not logged in")
+
 // Register регистрирует нового пользователя.
 func (a *Application) Register(ctx context.Context, login, password string) (model.User, error) {
 	user, err := a.users.Register(ctx, login, password)
@@ -61,6 +69,39 @@ func (a *Application) Whoami(ctx context.Context) (model.User, error) {
 	return user, nil
 }
 
+// Error возвращает безопасное сообщение для пользователя.
+func (e *userError) Error() string {
+	return e.message
+}
+
+// UserMessage возвращает безопасное сообщение без transport-префиксов.
+func (e *userError) UserMessage() string {
+	return e.message
+}
+
+// FailureKind возвращает категорию ошибки для пользовательского интерфейса.
+func (e *userError) FailureKind() failure.Kind {
+	switch {
+	case errors.Is(e.cause, ErrNotLoggedIn), errors.Is(e.cause, model.ErrInvalidCredentials), errors.Is(e.cause, model.ErrUnauthorized):
+		return failure.Unauthorized
+	case errors.Is(e.cause, model.ErrLoginAlreadyExists), errors.Is(e.cause, model.ErrRecordRevisionConflict):
+		return failure.Conflict
+	case errors.Is(e.cause, model.ErrRecordNotFound):
+		return failure.NotFound
+	case errors.Is(e.cause, model.ErrPayloadTooLarge):
+		return failure.TooLarge
+	case errors.Is(e.cause, model.ErrInvalidRecordData), errors.Is(e.cause, model.ErrRecordPreconditionRequired):
+		return failure.Validation
+	default:
+		return failure.KindOf(e.cause)
+	}
+}
+
+// Unwrap возвращает исходную ошибку.
+func (e *userError) Unwrap() error {
+	return e.cause
+}
+
 func (a *Application) loadSession() (session.Session, error) {
 	sessions, err := a.sessions()
 	if err != nil {
@@ -103,50 +144,9 @@ func mapCurrentUserError(err error) error {
 	return fmt.Errorf("get current user: %w", err)
 }
 
-// ErrNotLoggedIn означает, что Клиент не имеет действующей online-сессии.
-var ErrNotLoggedIn = errors.New("not logged in")
-
-type userError struct {
-	message string
-	cause   error
-}
-
 func newUserError(message string, cause error) error {
 	return &userError{
 		message: message,
 		cause:   cause,
 	}
-}
-
-// Error возвращает безопасное сообщение для пользователя.
-func (e *userError) Error() string {
-	return e.message
-}
-
-// UserMessage возвращает безопасное сообщение без transport-префиксов.
-func (e *userError) UserMessage() string {
-	return e.message
-}
-
-// FailureKind возвращает категорию ошибки для пользовательского интерфейса.
-func (e *userError) FailureKind() failure.Kind {
-	switch {
-	case errors.Is(e.cause, ErrNotLoggedIn), errors.Is(e.cause, model.ErrInvalidCredentials), errors.Is(e.cause, model.ErrUnauthorized):
-		return failure.Unauthorized
-	case errors.Is(e.cause, model.ErrLoginAlreadyExists), errors.Is(e.cause, model.ErrRecordRevisionConflict):
-		return failure.Conflict
-	case errors.Is(e.cause, model.ErrRecordNotFound):
-		return failure.NotFound
-	case errors.Is(e.cause, model.ErrPayloadTooLarge):
-		return failure.TooLarge
-	case errors.Is(e.cause, model.ErrInvalidRecordData), errors.Is(e.cause, model.ErrRecordPreconditionRequired):
-		return failure.Validation
-	default:
-		return failure.KindOf(e.cause)
-	}
-}
-
-// Unwrap возвращает исходную ошибку.
-func (e *userError) Unwrap() error {
-	return e.cause
 }

@@ -17,11 +17,11 @@ import (
 
 type databasePingerFunc func(context.Context) error
 
+type tokenValidatorFunc func(context.Context, string) (int64, error)
+
 func (f databasePingerFunc) Ping(ctx context.Context) error {
 	return f(ctx)
 }
-
-type tokenValidatorFunc func(context.Context, string) (int64, error)
 
 func (f tokenValidatorFunc) Validate(ctx context.Context, token string) (int64, error) {
 	return f(ctx, token)
@@ -63,39 +63,6 @@ func TestHealthHandler(t *testing.T) {
 			assertHealthResponse(t, response, tt.wantCode, tt.wantStatus)
 		})
 	}
-}
-
-func assertHealthResponse(
-	t *testing.T,
-	response *httptest.ResponseRecorder,
-	wantCode int,
-	wantStatus string,
-) {
-	t.Helper()
-
-	if response.Code != wantCode {
-		t.Errorf("status code = %d, want %d", response.Code, wantCode)
-	}
-
-	if contentType := response.Header().Get("Content-Type"); contentType != "application/json" {
-		t.Errorf("Content-Type = %q, want application/json", contentType)
-	}
-
-	bodyBytes := response.Body.Bytes()
-
-	var body healthResponse
-	if err := json.Unmarshal(bodyBytes, &body); err != nil {
-		t.Fatalf("decode response body: %v", err)
-	}
-
-	if body.Status != wantStatus {
-		t.Errorf("response status = %q, want %q", body.Status, wantStatus)
-	}
-
-	if strings.Contains(string(bodyBytes), "database connection failed") {
-		t.Error("response body contains internal database error")
-	}
-	assertNoStoreHeadersAbsent(t, response)
 }
 
 func TestHealthHandler_RejectsUnsupportedMethod(t *testing.T) {
@@ -380,6 +347,39 @@ func TestNewHandler_AddsNoStoreHeadersToPrivateErrors(t *testing.T) {
 			assertNoStoreHeaders(t, response)
 		})
 	}
+}
+
+func assertHealthResponse(
+	t *testing.T,
+	response *httptest.ResponseRecorder,
+	wantCode int,
+	wantStatus string,
+) {
+	t.Helper()
+
+	if response.Code != wantCode {
+		t.Errorf("status code = %d, want %d", response.Code, wantCode)
+	}
+
+	if contentType := response.Header().Get("Content-Type"); contentType != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", contentType)
+	}
+
+	bodyBytes := response.Body.Bytes()
+
+	var body healthResponse
+	if err := json.Unmarshal(bodyBytes, &body); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+
+	if body.Status != wantStatus {
+		t.Errorf("response status = %q, want %q", body.Status, wantStatus)
+	}
+
+	if strings.Contains(string(bodyBytes), "database connection failed") {
+		t.Error("response body contains internal database error")
+	}
+	assertNoStoreHeadersAbsent(t, response)
 }
 
 func assertNoStoreHeaders(t *testing.T, response *httptest.ResponseRecorder) {

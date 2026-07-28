@@ -7,10 +7,6 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-// ErrLocalCacheRecordsUnreadable означает, что metadata кеша открыта, но одна или несколько
-// зашифрованных записей не читаются текущей версией клиента и требуют перезаписи.
-var ErrLocalCacheRecordsUnreadable = errors.New("local cache records are unreadable")
-
 // SyncCacheRepository описывает операции зашифрованного локального кеша,
 // необходимые application-сценарию синхронизации.
 type SyncCacheRepository interface {
@@ -49,3 +45,7 @@ type SyncResult struct {
 	// Unchanged содержит количество записей с одинаковой server/local revision.
 	Unchanged int
 }
+
+// ErrLocalCacheRecordsUnreadable означает, что metadata кеша открыта, но одна или несколько
+// зашифрованных записей не читаются текущей версией клиента и требуют перезаписи.
+var ErrLocalCacheRecordsUnreadable = errors.New("local cache records are unreadable")

@@ -6,6 +6,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+type recordFormControlBound struct {
+	control recordFormControl
+	bounds  layoutBounds
+}
+
 func (m model) updateRecordMouse(msg tea.MouseClickMsg) (tea.Model, tea.Cmd, bool) {
 	switch m.dialog {
 	case dialogRecordType:
@@ -226,11 +231,6 @@ func (m model) recordRowAt(x, y int) (int, bool) {
 	}
 
 	return index, true
-}
-
-type recordFormControlBound struct {
-	control recordFormControl
-	bounds  layoutBounds
 }
 
 func (m model) recordCreateFieldBounds() []recordFormControlBound {

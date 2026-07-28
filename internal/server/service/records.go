@@ -10,11 +10,6 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/server/recordcrypto"
 )
 
-var (
-	errInvalidRecordOwner  = errors.New("invalid record owner")
-	errInvalidStoredRecord = errors.New("invalid stored record")
-)
-
 // RecordRepository содержит операции хранения, необходимые RecordService.
 type RecordRepository interface {
 	// Create сохраняет encrypted record и возвращает зафиксированное состояние.
@@ -89,6 +84,11 @@ type RecordService struct {
 	records RecordRepository
 	crypto  RecordPayloadCrypto
 }
+
+var (
+	errInvalidRecordOwner  = errors.New("invalid record owner")
+	errInvalidStoredRecord = errors.New("invalid stored record")
+)
 
 // NewRecordService создаёт сервис приватных записей.
 func NewRecordService(records RecordRepository, crypto RecordPayloadCrypto) *RecordService {
@@ -310,6 +310,10 @@ func (s *RecordService) decryptRecordPayload(record model.EncryptedRecord, paylo
 		Ciphertext:    record.Ciphertext,
 	}, aad)
 	if err != nil {
+		if errors.Is(err, recordcrypto.ErrDecryptPayload) {
+			return fmt.Errorf("decrypt %s payload: %w: %w", record.Type, model.ErrRecordDecryptionFailed, err)
+		}
+
 		return fmt.Errorf("decrypt %s payload: %w", record.Type, err)
 	}
 

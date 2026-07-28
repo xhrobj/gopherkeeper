@@ -326,9 +326,14 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
                 invalidRequest:
-                  summary: Некорректные данные записи
+                  summary: Некорректный JSON записи
                   value:
                     code: invalid_request
+                    message: invalid record request
+                invalidRecordData:
+                  summary: Некорректные данные записи
+                  value:
+                    code: invalid_record_data
                     message: invalid record request
         '401':
           $ref: '#/components/responses/Unauthorized'
@@ -417,17 +422,32 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
-                invalidRequest:
+                invalidRecordData:
                   summary: Некорректный record id
                   value:
-                    code: invalid_request
+                    code: invalid_record_data
                     message: invalid record request
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/RecordNotFound'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: Внутренняя ошибка Сервера или невозможность расшифровать payload записи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                recordDecryptionFailed:
+                  summary: Payload записи не удалось расшифровать
+                  value:
+                    code: record_decryption_failed
+                    message: record data could not be decrypted
+                internalError:
+                  summary: Внутренняя ошибка без раскрытия деталей
+                  value:
+                    code: internal_error
+                    message: internal server error
 
     put:
       summary: Изменить приватную запись
@@ -538,9 +558,14 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
                 invalidRequest:
-                  summary: Некорректные данные изменения записи
+                  summary: Некорректный If-Match или формат запроса
                   value:
                     code: invalid_request
+                    message: invalid record request
+                invalidRecordData:
+                  summary: Некорректные данные изменения записи
+                  value:
+                    code: invalid_record_data
                     message: invalid record request
         '401':
           $ref: '#/components/responses/Unauthorized'
@@ -601,9 +626,14 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               examples:
                 invalidRequest:
-                  summary: Некорректные данные удаления записи
+                  summary: Некорректный If-Match
                   value:
                     code: invalid_request
+                    message: invalid record request
+                invalidRecordData:
+                  summary: Некорректный UUID записи
+                  value:
+                    code: invalid_record_data
                     message: invalid record request
         '401':
           $ref: '#/components/responses/Unauthorized'
@@ -707,8 +737,13 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           examples:
+            requestTooLarge:
+              summary: Превышен допустимый размер transport-запроса
+              value:
+                code: request_too_large
+                message: request is too large
             payloadTooLarge:
-              summary: Превышен допустимый размер запроса или payload
+              summary: Превышен допустимый размер payload записи
               value:
                 code: payload_too_large
                 message: payload is too large

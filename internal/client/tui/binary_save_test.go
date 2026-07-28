@@ -250,3 +250,33 @@ func TestRenderBinarySaveWindow(t *testing.T) {
 		}
 	}
 }
+
+func TestBinarySaveWindowLayout_UsesRenderedGeometry(t *testing.T) {
+	theme := newTheme()
+	form := newBinarySaveForm("backup.bin")
+	form.setDirectory("exports")
+	layout := newBinarySaveWindowLayout(theme, 64, form, false)
+	lines := strings.Split(ansi.Strip(layout.content), "\n")
+
+	browseRow := lineIndexContaining(lines, binarySaveBrowseLabel)
+	if browseRow < 0 {
+		t.Fatal("rendered binary save browse button was not found")
+	}
+	browseX := strings.Index(lines[browseRow], binarySaveBrowseLabel)
+	if layout.browseBounds.y != browseRow || browseX < layout.browseBounds.x ||
+		browseX+len(binarySaveBrowseLabel) > layout.browseBounds.x+layout.browseBounds.width {
+		t.Fatalf("browse bounds = %#v, rendered at %d,%d", layout.browseBounds, browseX, browseRow)
+	}
+
+	buttonRow := lineIndexContaining(lines, "< Save >")
+	if buttonRow < 0 || len(layout.buttonBounds) != 2 {
+		t.Fatalf("button row = %d, bounds = %d", buttonRow, len(layout.buttonBounds))
+	}
+	for index, label := range []string{"< Save >", "< Cancel >"} {
+		bounds := layout.buttonBounds[index]
+		labelX := strings.Index(lines[buttonRow], label)
+		if bounds.y != buttonRow || labelX < bounds.x || labelX+len(label) > bounds.x+bounds.width {
+			t.Fatalf("button %d bounds = %#v, rendered at %d,%d", index, bounds, labelX, buttonRow)
+		}
+	}
+}

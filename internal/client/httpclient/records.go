@@ -17,8 +17,6 @@ import (
 
 const recordsPath = "/api/v1/records"
 
-var errRecordPayloadRequired = errors.New("record payload is required")
-
 type recordRequest struct {
 	Type    model.RecordType    `json:"type"`
 	Title   string              `json:"title"`
@@ -48,6 +46,8 @@ type listRecordsResponse struct {
 	Records []recordMetadataResponse `json:"records"`
 }
 
+var errRecordPayloadRequired = errors.New("record payload is required")
+
 // CreateRecord создаёт запись выбранного типа на Сервере.
 func (c *Client) CreateRecord(
 	ctx context.Context,
@@ -69,7 +69,6 @@ func (c *Client) CreateRecord(
 		requestBody:    body,
 		expectedStatus: http.StatusCreated,
 		responseBody:   &created,
-		errorCause:     recordErrorCause,
 	}); err != nil {
 		return model.Record{}, err
 	}
@@ -88,7 +87,6 @@ func (c *Client) ListRecords(ctx context.Context, accessToken string) ([]model.R
 		accessToken:    accessToken,
 		expectedStatus: http.StatusOK,
 		responseBody:   &listed,
-		errorCause:     recordErrorCause,
 	}); err != nil {
 		return nil, err
 	}
@@ -116,7 +114,6 @@ func (c *Client) GetRecord(ctx context.Context, accessToken string, recordID str
 		accessToken:    accessToken,
 		expectedStatus: http.StatusOK,
 		responseBody:   &record,
-		errorCause:     recordErrorCause,
 	}); err != nil {
 		return model.Record{}, err
 	}
@@ -150,7 +147,6 @@ func (c *Client) UpdateRecord(
 		requestBody:    body,
 		expectedStatus: http.StatusOK,
 		responseBody:   &updated,
-		errorCause:     recordErrorCause,
 	}); err != nil {
 		return model.Record{}, err
 	}
@@ -174,7 +170,6 @@ func (c *Client) DeleteRecord(
 			"If-Match": recordRevisionETag(expectedRevision),
 		},
 		expectedStatus: http.StatusNoContent,
-		errorCause:     recordErrorCause,
 	})
 }
 
@@ -182,6 +177,7 @@ func newRecordRequest(title string, payload model.RecordPayload) (recordRequest,
 	if payload == nil {
 		return recordRequest{}, errRecordPayloadRequired
 	}
+
 	return recordRequest{
 		Type:    payload.RecordType(),
 		Title:   title,
@@ -254,23 +250,4 @@ func recordMetadataFromResponse(response recordMetadataResponse) (model.RecordMe
 	}
 
 	return metadata, nil
-}
-
-func recordErrorCause(code string) error {
-	switch code {
-	case "unauthorized":
-		return model.ErrUnauthorized
-	case "record_not_found":
-		return model.ErrRecordNotFound
-	case "record_revision_conflict":
-		return model.ErrRecordRevisionConflict
-	case "precondition_required":
-		return model.ErrRecordPreconditionRequired
-	case "payload_too_large":
-		return model.ErrPayloadTooLarge
-	case "invalid_request":
-		return model.ErrInvalidRecordData
-	default:
-		return nil
-	}
 }

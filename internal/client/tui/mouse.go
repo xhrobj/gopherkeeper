@@ -376,23 +376,14 @@ func (m *model) closeMenu() {
 
 func (m model) dialogButtonBounds() []layoutBounds {
 	if m.alert != alertNone {
-		window, ok := m.alertPlacement()
+		layout := m.alertWindowLayout()
+
+		window, ok := centeredWindowPlacement(layout.content, m.width, m.height)
 		if !ok {
 			return nil
 		}
 
-		bodyStyle := m.theme.aboutBody
-		buttonStyle := m.theme.aboutButtonActive
-
-		if m.alert == alertError {
-			bodyStyle = m.theme.errorBody
-			buttonStyle = m.theme.errorButton
-		}
-
-		layout := singleStyledButtonLayout(bodyStyle, buttonStyle, window.width-4, okButtonLabel).
-			positioned(2, alertButtonRow(m.alertMessage, m.alertHighlight))
-
-		return window.screenBounds(layout.bounds)
+		return window.screenBounds(layout.buttonBounds)
 	}
 
 	window, ok := m.dialogPlacement()
@@ -406,13 +397,8 @@ func (m model) dialogButtonBounds() []layoutBounds {
 
 	switch m.dialog {
 	case dialogLogin:
-		layout = loginButtonsLayout(
-			m.theme,
-			contentWidth,
-			m.authentication.loginForm.focus,
-			!m.authentication.loginForm.canSubmit(),
-			blocked,
-		).positioned(2, loginButtonRow)
+		loginLayout := m.loginWindowLayout()
+		return window.screenBounds(loginLayout.buttonBounds)
 	case dialogRecordView:
 		viewLayout := newRecordViewWindowLayout(window.width, window.height)
 		layout = recordViewButtonsLayout(
@@ -423,74 +409,80 @@ func (m model) dialogButtonBounds() []layoutBounds {
 			blocked,
 		).positioned(2, viewLayout.buttonRow)
 	case dialogBinarySave:
-		layout = binarySaveButtonsLayout(
+		binarySaveLayout := newBinarySaveWindowLayout(
 			m.theme,
-			contentWidth,
-			m.recordFeature.binarySaveForm.focus,
-			m.operations.pending(operationBinarySave) || !m.recordFeature.binarySaveForm.canSubmit(),
+			window.width,
+			m.recordFeature.binarySaveForm,
 			m.operations.pending(operationBinarySave),
-		).positioned(2, binarySaveButtonRow)
+		)
+		return window.screenBounds(binarySaveLayout.buttonBounds)
 	case dialogRecordDelete:
-		layout = recordDeleteButtonsLayout(
+		recordDeleteLayout := newRecordDeleteWindowLayout(
 			m.theme,
-			contentWidth,
+			window.width,
+			m.recordFeature.deletion,
+			m.operations.pending(operationDeleteRecord),
 			blocked,
+			m.spinnerFrameValue(),
 			m.activeButton,
-		).positioned(2, recordDeleteButtonRow)
+		)
+		return window.screenBounds(recordDeleteLayout.buttonBounds)
 	case dialogRegister:
-		layout = registerButtonsLayout(
-			m.theme,
-			contentWidth,
-			m.authentication.registerForm.focus,
-			!m.authentication.registerForm.canSubmit(),
-			blocked,
-		).positioned(2, registerButtonRow)
+		registerLayout := m.registerWindowLayout()
+		return window.screenBounds(registerLayout.buttonBounds)
 	case dialogCurrentUser:
-		style := m.theme.aboutButtonActive
-		if blocked {
-			style = m.theme.aboutButtonDisabledActive
-		}
-		layout = singleStyledButtonLayout(m.theme.aboutBody, style, contentWidth, okButtonLabel).
-			positioned(2, currentUserButtonRow)
+		currentUserLayout := newCurrentUserWindowLayout(
+			m.theme,
+			window.width,
+			m.authentication.session.login,
+			m.operations.pending(operationCurrentUser),
+			blocked,
+			m.spinnerFrameValue(),
+		)
+		return window.screenBounds(currentUserLayout.buttonBounds)
 	case dialogAbout:
-		layout = aboutButtonsLayout(m.theme, window.width, m.activeButton).
-			positioned(0, aboutButtonRow)
+		aboutLayout := m.aboutWindowLayout()
+		return window.screenBounds(aboutLayout.buttonBounds)
 	case dialogPathPicker:
-		layout = pathPickerButtonsLayout(m.theme, contentWidth, m.pathPicker).
-			positioned(2, pathPickerButtonRow(m.pathPicker.height))
+		pathPickerLayout := newPathPickerWindowLayout(m.theme, window.width, m.pathPicker)
+		return window.screenBounds(pathPickerLayout.buttonBounds)
 	case dialogConfig:
-		layout = configButtonsLayout(m.theme, contentWidth, m.configForm.focus, m.configForm.canSave()).
-			positioned(2, configButtonRow)
+		return window.screenBounds(m.configLayout().buttonBounds)
 	case dialogControls:
-		layout = controlsButtonLayout(m.theme, contentWidth, okButtonLabel).
-			positioned(2, controlsButtonRow)
+		controlsLayout := newControlsWindowLayout(m.theme, window.width)
+		return window.screenBounds(controlsLayout.buttonBounds)
 	case dialogCacheBrowse:
-		layout = cacheBrowseButtonsLayout(
+		cacheLayout := newCacheBrowseWindowLayout(
 			m.theme,
-			contentWidth,
-			m.cacheFeature.form.focus,
-			!m.cacheFeature.form.canSubmit(),
+			window.width,
+			m.cacheFeature.form,
+			m.operations.pending(operationOpenCache),
 			blocked,
-		).positioned(2, cacheBrowseButtonRow)
+			m.spinnerFrameValue(),
+		)
+		return window.screenBounds(cacheLayout.buttonBounds)
 	case dialogSync:
-		layout = syncButtonsLayout(
+		syncLayout := newSyncWindowLayout(
 			m.theme,
-			contentWidth,
-			m.syncFeature.form.focus,
-			!m.syncFeature.form.canSubmit(),
+			window.width,
+			m.authentication.session.login,
+			m.syncFeature.form,
+			m.operations.pending(operationSync),
 			blocked,
-		).positioned(2, syncButtonRow)
+			m.spinnerFrameValue(),
+		)
+		return window.screenBounds(syncLayout.buttonBounds)
 	case dialogSyncResult:
-		layout = syncResultButtonLayout(m.theme, contentWidth, blocked).positioned(2, syncResultButtonRow)
-	case dialogServerStatus:
-		layout = serverStatusButtonsLayout(
+		syncResultLayout := newSyncResultWindowLayout(
 			m.theme,
-			contentWidth,
-			m.statusState,
-			m.operations.pending(operationServerStatus),
-			m.activeButton,
+			window.width,
+			m.syncFeature.result,
 			blocked,
-		).positioned(2, serverStatusButtonRow)
+		)
+		return window.screenBounds(syncResultLayout.buttonBounds)
+	case dialogServerStatus:
+		statusLayout := m.serverStatusWindowLayout()
+		return window.screenBounds(statusLayout.buttonBounds)
 	default:
 		return nil
 	}
@@ -499,107 +491,110 @@ func (m model) dialogButtonBounds() []layoutBounds {
 }
 
 func (m model) loginFieldBounds() []layoutBounds {
-	window, ok := m.dialogPlacement()
+	layout := m.loginWindowLayout()
+	window, ok := centeredWindowPlacement(layout.content, m.width, m.height)
 	if !ok {
 		return nil
 	}
 
-	layout := newLabeledFieldColumnLayout(
-		window.width,
-		loginLabelWidth,
-		16,
-		2,
-		loginFirstFieldRow,
-		loginFieldRowStep,
-	)
-
-	return window.screenBounds(layout.bounds)
+	return window.screenBounds(layout.fieldBounds)
 }
 
 func (m model) cacheBrowseFieldBounds() []layoutBounds {
-	window, ok := m.dialogPlacement()
-	if !ok || m.dialog != dialogCacheBrowse {
+	if m.dialog != dialogCacheBrowse {
 		return nil
 	}
 
-	layout := newLabeledFieldColumnLayout(
-		window.width,
-		cacheBrowseLabelWidth,
-		16,
-		2,
-		cacheBrowseFirstFieldRow,
-		cacheBrowseFieldRowStep,
+	layout := newCacheBrowseWindowLayout(
+		m.theme,
+		cacheBrowseWindowWidth(m.width),
+		m.cacheFeature.form,
+		m.operations.pending(operationOpenCache),
+		m.interactionBlocked(),
+		m.spinnerFrameValue(),
 	)
 
-	return window.screenBounds(layout.bounds)
+	window, ok := centeredWindowPlacement(layout.content, m.width, m.height)
+	if !ok {
+		return nil
+	}
+
+	return window.screenBounds(layout.fieldBounds)
 }
 
 func (m model) syncFieldBounds() []layoutBounds {
-	window, ok := m.dialogPlacement()
-	if !ok || m.dialog != dialogSync {
+	if m.dialog != dialogSync {
 		return nil
 	}
 
-	contentWidth := max(1, window.width-4)
-	inputWidth := max(16, contentWidth-syncLabelWidth-2)
+	layout := newSyncWindowLayout(
+		m.theme,
+		syncWindowWidth(m.width),
+		m.authentication.session.login,
+		m.syncFeature.form,
+		m.operations.pending(operationSync),
+		m.interactionBlocked(),
+		m.spinnerFrameValue(),
+	)
 
-	return window.screenBounds([]layoutBounds{{
-		x: 2 + syncLabelWidth + 2, y: syncPasswordRow, width: inputWidth, height: 1,
-	}})
+	window, ok := centeredWindowPlacement(layout.content, m.width, m.height)
+	if !ok {
+		return nil
+	}
+
+	return window.screenBounds(layout.fieldBounds)
 }
 
 func (m model) registerFieldBounds() []layoutBounds {
-	window, ok := m.dialogPlacement()
+	layout := m.registerWindowLayout()
+	window, ok := centeredWindowPlacement(layout.content, m.width, m.height)
 	if !ok {
 		return nil
 	}
 
-	layout := newLabeledFieldColumnLayout(
-		window.width,
-		registerLabelWidth,
-		16,
-		3,
-		registerFirstFieldRow,
-		registerFieldRowStep,
-	)
-
-	return window.screenBounds(layout.bounds)
+	return window.screenBounds(layout.fieldBounds)
 }
 
 func (m model) configLayout() configWindowLayout {
-	window, ok := m.dialogPlacement()
-	if !ok {
+	if m.dialog != dialogConfig {
 		return configWindowLayout{}
 	}
 
-	return newConfigWindowLayout(m.theme, window.width)
+	return m.configWindowLayout()
+}
+
+func (m model) configLayoutPlacement() (configWindowLayout, windowPlacement, bool) {
+	layout := m.configLayout()
+	window, ok := centeredWindowPlacement(layout.content, m.width, m.height)
+
+	return layout, window, ok
 }
 
 func (m model) configTransportBounds() []layoutBounds {
-	window, ok := m.dialogPlacement()
+	layout, window, ok := m.configLayoutPlacement()
 	if !ok {
 		return nil
 	}
 
-	return window.screenBounds(m.configLayout().transportBounds)
+	return window.screenBounds(layout.transportBounds)
 }
 
 func (m model) configFieldBounds() []layoutBounds {
-	window, ok := m.dialogPlacement()
+	layout, window, ok := m.configLayoutPlacement()
 	if !ok {
 		return nil
 	}
 
-	return window.screenBounds(m.configLayout().fieldBounds)
+	return window.screenBounds(layout.fieldBounds)
 }
 
 func (m model) configBrowseButtonBounds() []layoutBounds {
-	window, ok := m.dialogPlacement()
+	layout, window, ok := m.configLayoutPlacement()
 	if !ok {
 		return nil
 	}
 
-	return window.screenBounds(newConfigWindowLayout(m.theme, window.width).browseBounds)
+	return window.screenBounds(layout.browseBounds)
 }
 
 func (m model) pathPickerButtonBounds() []layoutBounds {
@@ -616,7 +611,7 @@ func (m model) pathPickerEntryAt(x, y int) (int, bool) {
 		return 0, false
 	}
 
-	listBounds := newPathPickerWindowLayout(window.width, m.pathPicker.height).listBounds.
+	listBounds := newPathPickerWindowLayout(m.theme, window.width, m.pathPicker).listBounds.
 		translated(window.x, window.y)
 	if !listBounds.contains(x, y) {
 		return 0, false
@@ -631,14 +626,23 @@ func (m model) pathPickerEntryAt(x, y int) (int, bool) {
 }
 
 func (m model) binarySaveFieldBounds() []layoutBounds {
-	window, ok := m.dialogPlacement()
+	if m.dialog != dialogBinarySave {
+		return nil
+	}
+
+	layout := newBinarySaveWindowLayout(
+		m.theme,
+		binarySaveWindowWidth(m.width),
+		m.recordFeature.binarySaveForm,
+		m.operations.pending(operationBinarySave),
+	)
+
+	window, ok := centeredWindowPlacement(layout.content, m.width, m.height)
 	if !ok {
 		return nil
 	}
 
-	bounds := newBinarySaveWindowLayout(m.theme, window.width).browseBounds
-
-	return []layoutBounds{bounds.translated(window.x, window.y)}
+	return []layoutBounds{layout.browseBounds.translated(window.x, window.y)}
 }
 
 func (m model) updateMouseWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {

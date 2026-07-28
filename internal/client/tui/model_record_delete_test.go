@@ -26,21 +26,6 @@ func (stub recordDeleteBackendStub) DeleteRecord(ctx context.Context, id string,
 	return stub.deleteRecord(ctx, id, revision)
 }
 
-func newRecordDeleteTestModel(t *testing.T, backend recordDeleteBackendStub) model {
-	m := mustNewModel(t,
-		context.Background(),
-		config.Config{},
-		"",
-		buildinfo.Info{},
-		staticBackendFactory(backend),
-	)
-	m.operations.cancel(operationCurrentUser)
-	m.startupCmd = nil
-	m.authentication.session = authSession{state: authAuthenticated, login: "alice"}
-	m.dialog = dialogNone
-	return m
-}
-
 func TestModel_RecordDeleteMenuAvailability(t *testing.T) {
 	m := newRecordDeleteTestModel(t, recordDeleteBackendStub{})
 	m.recordFeature.workspace.open = true
@@ -122,7 +107,7 @@ func TestModel_RecordDeleteFlowRemovesRecord(t *testing.T) {
 func TestModel_RecordDeleteErrorKeepsConfirmation(t *testing.T) {
 	backend := recordDeleteBackendStub{
 		deleteRecord: func(context.Context, string, int64) error {
-			return errors.New("delete record: connection refused")
+			return unavailableTestError()
 		},
 	}
 	m := newRecordDeleteTestModel(t, backend)
@@ -282,4 +267,44 @@ func TestRenderRecordDeleteWindow_PendingKeepsPreviewAndDisablesButtons(t *testi
 		!strings.Contains(rendered, theme.errorButtonDisabled.Render("< Cancel >")) {
 		t.Fatal("pending delete dialog does not render both buttons disabled")
 	}
+}
+
+func TestRecordDeleteWindowLayout_TracksWrappedTitle(t *testing.T) {
+	theme := newTheme()
+	state := recordDeleteState{metadata: recordmodel.RecordMetadata{
+		ID:       "7a79b627-0473-48a0-a001-887e79419719",
+		Type:     recordmodel.RecordTypeText,
+		Title:    strings.Repeat("very long title ", 8),
+		Revision: 1,
+	}}
+	layout := newRecordDeleteWindowLayout(theme, 44, state, false, false, "", 0)
+	lines := strings.Split(ansi.Strip(layout.content), "\n")
+	buttonRow := lineIndexContaining(lines, "< Delete >")
+
+	if buttonRow < 0 || len(layout.buttonBounds) != 2 {
+		t.Fatalf("button row = %d, bounds = %d", buttonRow, len(layout.buttonBounds))
+	}
+	if buttonRow <= 10 {
+		t.Fatalf("wrapped title did not move the button row: %d", buttonRow)
+	}
+	for index, bounds := range layout.buttonBounds {
+		if bounds.y != buttonRow {
+			t.Fatalf("button %d y = %d, want rendered row %d", index, bounds.y, buttonRow)
+		}
+	}
+}
+
+func newRecordDeleteTestModel(t *testing.T, backend recordDeleteBackendStub) model {
+	m := mustNewModel(t,
+		context.Background(),
+		config.Config{},
+		"",
+		buildinfo.Info{},
+		staticBackendFactory(backend),
+	)
+	m.operations.cancel(operationCurrentUser)
+	m.startupCmd = nil
+	m.authentication.session = authSession{state: authAuthenticated, login: "alice"}
+	m.dialog = dialogNone
+	return m
 }

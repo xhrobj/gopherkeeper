@@ -13,10 +13,6 @@ type recordService struct {
 	records RecordManager
 }
 
-func newRecordService(records RecordManager) *recordService {
-	return &recordService{records: records}
-}
-
 func (server *recordService) CreateRecord(
 	ctx context.Context,
 	request *gopherkeeperpb.CreateRecordRequest,
@@ -191,4 +187,8 @@ func (server *recordService) DeleteRecord(
 	}
 
 	return &gopherkeeperpb.DeleteRecordResponse{}, nil
+}
+
+func newRecordService(records RecordManager) *recordService {
+	return &recordService{records: records}
 }

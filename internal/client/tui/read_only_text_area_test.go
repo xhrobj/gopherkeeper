@@ -35,13 +35,6 @@ func TestReadOnlyTextArea_ScrollsWrappedText(t *testing.T) {
 	}
 }
 
-func TestWrapRecordViewText_NormalizesTabsAndCarriageReturns(t *testing.T) {
-	got := strings.Join(wrapRecordViewText("one\ttwo\rthree", 40), "|")
-	if got != "one    two|three" {
-		t.Fatalf("normalized text = %q", got)
-	}
-}
-
 func TestRecordView_TextAlwaysUsesReadOnlyTextArea(t *testing.T) {
 	for _, value := range []string{"", "short text", strings.Repeat("x", 256)} {
 		state := recordViewState{}

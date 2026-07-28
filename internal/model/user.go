@@ -5,20 +5,6 @@ import (
 	"time"
 )
 
-var (
-	// ErrLoginAlreadyExists сообщает, что пользователь с таким логином уже существует.
-	ErrLoginAlreadyExists = errors.New("login already exists")
-
-	// ErrUserNotFound сообщает, что пользователь не найден.
-	ErrUserNotFound = errors.New("user not found")
-
-	// ErrInvalidCredentials сообщает, что login или password не прошли проверку.
-	ErrInvalidCredentials = errors.New("invalid credentials")
-
-	// ErrUnauthorized сообщает, что запрос не авторизован.
-	ErrUnauthorized = errors.New("unauthorized")
-)
-
 // User представляет зарегистрированного пользователя GophKeeper.
 type User struct {
 	// ID содержит внутренний идентификатор пользователя.
@@ -42,3 +28,17 @@ type Authentication struct {
 	// User содержит данные аутентифицированного пользователя.
 	User User
 }
+
+var (
+	// ErrLoginAlreadyExists сообщает, что пользователь с таким логином уже существует.
+	ErrLoginAlreadyExists = errors.New("login already exists")
+
+	// ErrUserNotFound сообщает, что пользователь не найден.
+	ErrUserNotFound = errors.New("user not found")
+
+	// ErrInvalidCredentials сообщает, что login или password не прошли проверку.
+	ErrInvalidCredentials = errors.New("invalid credentials")
+
+	// ErrUnauthorized сообщает, что запрос не авторизован.
+	ErrUnauthorized = errors.New("unauthorized")
+)

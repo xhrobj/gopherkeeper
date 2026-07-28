@@ -12,6 +12,24 @@ import (
 
 const testAuthenticationPassword = "correct-horse-battery-staple"
 
+type userCredentialReaderStub struct {
+	findByLoginFunc func(
+		ctx context.Context,
+		login string,
+	) (model.User, []byte, error)
+	calls int
+}
+
+type passwordCheckerStub struct {
+	checkFunc func(password string, hash []byte) error
+	calls     int
+}
+
+type tokenIssuerStub struct {
+	issueFunc func(ctx context.Context, userID int64) (string, time.Time, error)
+	calls     int
+}
+
 func TestAuthenticationService_Authenticate(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 3, 12, 0, 0, 0, time.UTC)
 	expiresAt := time.Date(2026, time.July, 3, 12, 15, 0, 0, time.UTC)
@@ -408,6 +426,42 @@ func TestAuthenticationService_AuthenticateCanceledAfterPasswordCheck(t *testing
 	}
 }
 
+func (s *userCredentialReaderStub) FindByLogin(
+	ctx context.Context,
+	login string,
+) (model.User, []byte, error) {
+	s.calls++
+
+	if s.findByLoginFunc == nil {
+		return model.User{}, nil, errors.New("unexpected FindByLogin call")
+	}
+
+	return s.findByLoginFunc(ctx, login)
+}
+
+func (s *passwordCheckerStub) Check(password string, hash []byte) error {
+	s.calls++
+
+	if s.checkFunc == nil {
+		return errors.New("unexpected Check call")
+	}
+
+	return s.checkFunc(password, hash)
+}
+
+func (s *tokenIssuerStub) Issue(
+	ctx context.Context,
+	userID int64,
+) (string, time.Time, error) {
+	s.calls++
+
+	if s.issueFunc == nil {
+		return "", time.Time{}, errors.New("unexpected Issue call")
+	}
+
+	return s.issueFunc(ctx, userID)
+}
+
 func successfulUserCredentialReaderStub(t *testing.T) *userCredentialReaderStub {
 	t.Helper()
 
@@ -423,58 +477,4 @@ func successfulUserCredentialReaderStub(t *testing.T) *userCredentialReaderStub 
 			}, []byte("stored-password-hash"), nil
 		},
 	}
-}
-
-type userCredentialReaderStub struct {
-	findByLoginFunc func(
-		ctx context.Context,
-		login string,
-	) (model.User, []byte, error)
-	calls int
-}
-
-func (s *userCredentialReaderStub) FindByLogin(
-	ctx context.Context,
-	login string,
-) (model.User, []byte, error) {
-	s.calls++
-
-	if s.findByLoginFunc == nil {
-		return model.User{}, nil, errors.New("unexpected FindByLogin call")
-	}
-
-	return s.findByLoginFunc(ctx, login)
-}
-
-type passwordCheckerStub struct {
-	checkFunc func(password string, hash []byte) error
-	calls     int
-}
-
-func (s *passwordCheckerStub) Check(password string, hash []byte) error {
-	s.calls++
-
-	if s.checkFunc == nil {
-		return errors.New("unexpected Check call")
-	}
-
-	return s.checkFunc(password, hash)
-}
-
-type tokenIssuerStub struct {
-	issueFunc func(ctx context.Context, userID int64) (string, time.Time, error)
-	calls     int
-}
-
-func (s *tokenIssuerStub) Issue(
-	ctx context.Context,
-	userID int64,
-) (string, time.Time, error) {
-	s.calls++
-
-	if s.issueFunc == nil {
-		return "", time.Time{}, errors.New("unexpected Issue call")
-	}
-
-	return s.issueFunc(ctx, userID)
 }

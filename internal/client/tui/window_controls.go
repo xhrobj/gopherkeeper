@@ -3,25 +3,53 @@ package tui
 import "charm.land/lipgloss/v2"
 
 const (
-	controlsActionWidth    = 17
-	controlsSeparatorWidth = 1
-	controlsKeyWidth       = 22
-	controlsColumnGap      = 1
-	controlsButtonRow      = 21
+	controlsActionWidth             = 17
+	controlsSeparatorWidth          = 1
+	controlsKeyWidth                = 22
+	controlsColumnGap               = 1
+	controlsWindowHorizontalPadding = 2
+	controlsWindowVerticalPadding   = 1
 )
 
-func renderControlsWindow(t theme, width int) string {
-	contentWidth := max(1, width-4)
+type controlsContentLayout struct {
+	content      string
+	buttonBounds []layoutBounds
+}
+
+type controlsWindowLayout struct {
+	content      string
+	buttonBounds []layoutBounds
+}
+
+func newControlsWindowLayout(t theme, width int) controlsWindowLayout {
+	contentWidth := max(1, width-2*controlsWindowHorizontalPadding)
+	contentLayout := newControlsContentLayout(t, contentWidth)
 	title := t.windowTitle.Width(width).Render("Controls")
+
 	body := t.windowBody.
 		Width(width).
-		Padding(1, 2).
-		Render(renderControls(t, contentWidth))
+		Padding(controlsWindowVerticalPadding, controlsWindowHorizontalPadding).
+		Render(contentLayout.content)
 
-	return lipgloss.JoinVertical(lipgloss.Left, title, body)
+	return controlsWindowLayout{
+		content: lipgloss.JoinVertical(lipgloss.Left, title, body),
+		buttonBounds: translateLayoutBounds(
+			contentLayout.buttonBounds,
+			controlsWindowHorizontalPadding,
+			lipgloss.Height(title)+controlsWindowVerticalPadding,
+		),
+	}
+}
+
+func renderControlsWindow(t theme, width int) string {
+	return newControlsWindowLayout(t, width).content
 }
 
 func renderControls(t theme, width int) string {
+	return newControlsContentLayout(t, width).content
+}
+
+func newControlsContentLayout(t theme, width int) controlsContentLayout {
 	spacerRow := renderControlSpacerRow(t, width)
 
 	rows := []string{
@@ -44,10 +72,16 @@ func renderControls(t theme, width int) string {
 		spacerRow,
 		renderControlRow(t, width, "Quit", "Ctrl+Q"),
 		spacerRow,
-		renderControlsButton(t, width, okButtonLabel),
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+	buttonRow := len(rows)
+	buttonLayout := controlsButtonLayout(t, width, okButtonLabel)
+	rows = append(rows, buttonLayout.content)
+
+	return controlsContentLayout{
+		content:      lipgloss.JoinVertical(lipgloss.Left, rows...),
+		buttonBounds: translateLayoutBounds(buttonLayout.bounds, 0, buttonRow),
+	}
 }
 
 func renderControlSpacerRow(t theme, width int) string {
@@ -76,8 +110,4 @@ func controlsButtonLayout(t theme, width int, label string) buttonRowLayout {
 	return centeredButtonRowLayout(t.windowBody, width, 0, []styledButton{
 		{label: label, style: t.buttonActive},
 	})
-}
-
-func renderControlsButton(t theme, width int, label string) string {
-	return controlsButtonLayout(t, width, label).content
 }

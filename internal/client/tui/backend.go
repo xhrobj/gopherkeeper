@@ -53,6 +53,9 @@ type backendTransportCloser interface {
 	CloseTransport() error
 }
 
+// BackendFactory создаёт runtime-зависимости TUI для переданной конфигурации.
+type BackendFactory func(config.Config) (Backend, error)
+
 func closeBackendTransport(backend Backend) {
 	closer, ok := backend.(backendTransportCloser)
 	if !ok || closer == nil {
@@ -61,9 +64,6 @@ func closeBackendTransport(backend Backend) {
 
 	_ = closer.CloseTransport()
 }
-
-// BackendFactory создаёт runtime-зависимости TUI для переданной конфигурации.
-type BackendFactory func(config.Config) (Backend, error)
 
 func createBackend(factory BackendFactory, cfg config.Config) (Backend, error) {
 	if factory == nil {

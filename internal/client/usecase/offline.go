@@ -7,14 +7,9 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-var (
-	// ErrLocalCacheNotFound означает, что для выбранного аккаунта ещё нет
-	// локального кеша, созданного явной синхронизацией.
-	ErrLocalCacheNotFound = errors.New("local cache not found")
-
-	// ErrCachedRecordNotFound означает, что запись отсутствует в существующем
-	// локальном кеше аккаунта.
-	ErrCachedRecordNotFound = errors.New("cached record not found")
+const (
+	// OfflineSourceLocalCache означает зашифрованный локальный кеш.
+	OfflineSourceLocalCache OfflineSource = "local_cache"
 )
 
 // OfflineCacheRepository описывает только операции чтения существующего кеша.
@@ -46,11 +41,6 @@ type OfflineReadRequest struct {
 // OfflineSource описывает источник данных offline-чтения.
 type OfflineSource string
 
-const (
-	// OfflineSourceLocalCache означает зашифрованный локальный кеш.
-	OfflineSourceLocalCache OfflineSource = "local_cache"
-)
-
 // OfflineListResult содержит metadata записей существующего локального кеша
 // и семантику источника данных.
 type OfflineListResult struct {
@@ -66,3 +56,13 @@ type OfflineGetResult struct {
 	Source     OfflineSource
 	MayBeStale bool
 }
+
+var (
+	// ErrLocalCacheNotFound означает, что для выбранного аккаунта ещё нет
+	// локального кеша, созданного явной синхронизацией.
+	ErrLocalCacheNotFound = errors.New("local cache not found")
+
+	// ErrCachedRecordNotFound означает, что запись отсутствует в существующем
+	// локальном кеше аккаунта.
+	ErrCachedRecordNotFound = errors.New("cached record not found")
+)

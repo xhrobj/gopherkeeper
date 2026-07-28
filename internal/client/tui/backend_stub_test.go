@@ -30,6 +30,11 @@ type backendStub struct {
 	sync func(context.Context, string) (SyncSummary, error)
 }
 
+type transportClosingBackendStub struct {
+	backendStub
+	closeTransport func() error
+}
+
 var _ Backend = backendStub{}
 
 func (stub backendStub) Health(ctx context.Context) (string, error) {
@@ -151,21 +156,16 @@ func (stub backendStub) Sync(ctx context.Context, password string) (SyncSummary,
 	return stub.sync(ctx, password)
 }
 
-func staticBackendFactory(backend Backend) BackendFactory {
-	return func(config.Config) (Backend, error) {
-		return backend, nil
-	}
-}
-
-type transportClosingBackendStub struct {
-	backendStub
-	closeTransport func() error
-}
-
 func (stub *transportClosingBackendStub) CloseTransport() error {
 	if stub.closeTransport == nil {
 		return nil
 	}
 
 	return stub.closeTransport()
+}
+
+func staticBackendFactory(backend Backend) BackendFactory {
+	return func(config.Config) (Backend, error) {
+		return backend, nil
+	}
 }

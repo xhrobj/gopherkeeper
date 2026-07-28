@@ -11,12 +11,38 @@ import (
 	recordmodel "github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-const binarySaveErrorMaxRunes = 512
+const (
+	binarySaveErrorMaxRunes = 512
+
+	binarySavePath binarySaveFocus = iota
+	binarySaveSubmit
+	binarySaveCancel
+	binarySaveFocusCount
+
+	binarySaveLabelWidth  = 6
+	binarySaveBrowseGap   = 2
+	binarySaveBrowseLabel = "<...>"
+	binarySaveButtonGap   = 3
+)
+
+type binarySaveFocus int
 
 type binarySaveResultMsg struct {
 	requestID uint64
 	path      string
 	err       error
+}
+
+type binarySaveForm struct {
+	fileName string
+	path     string
+	focus    binarySaveFocus
+}
+
+type binarySaveWindowLayout struct {
+	content      string
+	browseBounds layoutBounds
+	buttonBounds []layoutBounds
 }
 
 type binaryFileWriter func(string, []byte) error
@@ -61,30 +87,6 @@ func cleanBinarySaveError(err error) string {
 	}
 
 	return message
-}
-
-type binarySaveFocus int
-
-const (
-	binarySavePath binarySaveFocus = iota
-	binarySaveSubmit
-	binarySaveCancel
-	binarySaveFocusCount
-)
-
-const (
-	binarySaveLabelWidth    = 6
-	binarySaveFirstFieldRow = 2
-	binarySaveBrowseGap     = 2
-	binarySaveBrowseLabel   = "<...>"
-	binarySaveButtonGap     = 3
-	binarySaveButtonRow     = 5
-)
-
-type binarySaveForm struct {
-	fileName string
-	path     string
-	focus    binarySaveFocus
 }
 
 func newBinarySaveForm(fileName string) binarySaveForm {
@@ -239,32 +241,21 @@ func binarySaveWindowWidth(screenWidth int) int {
 	return clamp(screenWidth-18, 54, 82)
 }
 
-type binarySaveWindowLayout struct {
-	contentWidth int
-	pathWidth    int
-	browseBounds layoutBounds
-}
+func newBinarySaveWindowLayout(
+	t theme,
+	width int,
+	form binarySaveForm,
+	pending bool,
+) binarySaveWindowLayout {
+	const (
+		horizontalPadding = 2
+		verticalPadding   = 1
+	)
 
-func newBinarySaveWindowLayout(t theme, windowWidth int) binarySaveWindowLayout {
-	contentWidth := max(1, windowWidth-4)
+	title := t.windowTitle.Width(width).Render("Save Binary As")
+	contentWidth := max(1, width-2*horizontalPadding)
 	browseWidth := lipgloss.Width(t.button.Render(binarySaveBrowseLabel))
 	pathWidth := max(18, contentWidth-binarySaveLabelWidth-2-binarySaveBrowseGap-browseWidth)
-	return binarySaveWindowLayout{
-		contentWidth: contentWidth,
-		pathWidth:    pathWidth,
-		browseBounds: layoutBounds{
-			x:      2 + binarySaveLabelWidth + 2 + pathWidth + binarySaveBrowseGap,
-			y:      binarySaveFirstFieldRow,
-			width:  browseWidth,
-			height: 1,
-		},
-	}
-}
-
-func renderBinarySaveWindow(t theme, width int, form binarySaveForm, pending bool) string {
-	layout := newBinarySaveWindowLayout(t, width)
-	contentWidth := layout.contentWidth
-	pathWidth := layout.pathWidth
 
 	label := t.label.Width(binarySaveLabelWidth).Render("Path")
 	gap := t.windowBody.Width(2).Render("")
@@ -289,13 +280,27 @@ func renderBinarySaveWindow(t theme, width int, form binarySaveForm, pending boo
 		pathRow,
 		t.windowBody.Width(contentWidth).Render(""),
 		status,
-		renderBinarySaveButtons(t, contentWidth, form.focus, pending || !form.canSubmit(), pending),
 	}
+	buttonLayout := binarySaveButtonsLayout(t, contentWidth, form.focus, pending || !form.canSubmit(), pending).
+		positioned(horizontalPadding, lipgloss.Height(title)+verticalPadding+len(rows))
+	rows = append(rows, buttonLayout.content)
 
-	title := t.windowTitle.Width(width).Render("Save Binary As")
-	body := t.windowBody.Width(width).Padding(1, 2).Render(strings.Join(rows, "\n"))
+	body := t.windowBody.Width(width).Padding(verticalPadding, horizontalPadding).Render(strings.Join(rows, "\n"))
 
-	return lipgloss.JoinVertical(lipgloss.Left, title, body)
+	return binarySaveWindowLayout{
+		content: lipgloss.JoinVertical(lipgloss.Left, title, body),
+		browseBounds: layoutBounds{
+			x:      horizontalPadding + binarySaveLabelWidth + 2 + pathWidth + binarySaveBrowseGap,
+			y:      lipgloss.Height(title) + verticalPadding,
+			width:  browseWidth,
+			height: 1,
+		},
+		buttonBounds: buttonLayout.bounds,
+	}
+}
+
+func renderBinarySaveWindow(t theme, width int, form binarySaveForm, pending bool) string {
+	return newBinarySaveWindowLayout(t, width, form, pending).content
 }
 
 func binarySaveButtonsLayout(t theme, width int, focus binarySaveFocus, submitDisabled, blocked bool) buttonRowLayout {
@@ -326,8 +331,4 @@ func binarySaveButtonsLayout(t theme, width int, focus binarySaveFocus, submitDi
 		{label: "< Save >", style: saveStyle},
 		{label: "< Cancel >", style: cancelStyle},
 	})
-}
-
-func renderBinarySaveButtons(t theme, width int, focus binarySaveFocus, submitDisabled, blocked bool) string {
-	return binarySaveButtonsLayout(t, width, focus, submitDisabled, blocked).content
 }

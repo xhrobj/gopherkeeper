@@ -1,8 +1,6 @@
 # 🔐 (^-^)/ GophKeeper. Менеджер паролей и приватных данных
 
-[![(-_-) Go CI](https://github.com/xhrobj/gopherkeeper/actions/workflows/go-ci.yml/badge.svg)](https://github.com/xhrobj/gopherkeeper/actions/workflows/go-ci.yml)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=xhrobj_gophkeeper&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=xhrobj_gophkeeper)
-[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=xhrobj_gophkeeper&metric=coverage)](https://sonarcloud.io/summary/new_code?id=xhrobj_gophkeeper)
+[![(-_-) Go CI](https://github.com/xhrobj/gopherkeeper/actions/workflows/go-ci.yml/badge.svg)](https://github.com/xhrobj/gopherkeeper/actions/workflows/go-ci.yml) [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=xhrobj_gophkeeper&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=xhrobj_gophkeeper) [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=xhrobj_gophkeeper&metric=coverage)](https://sonarcloud.io/summary/new_code?id=xhrobj_gophkeeper)
 
 **GophKeeper** — клиент-серверный менеджер паролей и приватных данных. Сервер хранит зашифрованные записи в PostgreSQL, а Клиент предоставляет отдельные CLI-команды и полнофункциональный терминальный интерфейс (TUI) с поддержкой HTTPS и gRPC поверх TLS.
 
@@ -61,9 +59,15 @@ gkeep --config configs/client.json tui
   <img src="docs/images/tui/02-server-status-preview.png" alt="Server status">
 </a>
 
-### 3. Войдите в аккаунт
+### 3. Зарегистрируйтесь и войдите в аккаунт
 
-Выберите `System → Login...` и введите login и password. Новый пользователь может предварительно зарегистрироваться через `System → Register...`.
+Если у вас ещё нет аккаунта, выберите `Account → Register...`, укажите `Login` и `Password` и завершите регистрацию.
+
+<a href="docs/images/tui/03-register.jpg">
+  <img src="docs/images/tui/03-register-preview.jpg" alt="Register">
+</a>
+
+После регистрации выберите `Account → Login...` и войдите с теми же `Login` и `Password`.
 
 <a href="docs/images/tui/03-login.png">
   <img src="docs/images/tui/03-login-preview.png" alt="Login">

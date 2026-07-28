@@ -39,34 +39,6 @@ func TestParseRecordCardExpiry(t *testing.T) {
 	}
 }
 
-func assertParsedRecordCardExpiry(
-	t *testing.T,
-	monthValue,
-	yearValue string,
-	wantMonth,
-	wantYear int,
-	wantEmpty,
-	wantErr bool,
-) {
-	t.Helper()
-	month, year, err := parseRecordCardExpiry(monthValue, yearValue)
-	if (err != nil) != wantErr {
-		t.Fatalf("parseRecordCardExpiry() error = %v, wantErr %t", err, wantErr)
-	}
-	if wantErr {
-		return
-	}
-	if wantEmpty {
-		if month != nil || year != nil {
-			t.Fatalf("expiry = %v/%v, want empty", month, year)
-		}
-		return
-	}
-	if month == nil || year == nil || *month != wantMonth || *year != wantYear {
-		t.Fatalf("expiry = %v/%v, want %d/%d", month, year, wantMonth, wantYear)
-	}
-}
-
 func TestRecordFormInput_BuildPayload(t *testing.T) {
 	binaryData := []byte{0x01, 0x02, 0xff}
 	readBinary := func(path string) (string, []byte, error) {
@@ -142,10 +114,6 @@ func TestRecordFormInput_BuildPayload(t *testing.T) {
 			}
 		})
 	}
-}
-
-func intPointer(value int) *int {
-	return &value
 }
 
 func TestRecordCreateForm_ExpiryFieldsAcceptAtMostTwoDigits(t *testing.T) {
@@ -363,24 +331,6 @@ func TestRenderRecordForms_MarkOnlyRequiredFieldsAndOmitOptionalHints(t *testing
 				test.notRequired,
 			)
 		})
-	}
-}
-
-func assertRecordFormLabels(t *testing.T, plain string, required, notRequired []string) {
-	t.Helper()
-
-	for _, wanted := range required {
-		if !strings.Contains(plain, wanted) {
-			t.Fatalf("form does not contain required label %q:\n%s", wanted, plain)
-		}
-	}
-	for _, unwanted := range notRequired {
-		if strings.Contains(plain, unwanted) {
-			t.Fatalf("optional label is marked as required %q:\n%s", unwanted, plain)
-		}
-	}
-	if strings.Contains(strings.ToLower(plain), "optional") || strings.Contains(plain, "Leave Replace file") {
-		t.Fatalf("form still contains an optional-field hint:\n%s", plain)
 	}
 }
 
@@ -612,6 +562,78 @@ func TestRenderRecordForms_KeepOneBlankRowAroundButtonsAndHidePendingStatus(t *t
 	}
 }
 
+func TestRecordFormInput_BuildPayloadUsesSelectedBinaryFileName(t *testing.T) {
+	input := recordFormInput{
+		recordType:     recordmodel.RecordTypeBinary,
+		title:          "Backup",
+		filename:       "old.bin",
+		filePath:       "/tmp/new-name.bin",
+		binaryExisting: true,
+		editing:        true,
+	}
+
+	payload, err := input.buildPayload(func(path string) (string, []byte, error) {
+		return "new-name.bin", []byte("new data"), nil
+	}, &recordmodel.BinaryPayload{Filename: "old.bin", Data: []byte("old data")})
+	if err != nil {
+		t.Fatalf("buildPayload() error = %v", err)
+	}
+	binaryPayload := payload.(*recordmodel.BinaryPayload)
+	if binaryPayload.Filename != "new-name.bin" {
+		t.Fatalf("filename = %q, want %q", binaryPayload.Filename, "new-name.bin")
+	}
+}
+
+func assertParsedRecordCardExpiry(
+	t *testing.T,
+	monthValue,
+	yearValue string,
+	wantMonth,
+	wantYear int,
+	wantEmpty,
+	wantErr bool,
+) {
+	t.Helper()
+	month, year, err := parseRecordCardExpiry(monthValue, yearValue)
+	if (err != nil) != wantErr {
+		t.Fatalf("parseRecordCardExpiry() error = %v, wantErr %t", err, wantErr)
+	}
+	if wantErr {
+		return
+	}
+	if wantEmpty {
+		if month != nil || year != nil {
+			t.Fatalf("expiry = %v/%v, want empty", month, year)
+		}
+		return
+	}
+	if month == nil || year == nil || *month != wantMonth || *year != wantYear {
+		t.Fatalf("expiry = %v/%v, want %d/%d", month, year, wantMonth, wantYear)
+	}
+}
+
+func intPointer(value int) *int {
+	return &value
+}
+
+func assertRecordFormLabels(t *testing.T, plain string, required, notRequired []string) {
+	t.Helper()
+
+	for _, wanted := range required {
+		if !strings.Contains(plain, wanted) {
+			t.Fatalf("form does not contain required label %q:\n%s", wanted, plain)
+		}
+	}
+	for _, unwanted := range notRequired {
+		if strings.Contains(plain, unwanted) {
+			t.Fatalf("optional label is marked as required %q:\n%s", unwanted, plain)
+		}
+	}
+	if strings.Contains(strings.ToLower(plain), "optional") || strings.Contains(plain, "Leave Replace file") {
+		t.Fatalf("form still contains an optional-field hint:\n%s", plain)
+	}
+}
+
 func recordFormRenderTestRecords() []recordmodel.Record {
 	return []recordmodel.Record{
 		{
@@ -682,27 +704,5 @@ func assertRecordFormButtonRows(
 	}
 	if buttonRow+2 != len(lines) {
 		t.Fatalf("%s %s form has more than one row below buttons:\n%s", recordType, mode, plain)
-	}
-}
-
-func TestRecordFormInput_BuildPayloadUsesSelectedBinaryFileName(t *testing.T) {
-	input := recordFormInput{
-		recordType:     recordmodel.RecordTypeBinary,
-		title:          "Backup",
-		filename:       "old.bin",
-		filePath:       "/tmp/new-name.bin",
-		binaryExisting: true,
-		editing:        true,
-	}
-
-	payload, err := input.buildPayload(func(path string) (string, []byte, error) {
-		return "new-name.bin", []byte("new data"), nil
-	}, &recordmodel.BinaryPayload{Filename: "old.bin", Data: []byte("old data")})
-	if err != nil {
-		t.Fatalf("buildPayload() error = %v", err)
-	}
-	binaryPayload := payload.(*recordmodel.BinaryPayload)
-	if binaryPayload.Filename != "new-name.bin" {
-		t.Fatalf("filename = %q, want %q", binaryPayload.Filename, "new-name.bin")
 	}
 }

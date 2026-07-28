@@ -26,6 +26,16 @@ type cacheRepositoryStub struct {
 	close           func() error
 }
 
+type syncTestDependencies struct {
+	users                UserGateway
+	records              RecordGateway
+	sessions             SessionStorage
+	cache                SyncCacheRepository
+	cacheProviderCheck   func(string, []byte)
+	cacheProviderError   error
+	sessionProviderError error
+}
+
 func (s cacheRepositoryStub) ListState(ctx context.Context) ([]RecordState, error) {
 	if s.listState == nil {
 		return nil, nil
@@ -167,55 +177,6 @@ func TestApplication_SyncUpdatesChangedRecords(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assertSyncUpdatesChangedRecord(t, updatedRecord, tt.localRevision)
 		})
-	}
-}
-
-func assertSyncUpdatesChangedRecord(t *testing.T, updatedRecord model.Record, localRevision int64) {
-	t.Helper()
-
-	getCalls := 0
-	application := newSyncTestApplication(syncTestDependencies{
-		users: successfulSyncUsers(t),
-		records: recordGatewayStub{
-			list: func(context.Context, string) ([]model.RecordMetadata, error) {
-				return []model.RecordMetadata{updatedRecord.Metadata}, nil
-			},
-			get: func(_ context.Context, _ string, recordID string) (model.Record, error) {
-				getCalls++
-				if recordID != syncUpdatedRecordID {
-					t.Errorf("GetRecord() ID = %q, want %q", recordID, syncUpdatedRecordID)
-				}
-				return updatedRecord, nil
-			},
-		},
-		sessions: successfulSyncSessions(),
-		cache: cacheRepositoryStub{
-			listState: func(context.Context) ([]RecordState, error) {
-				return []RecordState{{ID: syncUpdatedRecordID, Revision: localRevision}}, nil
-			},
-			applyChanges: func(_ context.Context, upserts []model.Record, deleteIDs []string) error {
-				if !reflect.DeepEqual(upserts, []model.Record{updatedRecord}) {
-					t.Errorf("cache upserts = %#v, want updated server record", upserts)
-				}
-				if len(deleteIDs) != 0 {
-					t.Errorf("cache deletes = %#v, want empty", deleteIDs)
-				}
-				return nil
-			},
-		},
-	})
-
-	result, err := application.Sync(context.Background(), SyncRequest{Password: testPassword})
-	if err != nil {
-		t.Fatalf("Sync() error = %v", err)
-	}
-	if getCalls != 1 {
-		t.Errorf("GetRecord() calls = %d, want 1", getCalls)
-	}
-
-	wantUpdated := []RevisionChange{{Metadata: updatedRecord.Metadata, LocalRevision: localRevision}}
-	if !reflect.DeepEqual(result.Updated, wantUpdated) {
-		t.Errorf("updated = %#v, want %#v", result.Updated, wantUpdated)
 	}
 }
 
@@ -384,50 +345,6 @@ func TestApplication_SyncDetectsServerRace(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assertSyncDetectsServerRace(t, expected, tt.get, tt.marker)
 		})
-	}
-}
-
-func assertSyncDetectsServerRace(
-	t *testing.T,
-	expected model.Record,
-	get func(context.Context, string, string) (model.Record, error),
-	marker error,
-) {
-	t.Helper()
-
-	applyCalled := false
-	application := newSyncTestApplication(syncTestDependencies{
-		users:    successfulSyncUsers(t),
-		sessions: successfulSyncSessions(),
-		records: recordGatewayStub{
-			list: func(context.Context, string) ([]model.RecordMetadata, error) {
-				return []model.RecordMetadata{expected.Metadata}, nil
-			},
-			get: get,
-		},
-		cache: cacheRepositoryStub{
-			applyChanges: func(context.Context, []model.Record, []string) error {
-				applyCalled = true
-				return nil
-			},
-		},
-	})
-
-	_, err := application.Sync(context.Background(), SyncRequest{Password: testPassword})
-	if err == nil {
-		t.Fatal("Sync() error = nil, want server race")
-	}
-	if err.Error() != "server records changed during synchronization, please run sync again" {
-		t.Errorf("error = %q, want readable server race message", err)
-	}
-	if !errors.Is(err, errSyncStateChanged) {
-		t.Error("sync error does not preserve state changed marker")
-	}
-	if !errors.Is(err, marker) {
-		t.Errorf("sync error does not preserve %v", marker)
-	}
-	if applyCalled {
-		t.Error("cache batch was applied after server race")
 	}
 }
 
@@ -674,14 +591,97 @@ func TestApplication_SyncSavesSessionBeforeOpeningCache(t *testing.T) {
 	}
 }
 
-type syncTestDependencies struct {
-	users                UserGateway
-	records              RecordGateway
-	sessions             SessionStorage
-	cache                SyncCacheRepository
-	cacheProviderCheck   func(string, []byte)
-	cacheProviderError   error
-	sessionProviderError error
+func assertSyncUpdatesChangedRecord(t *testing.T, updatedRecord model.Record, localRevision int64) {
+	t.Helper()
+
+	getCalls := 0
+	application := newSyncTestApplication(syncTestDependencies{
+		users: successfulSyncUsers(t),
+		records: recordGatewayStub{
+			list: func(context.Context, string) ([]model.RecordMetadata, error) {
+				return []model.RecordMetadata{updatedRecord.Metadata}, nil
+			},
+			get: func(_ context.Context, _ string, recordID string) (model.Record, error) {
+				getCalls++
+				if recordID != syncUpdatedRecordID {
+					t.Errorf("GetRecord() ID = %q, want %q", recordID, syncUpdatedRecordID)
+				}
+				return updatedRecord, nil
+			},
+		},
+		sessions: successfulSyncSessions(),
+		cache: cacheRepositoryStub{
+			listState: func(context.Context) ([]RecordState, error) {
+				return []RecordState{{ID: syncUpdatedRecordID, Revision: localRevision}}, nil
+			},
+			applyChanges: func(_ context.Context, upserts []model.Record, deleteIDs []string) error {
+				if !reflect.DeepEqual(upserts, []model.Record{updatedRecord}) {
+					t.Errorf("cache upserts = %#v, want updated server record", upserts)
+				}
+				if len(deleteIDs) != 0 {
+					t.Errorf("cache deletes = %#v, want empty", deleteIDs)
+				}
+				return nil
+			},
+		},
+	})
+
+	result, err := application.Sync(context.Background(), SyncRequest{Password: testPassword})
+	if err != nil {
+		t.Fatalf("Sync() error = %v", err)
+	}
+	if getCalls != 1 {
+		t.Errorf("GetRecord() calls = %d, want 1", getCalls)
+	}
+
+	wantUpdated := []RevisionChange{{Metadata: updatedRecord.Metadata, LocalRevision: localRevision}}
+	if !reflect.DeepEqual(result.Updated, wantUpdated) {
+		t.Errorf("updated = %#v, want %#v", result.Updated, wantUpdated)
+	}
+}
+
+func assertSyncDetectsServerRace(
+	t *testing.T,
+	expected model.Record,
+	get func(context.Context, string, string) (model.Record, error),
+	marker error,
+) {
+	t.Helper()
+
+	applyCalled := false
+	application := newSyncTestApplication(syncTestDependencies{
+		users:    successfulSyncUsers(t),
+		sessions: successfulSyncSessions(),
+		records: recordGatewayStub{
+			list: func(context.Context, string) ([]model.RecordMetadata, error) {
+				return []model.RecordMetadata{expected.Metadata}, nil
+			},
+			get: get,
+		},
+		cache: cacheRepositoryStub{
+			applyChanges: func(context.Context, []model.Record, []string) error {
+				applyCalled = true
+				return nil
+			},
+		},
+	})
+
+	_, err := application.Sync(context.Background(), SyncRequest{Password: testPassword})
+	if err == nil {
+		t.Fatal("Sync() error = nil, want server race")
+	}
+	if err.Error() != "server records changed during synchronization, please run sync again" {
+		t.Errorf("error = %q, want readable server race message", err)
+	}
+	if !errors.Is(err, errSyncStateChanged) {
+		t.Error("sync error does not preserve state changed marker")
+	}
+	if !errors.Is(err, marker) {
+		t.Errorf("sync error does not preserve %v", marker)
+	}
+	if applyCalled {
+		t.Error("cache batch was applied after server race")
+	}
 }
 
 func newSyncTestApplication(dependencies syncTestDependencies) *Application {

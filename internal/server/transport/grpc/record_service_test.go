@@ -26,88 +26,6 @@ type recordServiceCRUDSpy struct {
 	deleteCalled bool
 }
 
-func (spy *recordServiceCRUDSpy) manager() recordManagerStub {
-	return recordManagerStub{
-		create: spy.create,
-		list:   spy.list,
-		get:    spy.get,
-		update: spy.update,
-		delete: spy.delete,
-	}
-}
-
-func (spy *recordServiceCRUDSpy) create(
-	_ context.Context,
-	request service.CreateRecordRequest,
-) (model.Record, error) {
-	spy.t.Helper()
-	spy.createCalled = true
-	if request.UserID != 42 || request.Title != "Private note" {
-		spy.t.Fatalf("Create() request = %#v", request)
-	}
-	payload, ok := request.Payload.(*model.TextPayload)
-	if !ok || payload.Text != "secret-v1" || payload.Metadata != "notes" {
-		spy.t.Fatalf("Create() payload = %#v", request.Payload)
-	}
-	return spy.created, nil
-}
-
-func (spy *recordServiceCRUDSpy) list(_ context.Context, userID int64) ([]model.RecordMetadata, error) {
-	spy.t.Helper()
-	spy.listCalled = true
-	if userID != 42 {
-		spy.t.Fatalf("List() userID = %d", userID)
-	}
-	return []model.RecordMetadata{spy.created.Metadata}, nil
-}
-
-func (spy *recordServiceCRUDSpy) get(
-	_ context.Context,
-	userID int64,
-	recordID string,
-) (model.Record, error) {
-	spy.t.Helper()
-	spy.getCalled = true
-	if userID != 42 || recordID != grpcTestRecordID {
-		spy.t.Fatalf("Get() arguments = %d / %q", userID, recordID)
-	}
-	return spy.created, nil
-}
-
-func (spy *recordServiceCRUDSpy) update(
-	_ context.Context,
-	request service.UpdateRecordRequest,
-) (model.Record, error) {
-	spy.t.Helper()
-	spy.updateCalled = true
-	if request.UserID != 42 || request.RecordID != grpcTestRecordID ||
-		request.ExpectedRevision != 1 || request.Title != "Updated note" {
-		spy.t.Fatalf("Update() request = %#v", request)
-	}
-	payload, ok := request.Payload.(*model.TextPayload)
-	if !ok || payload.Text != "secret-v2" {
-		spy.t.Fatalf("Update() payload = %#v", request.Payload)
-	}
-	return spy.updated, nil
-}
-
-func (spy *recordServiceCRUDSpy) delete(_ context.Context, request service.DeleteRecordRequest) error {
-	spy.t.Helper()
-	spy.deleteCalled = true
-	if request.UserID != 42 || request.RecordID != grpcTestRecordID || request.ExpectedRevision != 2 {
-		spy.t.Fatalf("Delete() request = %#v", request)
-	}
-	return nil
-}
-
-func (spy *recordServiceCRUDSpy) assertCalled() {
-	spy.t.Helper()
-	if !spy.createCalled || !spy.listCalled || !spy.getCalled || !spy.updateCalled || !spy.deleteCalled {
-		spy.t.Fatalf("CRUD calls = create:%t list:%t get:%t update:%t delete:%t",
-			spy.createCalled, spy.listCalled, spy.getCalled, spy.updateCalled, spy.deleteCalled)
-	}
-}
-
 func TestRecordService_CRUD(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 24, 12, 0, 0, 0, time.UTC)
 	spy := &recordServiceCRUDSpy{
@@ -197,6 +115,88 @@ func TestRecordService_RejectsInvalidCalls(t *testing.T) {
 	}
 	if _, err := server.DeleteRecord(ctx, &gopherkeeperpb.DeleteRecordRequest{}); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("DeleteRecord() code = %s, want %s", status.Code(err), codes.FailedPrecondition)
+	}
+}
+
+func (spy *recordServiceCRUDSpy) manager() recordManagerStub {
+	return recordManagerStub{
+		create: spy.create,
+		list:   spy.list,
+		get:    spy.get,
+		update: spy.update,
+		delete: spy.delete,
+	}
+}
+
+func (spy *recordServiceCRUDSpy) create(
+	_ context.Context,
+	request service.CreateRecordRequest,
+) (model.Record, error) {
+	spy.t.Helper()
+	spy.createCalled = true
+	if request.UserID != 42 || request.Title != "Private note" {
+		spy.t.Fatalf("Create() request = %#v", request)
+	}
+	payload, ok := request.Payload.(*model.TextPayload)
+	if !ok || payload.Text != "secret-v1" || payload.Metadata != "notes" {
+		spy.t.Fatalf("Create() payload = %#v", request.Payload)
+	}
+	return spy.created, nil
+}
+
+func (spy *recordServiceCRUDSpy) list(_ context.Context, userID int64) ([]model.RecordMetadata, error) {
+	spy.t.Helper()
+	spy.listCalled = true
+	if userID != 42 {
+		spy.t.Fatalf("List() userID = %d", userID)
+	}
+	return []model.RecordMetadata{spy.created.Metadata}, nil
+}
+
+func (spy *recordServiceCRUDSpy) get(
+	_ context.Context,
+	userID int64,
+	recordID string,
+) (model.Record, error) {
+	spy.t.Helper()
+	spy.getCalled = true
+	if userID != 42 || recordID != grpcTestRecordID {
+		spy.t.Fatalf("Get() arguments = %d / %q", userID, recordID)
+	}
+	return spy.created, nil
+}
+
+func (spy *recordServiceCRUDSpy) update(
+	_ context.Context,
+	request service.UpdateRecordRequest,
+) (model.Record, error) {
+	spy.t.Helper()
+	spy.updateCalled = true
+	if request.UserID != 42 || request.RecordID != grpcTestRecordID ||
+		request.ExpectedRevision != 1 || request.Title != "Updated note" {
+		spy.t.Fatalf("Update() request = %#v", request)
+	}
+	payload, ok := request.Payload.(*model.TextPayload)
+	if !ok || payload.Text != "secret-v2" {
+		spy.t.Fatalf("Update() payload = %#v", request.Payload)
+	}
+	return spy.updated, nil
+}
+
+func (spy *recordServiceCRUDSpy) delete(_ context.Context, request service.DeleteRecordRequest) error {
+	spy.t.Helper()
+	spy.deleteCalled = true
+	if request.UserID != 42 || request.RecordID != grpcTestRecordID || request.ExpectedRevision != 2 {
+		spy.t.Fatalf("Delete() request = %#v", request)
+	}
+	return nil
+}
+
+func (spy *recordServiceCRUDSpy) assertCalled() {
+	spy.t.Helper()
+	if !spy.createCalled || !spy.listCalled || !spy.getCalled || !spy.updateCalled || !spy.deleteCalled {
+		spy.t.Fatalf("CRUD calls = create:%t list:%t get:%t update:%t delete:%t",
+			spy.createCalled, spy.listCalled, spy.getCalled, spy.updateCalled, spy.deleteCalled)
 	}
 }
 

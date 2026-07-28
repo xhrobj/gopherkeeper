@@ -8,6 +8,13 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+type alertWindowLayoutCase struct {
+	name      string
+	state     alertState
+	message   string
+	highlight string
+}
+
 func TestRenderControls_RendersGroupedAlignedRows(t *testing.T) {
 	const width = 46
 	if controlsColumnGap != 1 {
@@ -56,33 +63,6 @@ func TestRenderControls_RendersGroupedAlignedRows(t *testing.T) {
 	assertControlsSpacerRows(t, lines)
 	assertControlsSeparatorAlignment(t, lines, separatorColumn)
 	assertControlsRowWidths(t, lines, width)
-}
-
-func assertControlsSpacerRows(t *testing.T, lines []string) {
-	t.Helper()
-	for _, index := range []int{1, 4, 8, 12, 16, 18} {
-		if strings.TrimSpace(lines[index]) != "" {
-			t.Fatalf("controls spacer row %d is not empty: %q", index, lines[index])
-		}
-	}
-}
-
-func assertControlsSeparatorAlignment(t *testing.T, lines []string, separatorColumn int) {
-	t.Helper()
-	for _, index := range []int{0, 2, 3, 5, 6, 7, 9, 10, 11, 13, 14, 15, 17} {
-		if strings.Index(lines[index], ":") != separatorColumn {
-			t.Fatalf("controls colon row %d is not aligned: %q", index, lines[index])
-		}
-	}
-}
-
-func assertControlsRowWidths(t *testing.T, lines []string, width int) {
-	t.Helper()
-	for _, line := range lines {
-		if line != "" && lipgloss.Width(line) != width {
-			t.Fatalf("controls row width = %d, want %d: %q", lipgloss.Width(line), width, line)
-		}
-	}
 }
 
 func TestRenderAbout_RendersFoxProStyleWindow(t *testing.T) {
@@ -159,6 +139,7 @@ func TestRenderAbout_RendersFoxProStyleWindow(t *testing.T) {
 		t.Fatalf("button line = %d, want one empty row before bottom (%d)", buttonLine, len(lines)-2)
 	}
 }
+
 func TestRenderAlertWindow_HasNoBorderAndAlignedTopSpacing(t *testing.T) {
 	theme := newTheme()
 	view := renderAlertWindow(
@@ -194,7 +175,8 @@ func TestRenderErrorAlert_WrapsCompleteMessage(t *testing.T) {
 			t.Fatalf("alert lost message fragment %q:\n%s", word, plain)
 		}
 	}
-	if got, want := alertButtonRow(message, ""), 4+len(wrapAlertText(message, 50)); got != want {
+	layout := newAlertWindowLayout(theme, alertError, "Unable to save binary", message, "")
+	if got, want := layout.buttonBounds[0].y, 4+len(wrapAlertText(message, 50)); got != want {
 		t.Fatalf("alert button row = %d, want %d", got, want)
 	}
 }
@@ -208,5 +190,154 @@ func TestRenderErrorAlert_DoesNotSplitRevisionConflictWords(t *testing.T) {
 		if !strings.Contains(plain, word) {
 			t.Fatalf("alert split word %q:\n%s", word, plain)
 		}
+	}
+}
+
+func TestAlertWindowLayout_UsesRenderedButtonGeometry(t *testing.T) {
+	theme := newTheme()
+	tests := []alertWindowLayoutCase{
+		{name: "notice", state: alertNotice, message: "Saved"},
+		{name: "wrapped error", state: alertError, message: strings.Repeat("save failed ", 12)},
+		{name: "highlight", state: alertNotice, message: "Registered as alice", highlight: "alice"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertAlertWindowButtonGeometry(t, theme, tt)
+		})
+	}
+}
+
+func assertAlertWindowButtonGeometry(t *testing.T, theme theme, test alertWindowLayoutCase) {
+	t.Helper()
+
+	layout := newAlertWindowLayout(theme, test.state, "Alert", test.message, test.highlight)
+	if len(layout.buttonBounds) != 1 {
+		t.Fatalf("button bounds = %d, want 1", len(layout.buttonBounds))
+	}
+
+	lines := strings.Split(ansi.Strip(layout.content), "\n")
+	buttonRow := lineIndexContaining(lines, okButtonLabel)
+	if buttonRow < 0 {
+		t.Fatal("rendered OK button was not found")
+	}
+
+	bounds := layout.buttonBounds[0]
+	if bounds.y != buttonRow {
+		t.Fatalf("button y = %d, want rendered row %d", bounds.y, buttonRow)
+	}
+
+	buttonStyle := theme.aboutButtonActive
+	if test.state == alertError {
+		buttonStyle = theme.errorButton
+	}
+	if wantWidth := lipgloss.Width(buttonStyle.Render(okButtonLabel)); bounds.width != wantWidth {
+		t.Fatalf("button width = %d, want rendered width %d", bounds.width, wantWidth)
+	}
+}
+
+func TestModel_AlertWindowLayoutIsEmptyWithoutAlert(t *testing.T) {
+	m := model{theme: newTheme()}
+
+	layout := m.alertWindowLayout()
+	if layout.content != "" || len(layout.buttonBounds) != 0 {
+		t.Fatalf("empty alert layout = content %q, bounds %v", layout.content, layout.buttonBounds)
+	}
+}
+
+func TestCurrentUserWindowLayout_UsesRenderedButtonGeometry(t *testing.T) {
+	theme := newTheme()
+	tests := []struct {
+		name    string
+		pending bool
+		blocked bool
+	}{
+		{name: "ready"},
+		{name: "pending", pending: true},
+		{name: "blocked", blocked: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertCurrentUserWindowButtonGeometry(t, theme, tt.pending, tt.blocked)
+		})
+	}
+}
+
+func TestControlsWindowLayout_UsesRenderedButtonGeometry(t *testing.T) {
+	const width = 58
+	layout := newControlsWindowLayout(newTheme(), width)
+	if len(layout.buttonBounds) != 1 {
+		t.Fatalf("button bounds = %d, want 1", len(layout.buttonBounds))
+	}
+
+	lines := strings.Split(ansi.Strip(layout.content), "\n")
+	buttonRow := lineIndexContaining(lines, okButtonLabel)
+	if buttonRow < 0 {
+		t.Fatal("rendered Controls button was not found")
+	}
+
+	bounds := layout.buttonBounds[0]
+	if bounds.y != buttonRow {
+		t.Fatalf("button y = %d, want rendered row %d", bounds.y, buttonRow)
+	}
+
+	wantWidth := lipgloss.Width(newTheme().buttonActive.Render(okButtonLabel))
+	if bounds.width != wantWidth {
+		t.Fatalf("button width = %d, want rendered width %d", bounds.width, wantWidth)
+	}
+}
+
+func assertControlsSpacerRows(t *testing.T, lines []string) {
+	t.Helper()
+	for _, index := range []int{1, 4, 8, 12, 16, 18} {
+		if strings.TrimSpace(lines[index]) != "" {
+			t.Fatalf("controls spacer row %d is not empty: %q", index, lines[index])
+		}
+	}
+}
+
+func assertControlsSeparatorAlignment(t *testing.T, lines []string, separatorColumn int) {
+	t.Helper()
+	for _, index := range []int{0, 2, 3, 5, 6, 7, 9, 10, 11, 13, 14, 15, 17} {
+		if strings.Index(lines[index], ":") != separatorColumn {
+			t.Fatalf("controls colon row %d is not aligned: %q", index, lines[index])
+		}
+	}
+}
+
+func assertControlsRowWidths(t *testing.T, lines []string, width int) {
+	t.Helper()
+	for _, line := range lines {
+		if line != "" && lipgloss.Width(line) != width {
+			t.Fatalf("controls row width = %d, want %d: %q", lipgloss.Width(line), width, line)
+		}
+	}
+}
+
+func assertCurrentUserWindowButtonGeometry(t *testing.T, theme theme, pending, blocked bool) {
+	t.Helper()
+
+	layout := newCurrentUserWindowLayout(theme, 52, "alice", pending, blocked, "⠋")
+	if len(layout.buttonBounds) != 1 {
+		t.Fatalf("button bounds = %d, want 1", len(layout.buttonBounds))
+	}
+
+	lines := strings.Split(ansi.Strip(layout.content), "\n")
+	buttonRow := lineIndexContaining(lines, okButtonLabel)
+	if buttonRow < 0 {
+		t.Fatal("rendered Current User button was not found")
+	}
+	bounds := layout.buttonBounds[0]
+	if bounds.y != buttonRow {
+		t.Fatalf("button y = %d, want rendered row %d", bounds.y, buttonRow)
+	}
+
+	buttonStyle := theme.aboutButtonActive
+	if blocked {
+		buttonStyle = theme.aboutButtonDisabledActive
+	}
+	if wantWidth := lipgloss.Width(buttonStyle.Render(okButtonLabel)); bounds.width != wantWidth {
+		t.Fatalf("button width = %d, want rendered width %d", bounds.width, wantWidth)
 	}
 }

@@ -26,18 +26,14 @@ type recordFormWindowLayout struct {
 	rowCount  int
 }
 
-func (layout recordFormWindowLayout) control(control recordFormControl) (recordFormControlLayout, bool) {
-	for _, candidate := range layout.controls {
-		if candidate.control == control {
-			return candidate, true
-		}
-	}
-	return recordFormControlLayout{}, false
-}
-
 type recordFormWindowMode struct {
 	titlePrefix string
 	submitLabel string
+}
+
+type recordFormButtonDefinition struct {
+	control recordFormControl
+	label   string
 }
 
 var (
@@ -50,6 +46,15 @@ var (
 		submitLabel: "< Save >",
 	}
 )
+
+func (layout recordFormWindowLayout) control(control recordFormControl) (recordFormControlLayout, bool) {
+	for _, candidate := range layout.controls {
+		if candidate.control == control {
+			return candidate, true
+		}
+	}
+	return recordFormControlLayout{}, false
+}
 
 func recordCreateWindowWidth(screenWidth int) int {
 	return clamp(screenWidth-12, 62, 88)
@@ -329,11 +334,6 @@ func renderRecordFormTextAreaRows(t theme, area textArea, width int, active bool
 	}
 
 	return rows
-}
-
-type recordFormButtonDefinition struct {
-	control recordFormControl
-	label   string
 }
 
 func recordFormButtonDefinitions(form recordForm, submitLabel string) []recordFormButtonDefinition {

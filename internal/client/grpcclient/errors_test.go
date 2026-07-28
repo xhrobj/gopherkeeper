@@ -5,75 +5,166 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/xhrobj/gopherkeeper/internal/apierror"
 	"github.com/xhrobj/gopherkeeper/internal/client/failure"
 	"github.com/xhrobj/gopherkeeper/internal/model"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-func TestMapRPCError(t *testing.T) {
+func TestMapRPCErrorMapsTransportFailures(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name        string
-		code        codes.Code
-		cause       error
+		err         error
+		wantCause   error
 		wantKind    failure.Kind
 		wantMessage string
 	}{
-		{name: "canceled", code: codes.Canceled, wantKind: failure.Canceled, wantMessage: "Operation canceled"},
-		{name: "deadline", code: codes.DeadlineExceeded, wantKind: failure.Timeout, wantMessage: "Connection timed out"},
-		{name: "unavailable", code: codes.Unavailable, wantKind: failure.Unavailable, wantMessage: "Connection refused"},
-		{name: "unauthorized", code: codes.Unauthenticated, cause: model.ErrUnauthorized, wantKind: failure.Unauthorized, wantMessage: "message"},
-		{name: "conflict", code: codes.Aborted, cause: model.ErrRecordRevisionConflict, wantKind: failure.Conflict, wantMessage: "message"},
-		{name: "not found", code: codes.NotFound, cause: model.ErrRecordNotFound, wantKind: failure.NotFound, wantMessage: "message"},
-		{name: "validation", code: codes.InvalidArgument, cause: model.ErrInvalidRecordData, wantKind: failure.Validation, wantMessage: "message"},
-		{name: "too large", code: codes.ResourceExhausted, cause: model.ErrPayloadTooLarge, wantKind: failure.TooLarge, wantMessage: "message"},
-		{name: "internal", code: codes.Internal, wantKind: failure.Unknown, wantMessage: "Internal server error"},
+		{
+			name:        "canceled",
+			err:         status.FromContextError(context.Canceled).Err(),
+			wantCause:   context.Canceled,
+			wantKind:    failure.Canceled,
+			wantMessage: "Operation canceled",
+		},
+		{
+			name:        "deadline",
+			err:         status.FromContextError(context.DeadlineExceeded).Err(),
+			wantCause:   context.DeadlineExceeded,
+			wantKind:    failure.Timeout,
+			wantMessage: "Connection timed out",
+		},
+		{
+			name:        "unavailable",
+			err:         status.Error(codes.Unavailable, "dial tcp: connection refused"),
+			wantKind:    failure.Unavailable,
+			wantMessage: "Connection refused",
+		},
 	}
 
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
-			assertMappedRPCError(t, test.code, test.cause, test.wantKind, test.wantMessage)
+			t.Parallel()
+
+			err := mapRPCError("test", test.err)
+			if test.wantCause != nil && !errors.Is(err, test.wantCause) {
+				t.Fatalf("mapRPCError() error = %v, want cause %v", err, test.wantCause)
+			}
+			if got := failure.KindOf(err); got != test.wantKind {
+				t.Fatalf("failure.KindOf() = %d, want %d", got, test.wantKind)
+			}
+			if got := failure.Message(err); got != test.wantMessage {
+				t.Fatalf("failure.Message() = %q, want %q", got, test.wantMessage)
+			}
 		})
 	}
 }
 
-func assertMappedRPCError(
-	t *testing.T,
-	code codes.Code,
-	cause error,
-	wantKind failure.Kind,
-	wantMessage string,
-) {
-	t.Helper()
+func TestMapRPCErrorUsesAPIErrorDetails(t *testing.T) {
+	t.Parallel()
 
-	err := mapRPCError("test", status.Error(code, "message"), cause)
-	if err == nil {
-		t.Fatal("mapRPCError() error = nil")
-	}
-	if got := failure.KindOf(err); got != wantKind {
-		t.Fatalf("failure.KindOf() = %d, want %d", got, wantKind)
-	}
-	if got := failure.Message(err); got != wantMessage {
-		t.Fatalf("failure.Message() = %q, want %q", got, wantMessage)
-	}
-	if cause != nil && !errors.Is(err, cause) {
-		t.Fatalf("mapRPCError() does not preserve cause %v: %v", cause, err)
+	tests := []struct {
+		name      string
+		grpcCode  codes.Code
+		apiCode   apierror.Code
+		message   string
+		wantCause error
+		wantKind  failure.Kind
+	}{
+		{name: "invalid request", grpcCode: codes.InvalidArgument, apiCode: apierror.InvalidRequest, message: "invalid request", wantKind: failure.Validation},
+		{name: "invalid credentials", grpcCode: codes.Unauthenticated, apiCode: apierror.InvalidCredentials, message: "invalid login or password", wantCause: model.ErrInvalidCredentials, wantKind: failure.Unauthorized},
+		{name: "login already exists", grpcCode: codes.AlreadyExists, apiCode: apierror.LoginAlreadyExists, message: "login is already registered", wantCause: model.ErrLoginAlreadyExists, wantKind: failure.Conflict},
+		{name: "unauthorized", grpcCode: codes.Unauthenticated, apiCode: apierror.Unauthorized, message: "authentication required", wantCause: model.ErrUnauthorized, wantKind: failure.Unauthorized},
+		{name: "payload too large", grpcCode: codes.ResourceExhausted, apiCode: apierror.PayloadTooLarge, message: "payload is too large", wantCause: model.ErrPayloadTooLarge, wantKind: failure.TooLarge},
+		{name: "invalid record data", grpcCode: codes.InvalidArgument, apiCode: apierror.InvalidRecordData, message: "invalid record data", wantCause: model.ErrInvalidRecordData, wantKind: failure.Validation},
+		{name: "record not found", grpcCode: codes.NotFound, apiCode: apierror.RecordNotFound, message: "record not found", wantCause: model.ErrRecordNotFound, wantKind: failure.NotFound},
+		{name: "revision conflict", grpcCode: codes.Aborted, apiCode: apierror.RecordRevisionConflict, message: "record revision conflict", wantCause: model.ErrRecordRevisionConflict, wantKind: failure.Conflict},
+		{name: "decryption failed", grpcCode: codes.DataLoss, apiCode: apierror.RecordDecryptionFailed, message: "record data could not be decrypted", wantCause: model.ErrRecordDecryptionFailed, wantKind: failure.Unknown},
+		{name: "precondition required", grpcCode: codes.FailedPrecondition, apiCode: apierror.PreconditionRequired, message: "record revision is required", wantCause: model.ErrRecordPreconditionRequired, wantKind: failure.Validation},
+		{name: "internal", grpcCode: codes.Internal, apiCode: apierror.Internal, message: "internal server error", wantKind: failure.Unknown},
 	}
 
-	var rpcError *RPCError
-	if !errors.As(err, &rpcError) || rpcError.Code != code {
-		t.Fatalf("mapRPCError() RPCError = %#v, want code %s", rpcError, code)
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			assertRPCErrorUsesAPIErrorDetails(
+				t,
+				test.grpcCode,
+				test.apiCode,
+				test.message,
+				test.wantCause,
+				test.wantKind,
+			)
+		})
 	}
 }
 
-func TestMapRPCErrorPreservesContextErrors(t *testing.T) {
-	err := mapRPCError("test", status.FromContextError(context.Canceled).Err(), nil)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("mapRPCError() error = %v, want context canceled", err)
+func TestMapRPCErrorRequiresAPIErrorDetails(t *testing.T) {
+	t.Parallel()
+
+	err := mapRPCError("registration", status.Error(codes.AlreadyExists, "login is already registered"))
+	if errors.Is(err, model.ErrLoginAlreadyExists) {
+		t.Fatalf("mapRPCError() mapped status-only error to domain cause: %v", err)
+	}
+	if got := failure.KindOf(err); got != failure.Unknown {
+		t.Fatalf("failure.KindOf() = %d, want %d", got, failure.Unknown)
+	}
+	if got := failure.Message(err); got != "Operation failed" {
+		t.Fatalf("failure.Message() = %q, want generic message", got)
+	}
+}
+
+func TestAPIErrorCodeFromStatusRejectsForeignDetails(t *testing.T) {
+	t.Parallel()
+
+	grpcStatus := status.New(codes.InvalidArgument, "invalid request")
+	withDetails, err := grpcStatus.WithDetails(&errdetails.ErrorInfo{
+		Reason: "INVALID_REQUEST",
+		Domain: "other.api",
+	})
+	if err != nil {
+		t.Fatalf("WithDetails() error = %v", err)
+	}
+
+	if got := apiErrorCodeFromStatus(withDetails); got != "" {
+		t.Fatalf("apiErrorCodeFromStatus() = %q, want empty code", got)
+	}
+}
+
+func TestMapListRecordsErrorDistinguishesAPILimit(t *testing.T) {
+	t.Parallel()
+
+	apiErr := grpcErrorWithAPIErrorCode(
+		t,
+		codes.ResourceExhausted,
+		"payload is too large",
+		apierror.PayloadTooLarge,
+	)
+	mappedAPIError := mapListRecordsError(apiErr)
+	if !errors.Is(mappedAPIError, model.ErrPayloadTooLarge) {
+		t.Fatalf("mapListRecordsError() error = %v, want payload-too-large cause", mappedAPIError)
+	}
+	if got := failure.Message(mappedAPIError); got != "payload is too large" {
+		t.Fatalf("failure.Message() = %q, want API message", got)
+	}
+
+	responseLimitError := mapListRecordsError(status.Error(codes.ResourceExhausted, "received message larger than max"))
+	if errors.Is(responseLimitError, model.ErrPayloadTooLarge) {
+		t.Fatalf("mapListRecordsError() mapped local response limit to API cause: %v", responseLimitError)
+	}
+	if got := failure.Message(responseLimitError); got != "Server response is too large" {
+		t.Fatalf("failure.Message() = %q, want response-limit message", got)
 	}
 }
 
 func TestInvalidResponseError(t *testing.T) {
+	t.Parallel()
+
 	cause := errors.New("malformed")
 	err := invalidResponseError("login", cause)
 	if !errors.Is(err, cause) {
@@ -81,5 +172,104 @@ func TestInvalidResponseError(t *testing.T) {
 	}
 	if got := failure.Message(err); got != "Invalid server response" {
 		t.Fatalf("failure.Message() = %q", got)
+	}
+}
+
+func TestUnavailableRPCFailureKind(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		message string
+		want    failure.Kind
+	}{
+		{name: "certificate", message: "x509: certificate signed by unknown authority", want: failure.TLSCertificate},
+		{name: "TLS handshake", message: "transport: authentication handshake failed: tls: handshake failure", want: failure.TLSHandshake},
+		{name: "host not found", message: "dial tcp: lookup missing.example: no such host", want: failure.HostNotFound},
+		{name: "network unreachable", message: "dial tcp: network is unreachable", want: failure.NetworkUnreachable},
+		{name: "timeout", message: "connection error: i/o timeout", want: failure.Timeout},
+		{name: "connection refused", message: "dial tcp: connection refused", want: failure.Unavailable},
+		{name: "generic unavailable", message: "transport is closing", want: failure.Unavailable},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := unavailableRPCFailureKind(test.message); got != test.want {
+				t.Fatalf("unavailableRPCFailureKind() = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
+func grpcErrorWithAPIErrorCode(
+	t *testing.T,
+	code codes.Code,
+	message string,
+	apiCode apierror.Code,
+) error {
+	t.Helper()
+
+	grpcStatus := status.New(code, message)
+	reason, ok := apierror.GRPCReason(apiCode)
+	if !ok {
+		t.Fatalf("GRPCReason(%q) is unknown", apiCode)
+	}
+
+	withDetails, err := grpcStatus.WithDetails(&errdetails.ErrorInfo{
+		Reason: reason,
+		Domain: apierror.Domain,
+	})
+	if err != nil {
+		t.Fatalf("WithDetails() error = %v", err)
+	}
+
+	return withDetails.Err()
+}
+
+func assertRPCErrorUsesAPIErrorDetails(
+	t *testing.T,
+	grpcCode codes.Code,
+	apiCode apierror.Code,
+	message string,
+	wantCause error,
+	wantKind failure.Kind,
+) {
+	t.Helper()
+
+	transportErr := grpcErrorWithAPIErrorCode(t, grpcCode, message, apiCode)
+	err := mapRPCError("test", transportErr)
+
+	assertRPCErrorCause(t, err, wantCause)
+	if got := failure.KindOf(err); got != wantKind {
+		t.Fatalf("failure.KindOf() = %d, want %d", got, wantKind)
+	}
+	if got := failure.Message(err); got != message {
+		t.Fatalf("failure.Message() = %q, want %q", got, message)
+	}
+
+	var rpcError *RPCError
+	if !errors.As(err, &rpcError) || rpcError.APIErrorCode != apiCode {
+		t.Fatalf("mapRPCError() RPCError = %#v, want API code %q", rpcError, apiCode)
+	}
+}
+
+func assertRPCErrorCause(t *testing.T, err error, wantCause error) {
+	t.Helper()
+
+	var rpcError *RPCError
+	if !errors.As(err, &rpcError) {
+		t.Fatalf("mapRPCError() error = %T, want *RPCError", err)
+	}
+	if wantCause == nil {
+		if rpcError.cause != nil {
+			t.Fatalf("mapRPCError() cause = %v, want nil", rpcError.cause)
+		}
+		return
+	}
+	if !errors.Is(err, wantCause) {
+		t.Fatalf("mapRPCError() error = %v, want cause %v", err, wantCause)
 	}
 }

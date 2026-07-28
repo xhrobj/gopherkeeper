@@ -10,6 +10,8 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/client/failure"
 )
 
+const serverStatusButtonGap = 3
+
 type serverStatusResultMsg struct {
 	requestID uint64
 	status    string
@@ -32,6 +34,11 @@ type serverStatusWindowOptions struct {
 	pending      bool
 	blocked      bool
 	spinnerFrame string
+}
+
+type serverStatusWindowLayout struct {
+	content      string
+	buttonBounds []layoutBounds
 }
 
 type statusButtonStyles struct {
@@ -110,16 +117,15 @@ func (m *model) moveServerStatusButton() {
 	m.activeButton = 1 - m.activeButton
 }
 
-const (
-	serverStatusButtonRow = 8
-	serverStatusButtonGap = 3
-)
-
 func serverStatusWindowWidth(screenWidth int) int {
 	return clamp(screenWidth-18, 48, 62)
 }
 
 func renderServerStatusWindow(t theme, options serverStatusWindowOptions) string {
+	return newServerStatusWindowLayout(t, options).content
+}
+
+func newServerStatusWindowLayout(t theme, options serverStatusWindowOptions) serverStatusWindowLayout {
 	statusValue := ""
 	detailLabel := "Health"
 	detailValue := ""
@@ -155,6 +161,14 @@ func renderServerStatusWindow(t theme, options serverStatusWindowOptions) string
 	}
 
 	contentWidth := max(1, options.width-4)
+	buttonLayout := serverStatusButtonsLayout(
+		t,
+		contentWidth,
+		options.state,
+		options.pending,
+		options.activeButton,
+		options.blocked,
+	)
 	rows := []string{
 		renderServerStatusRow(bodyStyle, labelStyle, contentWidth, "Transport", serverTransportLabel(options.transport), detailStyle),
 		renderServerStatusRow(bodyStyle, labelStyle, contentWidth, "Address", options.address, detailStyle),
@@ -162,23 +176,43 @@ func renderServerStatusWindow(t theme, options serverStatusWindowOptions) string
 		renderServerStatusRow(bodyStyle, labelStyle, contentWidth, "Status", statusValue, statusStyle),
 		renderServerStatusRow(bodyStyle, labelStyle, contentWidth, detailLabel, detailValue, detailStyle),
 		bodyStyle.Width(contentWidth).Render(""),
-		serverStatusButtonsLayout(
-			t,
-			contentWidth,
-			options.state,
-			options.pending,
-			options.activeButton,
-			options.blocked,
-		).content,
+		buttonLayout.content,
 	}
 
+	const (
+		bodyPaddingVertical   = 1
+		bodyPaddingHorizontal = 2
+	)
 	title := renderWindowTitle(t.windowTitle, options.width, "Server Status", options.spinnerFrame, options.pending)
 	body := bodyStyle.
 		Width(options.width).
-		Padding(1, 2).
+		Padding(bodyPaddingVertical, bodyPaddingHorizontal).
 		Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+	content := lipgloss.JoinVertical(lipgloss.Left, title, body)
+	buttonRow := lipgloss.Height(title) + bodyPaddingVertical + len(rows) - 1
 
-	return lipgloss.JoinVertical(lipgloss.Left, title, body)
+	return serverStatusWindowLayout{
+		content: content,
+		buttonBounds: buttonLayout.positioned(
+			bodyPaddingHorizontal,
+			buttonRow,
+		).bounds,
+	}
+}
+
+func (m model) serverStatusWindowLayout() serverStatusWindowLayout {
+	return newServerStatusWindowLayout(m.theme, serverStatusWindowOptions{
+		width:        serverStatusWindowWidth(m.width),
+		transport:    m.config.Transport,
+		address:      m.config.ActiveAddress(),
+		state:        m.statusState,
+		health:       m.statusValue,
+		failure:      m.statusFailure,
+		activeButton: m.activeButton,
+		pending:      m.operations.pending(operationServerStatus),
+		blocked:      m.interactionBlocked(),
+		spinnerFrame: m.spinnerFrameValue(),
+	})
 }
 
 func serverTransportLabel(transport config.Transport) string {
