@@ -39,6 +39,46 @@ func TestClient_CurrentUser(t *testing.T) {
 	}
 }
 
+func TestClient_CurrentUserReturnsAPIError(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{
+			"code":"unauthorized",
+			"message":"missing or invalid bearer token"
+		}`))
+	}))
+	defer server.Close()
+
+	client, err := New(serverAddress(server), writeServerCertificate(t, server))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, err = client.CurrentUser(context.Background(), "test.jwt.token")
+	if err == nil {
+		t.Fatal("CurrentUser() error = nil, want API error")
+	}
+
+	var apiError *APIError
+	if !errors.As(err, &apiError) {
+		t.Fatalf("CurrentUser() error = %T, want *APIError", err)
+	}
+
+	if apiError.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status code = %d, want %d", apiError.StatusCode, http.StatusUnauthorized)
+	}
+	if apiError.Code != "unauthorized" {
+		t.Errorf("code = %q, want unauthorized", apiError.Code)
+	}
+	if !errors.Is(err, model.ErrUnauthorized) {
+		t.Errorf("CurrentUser() error = %v, want ErrUnauthorized", err)
+	}
+	if strings.Contains(err.Error(), "test.jwt.token") {
+		t.Error("current user error contains access token")
+	}
+}
+
 func newSuccessfulCurrentUserServer(t *testing.T, createdAt time.Time) *httptest.Server {
 	t.Helper()
 
@@ -78,44 +118,4 @@ func assertCurrentUserRequest(t *testing.T, r *http.Request) bool {
 	}
 
 	return valid
-}
-
-func TestClient_CurrentUserReturnsAPIError(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{
-			"code":"unauthorized",
-			"message":"missing or invalid bearer token"
-		}`))
-	}))
-	defer server.Close()
-
-	client, err := New(serverAddress(server), writeServerCertificate(t, server))
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	_, err = client.CurrentUser(context.Background(), "test.jwt.token")
-	if err == nil {
-		t.Fatal("CurrentUser() error = nil, want API error")
-	}
-
-	var apiError *APIError
-	if !errors.As(err, &apiError) {
-		t.Fatalf("CurrentUser() error = %T, want *APIError", err)
-	}
-
-	if apiError.StatusCode != http.StatusUnauthorized {
-		t.Errorf("status code = %d, want %d", apiError.StatusCode, http.StatusUnauthorized)
-	}
-	if apiError.Code != "unauthorized" {
-		t.Errorf("code = %q, want unauthorized", apiError.Code)
-	}
-	if !errors.Is(err, model.ErrUnauthorized) {
-		t.Errorf("CurrentUser() error = %v, want ErrUnauthorized", err)
-	}
-	if strings.Contains(err.Error(), "test.jwt.token") {
-		t.Error("current user error contains access token")
-	}
 }

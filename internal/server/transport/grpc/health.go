@@ -13,19 +13,15 @@ import (
 
 const healthCheckTimeout = 2 * time.Second
 
-var healthServiceNames = []string{
-	"",
-	gopherkeeperpb.AuthService_ServiceDesc.ServiceName,
-	gopherkeeperpb.RecordService_ServiceDesc.ServiceName,
-}
-
 type healthService struct {
 	healthpb.UnimplementedHealthServer
 	database DatabasePinger
 }
 
-func newHealthService(database DatabasePinger) *healthService {
-	return &healthService{database: database}
+var healthServiceNames = []string{
+	"",
+	gopherkeeperpb.AuthService_ServiceDesc.ServiceName,
+	gopherkeeperpb.RecordService_ServiceDesc.ServiceName,
 }
 
 func (service *healthService) Check(
@@ -59,6 +55,10 @@ func (*healthService) Watch(
 	grpc.ServerStreamingServer[healthpb.HealthCheckResponse],
 ) error {
 	return status.Error(codes.Unimplemented, "health watch is not supported")
+}
+
+func newHealthService(database DatabasePinger) *healthService {
+	return &healthService{database: database}
 }
 
 func (service *healthService) servingStatus(ctx context.Context) healthpb.HealthCheckResponse_ServingStatus {

@@ -17,8 +17,6 @@ import (
 
 const recordsPath = "/api/v1/records"
 
-var errRecordPayloadRequired = errors.New("record payload is required")
-
 type recordRequest struct {
 	Type    model.RecordType    `json:"type"`
 	Title   string              `json:"title"`
@@ -47,6 +45,8 @@ type recordResponse struct {
 type listRecordsResponse struct {
 	Records []recordMetadataResponse `json:"records"`
 }
+
+var errRecordPayloadRequired = errors.New("record payload is required")
 
 // CreateRecord создаёт запись выбранного типа на Сервере.
 func (c *Client) CreateRecord(
@@ -264,6 +264,8 @@ func recordErrorCause(code string) error {
 		return model.ErrRecordNotFound
 	case "record_revision_conflict":
 		return model.ErrRecordRevisionConflict
+	case "record_decryption_failed":
+		return model.ErrRecordDecryptionFailed
 	case "precondition_required":
 		return model.ErrRecordPreconditionRequired
 	case "payload_too_large":

@@ -12,6 +12,20 @@ import (
 
 const testRegistrationPassword = "correct-horse-battery-staple"
 
+type passwordHasherStub struct {
+	hashFunc func(password string) ([]byte, error)
+	calls    int
+}
+
+type userRepositoryStub struct {
+	createFunc func(
+		ctx context.Context,
+		login string,
+		passwordHash []byte,
+	) (model.User, error)
+	calls int
+}
+
 func TestRegistrationService_Register(t *testing.T) {
 	passwordHash := []byte("prepared-password-hash")
 	createdAt := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC)
@@ -176,11 +190,6 @@ func TestRegistrationService_RegisterRepositoryError(t *testing.T) {
 	}
 }
 
-type passwordHasherStub struct {
-	hashFunc func(password string) ([]byte, error)
-	calls    int
-}
-
 func (s *passwordHasherStub) Hash(password string) ([]byte, error) {
 	s.calls++
 
@@ -189,15 +198,6 @@ func (s *passwordHasherStub) Hash(password string) ([]byte, error) {
 	}
 
 	return s.hashFunc(password)
-}
-
-type userRepositoryStub struct {
-	createFunc func(
-		ctx context.Context,
-		login string,
-		passwordHash []byte,
-	) (model.User, error)
-	calls int
 }
 
 func (s *userRepositoryStub) Create(

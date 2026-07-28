@@ -11,6 +11,13 @@ import (
 	recordmodel "github.com/xhrobj/gopherkeeper/internal/model"
 )
 
+func TestCleanRecordViewError_ReportsDecryptionFailure(t *testing.T) {
+	got := cleanRecordViewError(recordmodel.ErrRecordDecryptionFailed)
+	if got != "Record data could not be decrypted." {
+		t.Fatalf("cleanRecordViewError() = %q", got)
+	}
+}
+
 func TestRecordViewLines_MasksAndRevealsSensitiveFields(t *testing.T) {
 	record := recordmodel.Record{
 		Metadata: recordmodel.RecordMetadata{

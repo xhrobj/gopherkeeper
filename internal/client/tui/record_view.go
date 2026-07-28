@@ -391,6 +391,10 @@ func cleanRecordViewError(err error) string {
 		return "Record loading canceled"
 	}
 
+	if errors.Is(err, recordmodel.ErrRecordDecryptionFailed) {
+		return "Record data could not be decrypted."
+	}
+
 	return cleanFailureMessage(err, "Unable to load record from Server")
 }
 

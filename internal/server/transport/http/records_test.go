@@ -19,11 +19,6 @@ import (
 
 const testRecordID = "7b4c2d7d-0e2f-4c4b-8d4b-8f4f7c4d3a21"
 
-var (
-	testRecordCreatedAt = time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
-	testRecordUpdatedAt = time.Date(2026, time.July, 12, 12, 1, 0, 0, time.UTC)
-)
-
 type recordManagerStub struct {
 	create func(context.Context, service.CreateRecordRequest) (model.Record, error)
 	list   func(context.Context, int64) ([]model.RecordMetadata, error)
@@ -31,6 +26,28 @@ type recordManagerStub struct {
 	update func(context.Context, service.UpdateRecordRequest) (model.Record, error)
 	delete func(context.Context, service.DeleteRecordRequest) error
 }
+
+type recordResponseEnvelope struct {
+	ID        string           `json:"id"`
+	Type      model.RecordType `json:"type"`
+	Title     string           `json:"title"`
+	Revision  int64            `json:"revision"`
+	CreatedAt time.Time        `json:"created_at"`
+	UpdatedAt time.Time        `json:"updated_at"`
+	Payload   json.RawMessage  `json:"payload"`
+}
+
+type recordPayloadCase struct {
+	name       string
+	title      string
+	payload    model.RecordPayload
+	wantBase64 string
+}
+
+var (
+	testRecordCreatedAt = time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
+	testRecordUpdatedAt = time.Date(2026, time.July, 12, 12, 1, 0, 0, time.UTC)
+)
 
 func (s recordManagerStub) Create(
 	ctx context.Context,
@@ -60,23 +77,6 @@ func (s recordManagerStub) Update(
 
 func (s recordManagerStub) Delete(ctx context.Context, request service.DeleteRecordRequest) error {
 	return s.delete(ctx, request)
-}
-
-type recordResponseEnvelope struct {
-	ID        string           `json:"id"`
-	Type      model.RecordType `json:"type"`
-	Title     string           `json:"title"`
-	Revision  int64            `json:"revision"`
-	CreatedAt time.Time        `json:"created_at"`
-	UpdatedAt time.Time        `json:"updated_at"`
-	Payload   json.RawMessage  `json:"payload"`
-}
-
-type recordPayloadCase struct {
-	name       string
-	title      string
-	payload    model.RecordPayload
-	wantBase64 string
 }
 
 func TestCreateRecordHandler_CreatesRecords(t *testing.T) {
@@ -832,6 +832,7 @@ func TestWriteRecordError(t *testing.T) {
 	payloadTooLargeError := fmt.Errorf("create record: %w", model.ErrPayloadTooLarge)
 	recordNotFoundError := fmt.Errorf("get record: %w", model.ErrRecordNotFound)
 	revisionConflictError := fmt.Errorf("update record: %w", model.ErrRecordRevisionConflict)
+	decryptionError := fmt.Errorf("get record: %w", model.ErrRecordDecryptionFailed)
 	preconditionRequiredError := fmt.Errorf("update record: %w", model.ErrRecordPreconditionRequired)
 
 	payloadTooLarge := errorResponseExpectation{
@@ -848,6 +849,11 @@ func TestWriteRecordError(t *testing.T) {
 		status:  http.StatusConflict,
 		code:    errorCodeRevisionConflict,
 		message: errorMessageRevisionConflict,
+	}
+	recordDecryption := errorResponseExpectation{
+		status:  http.StatusInternalServerError,
+		code:    errorCodeRecordDecryption,
+		message: errorMessageRecordDecryption,
 	}
 	preconditionRequired := errorResponseExpectation{
 		status:  http.StatusPreconditionRequired,
@@ -873,6 +879,7 @@ func TestWriteRecordError(t *testing.T) {
 		{name: "payload too large", err: payloadTooLargeError, want: payloadTooLarge},
 		{name: "record not found", err: recordNotFoundError, want: recordNotFound},
 		{name: "revision conflict", err: revisionConflictError, want: revisionConflict},
+		{name: "record decryption", err: decryptionError, want: recordDecryption},
 		{name: "precondition required", err: preconditionRequiredError, want: preconditionRequired},
 		{name: "invalid record ID", err: model.ErrInvalidRecordID, want: invalidRequest},
 		{name: "invalid record revision", err: model.ErrInvalidRecordRevision, want: invalidRequest},

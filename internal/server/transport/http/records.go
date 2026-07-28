@@ -25,11 +25,6 @@ const (
 	errorMessagePreconditionRequired = "record revision is required"
 )
 
-var (
-	revisionETagPattern      = regexp.MustCompile(`^[1-9][0-9]*$`)
-	errInvalidRecordResponse = errors.New("invalid record response")
-)
-
 // RecordManager выполняет серверные сценарии приватных записей.
 type RecordManager interface {
 	// Create создаёт приватную запись пользователя.
@@ -76,6 +71,11 @@ type recordResponse struct {
 type listRecordsResponse struct {
 	Records []recordMetadataResponse `json:"records"`
 }
+
+var (
+	revisionETagPattern      = regexp.MustCompile(`^[1-9][0-9]*$`)
+	errInvalidRecordResponse = errors.New("invalid record response")
+)
 
 func createRecordHandler(records RecordManager) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -338,6 +338,14 @@ func writeRecordError(w http.ResponseWriter, err error) {
 			http.StatusConflict,
 			errorCodeRevisionConflict,
 			errorMessageRevisionConflict,
+		)
+
+	case errors.Is(err, model.ErrRecordDecryptionFailed):
+		writeErrorResponse(
+			w,
+			http.StatusInternalServerError,
+			errorCodeRecordDecryption,
+			errorMessageRecordDecryption,
 		)
 
 	case errors.Is(err, model.ErrRecordPreconditionRequired):

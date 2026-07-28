@@ -8,8 +8,6 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-var errUnexpectedRecordPayload = errors.New("unexpected record payload")
-
 // RecordGateway описывает удалённые CRUD-операции, необходимые application-слою.
 type RecordGateway interface {
 	CreateRecord(
@@ -63,6 +61,8 @@ type DeleteRecordRequest struct {
 	// ExpectedRevision содержит ревизию, которую пользователь ожидает удалить.
 	ExpectedRevision int64
 }
+
+var errUnexpectedRecordPayload = errors.New("unexpected record payload")
 
 // CreateRecord создаёт запись выбранного типа в online-режиме.
 func (a *Application) CreateRecord(ctx context.Context, request CreateRecordRequest) (model.Record, error) {
@@ -196,6 +196,8 @@ func mapRecordGatewayError(operation string, err error) error {
 		return newUserError("record not found", err)
 	case errors.Is(err, model.ErrRecordRevisionConflict):
 		return newUserError("record revision conflict", err)
+	case errors.Is(err, model.ErrRecordDecryptionFailed):
+		return newUserError("record data could not be decrypted", err)
 	case errors.Is(err, model.ErrRecordPreconditionRequired):
 		return newUserError("record revision is required", err)
 	case errors.Is(err, model.ErrPayloadTooLarge):

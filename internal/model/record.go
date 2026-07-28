@@ -48,44 +48,6 @@ const (
 	RecordInitialRevision int64 = 1
 )
 
-var (
-	// ErrRecordNotFound сообщает, что приватная запись не найдена или недоступна пользователю.
-	ErrRecordNotFound = errors.New("record not found")
-
-	// ErrRecordTypeUnsupported сообщает, что тип приватной записи не поддерживается.
-	ErrRecordTypeUnsupported = errors.New("record type unsupported")
-
-	// ErrPayloadTooLarge сообщает, что приватный payload превышает допустимый размер.
-	ErrPayloadTooLarge = errors.New("payload too large")
-
-	// ErrInvalidRecordID сообщает, что идентификатор записи не является UUID.
-	ErrInvalidRecordID = errors.New("invalid record id")
-
-	// ErrInvalidRecordTitle сообщает, что открытое название записи некорректно.
-	ErrInvalidRecordTitle = errors.New("invalid record title")
-
-	// ErrInvalidTextPayload сообщает, что text payload некорректен.
-	ErrInvalidTextPayload = errors.New("invalid text payload")
-
-	// ErrInvalidBinaryPayload сообщает, что binary payload некорректен.
-	ErrInvalidBinaryPayload = errors.New("invalid binary payload")
-
-	// ErrRecordRevisionConflict сообщает, что ожидаемая ревизия записи устарела.
-	ErrRecordRevisionConflict = errors.New("record revision conflict")
-
-	// ErrRecordPreconditionRequired сообщает, что операция над записью требует ожидаемую ревизию.
-	ErrRecordPreconditionRequired = errors.New("record precondition required")
-
-	// ErrInvalidRecordRevision сообщает, что ревизия записи некорректна.
-	ErrInvalidRecordRevision = errors.New("invalid record revision")
-
-	// ErrInvalidRecordData сообщает, что данные приватной записи некорректны.
-	ErrInvalidRecordData = errors.New("invalid record data")
-)
-
-// RecordType описывает тип приватной записи.
-type RecordType string
-
 const (
 	// RecordTypeCredentials обозначает запись с парой login/password.
 	RecordTypeCredentials RecordType = "credentials"
@@ -100,14 +62,28 @@ const (
 	RecordTypeBinary RecordType = "binary"
 )
 
-// Validate проверяет, что тип записи поддерживается доменной моделью.
-func (recordType RecordType) Validate() error {
-	switch recordType {
-	case RecordTypeCredentials, RecordTypeCard, RecordTypeText, RecordTypeBinary:
-		return nil
-	default:
-		return ErrRecordTypeUnsupported
-	}
+// RecordType описывает тип приватной записи.
+type RecordType string
+
+// RecordMetadata содержит открытые поля приватной записи без payload.
+type RecordMetadata struct {
+	// ID содержит UUID приватной записи.
+	ID string
+
+	// Type содержит тип payload записи.
+	Type RecordType
+
+	// Title содержит открытое название записи.
+	Title string
+
+	// Revision содержит текущую ревизию записи.
+	Revision int64
+
+	// CreatedAt содержит время создания записи в UTC.
+	CreatedAt time.Time
+
+	// UpdatedAt содержит время последнего изменения записи в UTC.
+	UpdatedAt time.Time
 }
 
 // Record содержит открытые поля и типизированный приватный payload записи.
@@ -155,25 +131,52 @@ type EncryptedRecord struct {
 	Ciphertext []byte
 }
 
-// RecordMetadata содержит открытые поля приватной записи без payload.
-type RecordMetadata struct {
-	// ID содержит UUID приватной записи.
-	ID string
+var (
+	// ErrRecordNotFound сообщает, что приватная запись не найдена или недоступна пользователю.
+	ErrRecordNotFound = errors.New("record not found")
 
-	// Type содержит тип payload записи.
-	Type RecordType
+	// ErrRecordTypeUnsupported сообщает, что тип приватной записи не поддерживается.
+	ErrRecordTypeUnsupported = errors.New("record type unsupported")
 
-	// Title содержит открытое название записи.
-	Title string
+	// ErrPayloadTooLarge сообщает, что приватный payload превышает допустимый размер.
+	ErrPayloadTooLarge = errors.New("payload too large")
 
-	// Revision содержит текущую ревизию записи.
-	Revision int64
+	// ErrInvalidRecordID сообщает, что идентификатор записи не является UUID.
+	ErrInvalidRecordID = errors.New("invalid record id")
 
-	// CreatedAt содержит время создания записи в UTC.
-	CreatedAt time.Time
+	// ErrInvalidRecordTitle сообщает, что открытое название записи некорректно.
+	ErrInvalidRecordTitle = errors.New("invalid record title")
 
-	// UpdatedAt содержит время последнего изменения записи в UTC.
-	UpdatedAt time.Time
+	// ErrInvalidTextPayload сообщает, что text payload некорректен.
+	ErrInvalidTextPayload = errors.New("invalid text payload")
+
+	// ErrInvalidBinaryPayload сообщает, что binary payload некорректен.
+	ErrInvalidBinaryPayload = errors.New("invalid binary payload")
+
+	// ErrRecordRevisionConflict сообщает, что ожидаемая ревизия записи устарела.
+	ErrRecordRevisionConflict = errors.New("record revision conflict")
+
+	// ErrRecordDecryptionFailed сообщает, что приватный payload записи не удалось расшифровать.
+	ErrRecordDecryptionFailed = errors.New("record decryption failed")
+
+	// ErrRecordPreconditionRequired сообщает, что операция над записью требует ожидаемую ревизию.
+	ErrRecordPreconditionRequired = errors.New("record precondition required")
+
+	// ErrInvalidRecordRevision сообщает, что ревизия записи некорректна.
+	ErrInvalidRecordRevision = errors.New("invalid record revision")
+
+	// ErrInvalidRecordData сообщает, что данные приватной записи некорректны.
+	ErrInvalidRecordData = errors.New("invalid record data")
+)
+
+// Validate проверяет, что тип записи поддерживается доменной моделью.
+func (recordType RecordType) Validate() error {
+	switch recordType {
+	case RecordTypeCredentials, RecordTypeCard, RecordTypeText, RecordTypeBinary:
+		return nil
+	default:
+		return ErrRecordTypeUnsupported
+	}
 }
 
 // Validate проверяет открытые поля и типизированный payload приватной записи.

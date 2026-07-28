@@ -313,10 +313,6 @@ func TestModel_CurrentUserButtonBoundsMatchRenderedButtonRow(t *testing.T) {
 	}
 }
 
-func mouseClick(x, y int) tea.MouseClickMsg {
-	return tea.MouseClickMsg(tea.Mouse{X: x, Y: y, Button: tea.MouseLeft})
-}
-
 func TestModel_MouseClickEditsAndCancelsConfig(t *testing.T) {
 	initial := config.Config{Address: "localhost:8080"}
 	m := newTestModel(t, initial, buildinfo.Info{})
@@ -593,39 +589,6 @@ func TestModel_RecordViewButtonBoundsIgnoreButtonLabelsInPayload(t *testing.T) {
 	}
 }
 
-func assertRecordViewButtonBounds(t *testing.T, record recordmodel.Record, label string) {
-	t.Helper()
-	m := newTestModel(t, config.Config{}, buildinfo.Info{})
-	m.width = 100
-	m.height = 36
-	m.dialog = dialogRecordView
-	m.recordFeature.view = recordViewState{status: recordViewReady, record: record}
-
-	window := m.renderDialog()
-	buttonRow := lastLineIndexContaining(strings.Split(ansi.Strip(window), "\n"), label)
-	if buttonRow < 0 {
-		t.Fatalf("rendered button %q was not found", label)
-	}
-
-	buttons := m.dialogButtonBounds()
-	if len(buttons) == 0 {
-		t.Fatal("record view button bounds are empty")
-	}
-	wantY := max(2, (m.height-lipgloss.Height(window))/2) + buttonRow
-	if buttons[0].y != wantY {
-		t.Fatalf("button y = %d, want rendered row %d", buttons[0].y, wantY)
-	}
-}
-
-func lastLineIndexContaining(lines []string, value string) int {
-	for index := len(lines) - 1; index >= 0; index-- {
-		if strings.Contains(lines[index], value) {
-			return index
-		}
-	}
-	return -1
-}
-
 func TestModel_SyncButtonBoundsMatchRenderedButtonRow(t *testing.T) {
 	m := newSyncTestModel(t, backendStub{})
 	m.width = 100
@@ -891,6 +854,7 @@ func TestModel_ConfigPathPickerMouseDoubleClickSelectsFile(t *testing.T) {
 		t.Fatalf("double-click selection = %q, want %q", got.configForm.fields[configCACertFile].value, want)
 	}
 }
+
 func TestModel_ConfigPathPickerMouseDoubleClickOnParentSelectsCurrentDirectory(t *testing.T) {
 	rootDirectory := canonicalPath(t.TempDir())
 	childDirectory := filepath.Join(rootDirectory, "cache")
@@ -931,4 +895,41 @@ func TestModel_ConfigPathPickerMouseDoubleClickOnParentSelectsCurrentDirectory(t
 	if got.configForm.fields[configCacheDir].value != want {
 		t.Fatalf("double-click current-directory selection = %q, want %q", got.configForm.fields[configCacheDir].value, want)
 	}
+}
+
+func mouseClick(x, y int) tea.MouseClickMsg {
+	return tea.MouseClickMsg(tea.Mouse{X: x, Y: y, Button: tea.MouseLeft})
+}
+
+func assertRecordViewButtonBounds(t *testing.T, record recordmodel.Record, label string) {
+	t.Helper()
+	m := newTestModel(t, config.Config{}, buildinfo.Info{})
+	m.width = 100
+	m.height = 36
+	m.dialog = dialogRecordView
+	m.recordFeature.view = recordViewState{status: recordViewReady, record: record}
+
+	window := m.renderDialog()
+	buttonRow := lastLineIndexContaining(strings.Split(ansi.Strip(window), "\n"), label)
+	if buttonRow < 0 {
+		t.Fatalf("rendered button %q was not found", label)
+	}
+
+	buttons := m.dialogButtonBounds()
+	if len(buttons) == 0 {
+		t.Fatal("record view button bounds are empty")
+	}
+	wantY := max(2, (m.height-lipgloss.Height(window))/2) + buttonRow
+	if buttons[0].y != wantY {
+		t.Fatalf("button y = %d, want rendered row %d", buttons[0].y, wantY)
+	}
+}
+
+func lastLineIndexContaining(lines []string, value string) int {
+	for index := len(lines) - 1; index >= 0; index-- {
+		if strings.Contains(lines[index], value) {
+			return index
+		}
+	}
+	return -1
 }

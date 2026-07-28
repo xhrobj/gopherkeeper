@@ -2,11 +2,6 @@ package model
 
 import "errors"
 
-var (
-	// ErrInvalidCardPayload сообщает, что card payload некорректен.
-	ErrInvalidCardPayload = errors.New("invalid card payload")
-)
-
 // CardPayload содержит приватные данные банковской карты.
 type CardPayload struct {
 	// Number содержит номер банковской карты.
@@ -27,6 +22,11 @@ type CardPayload struct {
 	// Metadata содержит необязательную произвольную текстовую метаинформацию.
 	Metadata string `json:"metadata,omitempty"`
 }
+
+var (
+	// ErrInvalidCardPayload сообщает, что card payload некорректен.
+	ErrInvalidCardPayload = errors.New("invalid card payload")
+)
 
 // Validate проверяет обязательные поля и ограничения card payload.
 func (payload *CardPayload) Validate() error {

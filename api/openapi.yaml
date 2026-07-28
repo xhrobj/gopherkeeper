@@ -427,7 +427,22 @@ paths:
         '404':
           $ref: '#/components/responses/RecordNotFound'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: Внутренняя ошибка Сервера или невозможность расшифровать payload записи
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                recordDecryptionFailed:
+                  summary: Payload записи не удалось расшифровать
+                  value:
+                    code: record_decryption_failed
+                    message: record data could not be decrypted
+                internalError:
+                  summary: Внутренняя ошибка без раскрытия деталей
+                  value:
+                    code: internal_error
+                    message: internal server error
 
     put:
       summary: Изменить приватную запись

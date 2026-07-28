@@ -21,8 +21,6 @@ import (
 
 const requestTimeout = 10 * time.Second
 
-var errAddressRequired = errors.New("gRPC address is required")
-
 type connectionCloser interface {
 	Close() error
 }
@@ -52,6 +50,15 @@ type Client struct {
 	auth       authClient
 	records    recordClient
 }
+
+var errAddressRequired = errors.New("gRPC address is required")
+
+var (
+	_ io.Closer             = (*Client)(nil)
+	_ usecase.HealthChecker = (*Client)(nil)
+	_ usecase.UserGateway   = (*Client)(nil)
+	_ usecase.RecordGateway = (*Client)(nil)
+)
 
 // New создаёт TLS-защищённый gRPC-Клиент с системными корневыми
 // сертификатами и дополнительным доверенным CA certificate при его наличии.
@@ -128,10 +135,3 @@ func withRequestTimeout(ctx context.Context) (context.Context, context.CancelFun
 func authorizedContext(ctx context.Context, accessToken string) context.Context {
 	return withBearerToken(ctx, accessToken)
 }
-
-var (
-	_ io.Closer             = (*Client)(nil)
-	_ usecase.HealthChecker = (*Client)(nil)
-	_ usecase.UserGateway   = (*Client)(nil)
-	_ usecase.RecordGateway = (*Client)(nil)
-)

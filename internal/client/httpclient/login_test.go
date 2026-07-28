@@ -48,6 +48,49 @@ func TestClient_Login(t *testing.T) {
 	}
 }
 
+func TestClient_LoginReturnsAPIError(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{
+			"code":"invalid_credentials",
+			"message":"invalid login or password"
+		}`))
+	}))
+	defer server.Close()
+
+	client, err := New(serverAddress(server), writeServerCertificate(t, server))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, err = client.Login(context.Background(), "eve", testLoginPassword)
+	if err == nil {
+		t.Fatal("Login() error = nil, want API error")
+	}
+
+	var apiError *APIError
+	if !errors.As(err, &apiError) {
+		t.Fatalf("Login() error = %T, want *APIError", err)
+	}
+
+	if apiError.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status code = %d, want %d", apiError.StatusCode, http.StatusUnauthorized)
+	}
+	if apiError.Code != "invalid_credentials" {
+		t.Errorf("code = %q, want invalid_credentials", apiError.Code)
+	}
+	if apiError.Message != "invalid login or password" {
+		t.Errorf("message = %q, want invalid login or password", apiError.Message)
+	}
+	if !errors.Is(err, model.ErrInvalidCredentials) {
+		t.Errorf("Login() error = %v, want ErrInvalidCredentials", err)
+	}
+	if strings.Contains(err.Error(), testLoginPassword) {
+		t.Error("login error contains password")
+	}
+}
+
 func newSuccessfulLoginServer(t *testing.T, createdAt time.Time, expiresAt time.Time) *httptest.Server {
 	t.Helper()
 
@@ -105,47 +148,4 @@ func assertLoginRequest(t *testing.T, r *http.Request) bool {
 	}
 
 	return valid
-}
-
-func TestClient_LoginReturnsAPIError(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{
-			"code":"invalid_credentials",
-			"message":"invalid login or password"
-		}`))
-	}))
-	defer server.Close()
-
-	client, err := New(serverAddress(server), writeServerCertificate(t, server))
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	_, err = client.Login(context.Background(), "eve", testLoginPassword)
-	if err == nil {
-		t.Fatal("Login() error = nil, want API error")
-	}
-
-	var apiError *APIError
-	if !errors.As(err, &apiError) {
-		t.Fatalf("Login() error = %T, want *APIError", err)
-	}
-
-	if apiError.StatusCode != http.StatusUnauthorized {
-		t.Errorf("status code = %d, want %d", apiError.StatusCode, http.StatusUnauthorized)
-	}
-	if apiError.Code != "invalid_credentials" {
-		t.Errorf("code = %q, want invalid_credentials", apiError.Code)
-	}
-	if apiError.Message != "invalid login or password" {
-		t.Errorf("message = %q, want invalid login or password", apiError.Message)
-	}
-	if !errors.Is(err, model.ErrInvalidCredentials) {
-		t.Errorf("Login() error = %v, want ErrInvalidCredentials", err)
-	}
-	if strings.Contains(err.Error(), testLoginPassword) {
-		t.Error("login error contains password")
-	}
 }

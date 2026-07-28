@@ -7,6 +7,7 @@ const (
 	errorCodePayloadTooLarge      = "payload_too_large"
 	errorCodeUnsupportedMediaType = "unsupported_media_type"
 	errorCodeInternal             = "internal_error"
+	errorCodeRecordDecryption     = "record_decryption_failed"
 )
 
 const (
@@ -14,4 +15,5 @@ const (
 	errorMessagePayloadTooLarge      = "payload is too large"
 	errorMessageUnsupportedMediaType = "content type must be application/json"
 	errorMessageInternal             = "internal server error"
+	errorMessageRecordDecryption     = "record data could not be decrypted"
 )

@@ -35,6 +35,8 @@ func transportError(err error) error {
 		return status.Error(codes.NotFound, "record not found")
 	case errors.Is(err, model.ErrRecordRevisionConflict):
 		return status.Error(codes.Aborted, "record revision conflict")
+	case errors.Is(err, model.ErrRecordDecryptionFailed):
+		return status.Error(codes.DataLoss, "record data could not be decrypted")
 	case errors.Is(err, model.ErrRecordPreconditionRequired):
 		return status.Error(codes.FailedPrecondition, "record revision is required")
 	case errors.Is(err, errInvalidRequest),

@@ -15,20 +15,34 @@ import (
 
 const testRecordID = "00000000-0000-4000-8000-000000000042"
 
-var testTime = time.Date(2026, time.July, 26, 12, 0, 0, 0, time.UTC)
-
 type closerStub struct {
 	called bool
 	err    error
 }
 
+type healthClientStub struct {
+	check func(context.Context, *healthpb.HealthCheckRequest, ...grpc.CallOption) (*healthpb.HealthCheckResponse, error)
+}
+
+type authClientStub struct {
+	register    func(context.Context, *gopherkeeperpb.RegisterRequest, ...grpc.CallOption) (*gopherkeeperpb.RegisterResponse, error)
+	login       func(context.Context, *gopherkeeperpb.LoginRequest, ...grpc.CallOption) (*gopherkeeperpb.LoginResponse, error)
+	currentUser func(context.Context, *gopherkeeperpb.CurrentUserRequest, ...grpc.CallOption) (*gopherkeeperpb.CurrentUserResponse, error)
+}
+
+type recordClientStub struct {
+	create func(context.Context, *gopherkeeperpb.CreateRecordRequest, ...grpc.CallOption) (*gopherkeeperpb.Record, error)
+	list   func(context.Context, *gopherkeeperpb.ListRecordsRequest, ...grpc.CallOption) (*gopherkeeperpb.ListRecordsResponse, error)
+	get    func(context.Context, *gopherkeeperpb.GetRecordRequest, ...grpc.CallOption) (*gopherkeeperpb.Record, error)
+	update func(context.Context, *gopherkeeperpb.UpdateRecordRequest, ...grpc.CallOption) (*gopherkeeperpb.Record, error)
+	delete func(context.Context, *gopherkeeperpb.DeleteRecordRequest, ...grpc.CallOption) (*gopherkeeperpb.DeleteRecordResponse, error)
+}
+
+var testTime = time.Date(2026, time.July, 26, 12, 0, 0, 0, time.UTC)
+
 func (stub *closerStub) Close() error {
 	stub.called = true
 	return stub.err
-}
-
-type healthClientStub struct {
-	check func(context.Context, *healthpb.HealthCheckRequest, ...grpc.CallOption) (*healthpb.HealthCheckResponse, error)
 }
 
 func (stub healthClientStub) Check(
@@ -37,12 +51,6 @@ func (stub healthClientStub) Check(
 	options ...grpc.CallOption,
 ) (*healthpb.HealthCheckResponse, error) {
 	return stub.check(ctx, request, options...)
-}
-
-type authClientStub struct {
-	register    func(context.Context, *gopherkeeperpb.RegisterRequest, ...grpc.CallOption) (*gopherkeeperpb.RegisterResponse, error)
-	login       func(context.Context, *gopherkeeperpb.LoginRequest, ...grpc.CallOption) (*gopherkeeperpb.LoginResponse, error)
-	currentUser func(context.Context, *gopherkeeperpb.CurrentUserRequest, ...grpc.CallOption) (*gopherkeeperpb.CurrentUserResponse, error)
 }
 
 func (stub authClientStub) Register(
@@ -67,14 +75,6 @@ func (stub authClientStub) CurrentUser(
 	options ...grpc.CallOption,
 ) (*gopherkeeperpb.CurrentUserResponse, error) {
 	return stub.currentUser(ctx, request, options...)
-}
-
-type recordClientStub struct {
-	create func(context.Context, *gopherkeeperpb.CreateRecordRequest, ...grpc.CallOption) (*gopherkeeperpb.Record, error)
-	list   func(context.Context, *gopherkeeperpb.ListRecordsRequest, ...grpc.CallOption) (*gopherkeeperpb.ListRecordsResponse, error)
-	get    func(context.Context, *gopherkeeperpb.GetRecordRequest, ...grpc.CallOption) (*gopherkeeperpb.Record, error)
-	update func(context.Context, *gopherkeeperpb.UpdateRecordRequest, ...grpc.CallOption) (*gopherkeeperpb.Record, error)
-	delete func(context.Context, *gopherkeeperpb.DeleteRecordRequest, ...grpc.CallOption) (*gopherkeeperpb.DeleteRecordResponse, error)
 }
 
 func (stub recordClientStub) CreateRecord(

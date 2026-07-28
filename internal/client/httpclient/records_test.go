@@ -17,6 +17,24 @@ import (
 
 const testRecordID = "550e8400-e29b-41d4-a716-446655440000"
 
+type credentialsRecordRequest struct {
+	Title   string
+	Payload model.CredentialsPayload
+}
+
+type clientGetRecordTestCase struct {
+	name       string
+	recordType model.RecordType
+	payload    model.RecordPayload
+}
+
+type invalidRecordResponseTestCase struct {
+	name     string
+	response string
+	wantErr  error
+	secrets  []string
+}
+
 func TestClient_CreateRecord(t *testing.T) {
 	createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
 	password := "correct-horse-battery-staple"
@@ -44,82 +62,6 @@ func TestClient_CreateRecord(t *testing.T) {
 		t.Fatalf("CreateRecord() error = %v", err)
 	}
 	assertCreatedCredentialsRecord(t, record, password)
-}
-
-func handleCreateRecordTestRequest(
-	t *testing.T,
-	createdAt time.Time,
-	password string,
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	t.Helper()
-
-	if r.Method != http.MethodPost {
-		t.Errorf("method = %s, want %s", r.Method, http.MethodPost)
-	}
-	if r.URL.Path != recordsPath {
-		t.Errorf("path = %s, want %s", r.URL.Path, recordsPath)
-	}
-	if strings.Contains(r.URL.RawQuery, password) || strings.Contains(r.Header.Get("Authorization"), password) {
-		t.Error("credentials password appeared outside JSON body")
-	}
-
-	request := decodeCredentialsRecordRequest(t, r)
-	if request.Payload.Password != password {
-		t.Error("credentials password was not transferred unchanged")
-	}
-	writeRecordResponse(t, w, http.StatusCreated, recordResponse{
-		ID:        testRecordID,
-		Type:      model.RecordTypeCredentials,
-		Title:     request.Title,
-		Revision:  1,
-		CreatedAt: createdAt,
-		UpdatedAt: createdAt,
-	}, &request.Payload)
-}
-
-type credentialsRecordRequest struct {
-	Title   string
-	Payload model.CredentialsPayload
-}
-
-func decodeCredentialsRecordRequest(t *testing.T, r *http.Request) credentialsRecordRequest {
-	t.Helper()
-
-	var request struct {
-		Type    model.RecordType `json:"type"`
-		Title   string           `json:"title"`
-		Payload json.RawMessage  `json:"payload"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		t.Fatalf("decode request: %v", err)
-	}
-	if request.Type != model.RecordTypeCredentials {
-		t.Errorf("type = %q, want credentials", request.Type)
-	}
-
-	var payload model.CredentialsPayload
-	if err := json.Unmarshal(request.Payload, &payload); err != nil {
-		t.Fatalf("decode credentials payload: %v", err)
-	}
-
-	return credentialsRecordRequest{Title: request.Title, Payload: payload}
-}
-
-func assertCreatedCredentialsRecord(t *testing.T, record model.Record, password string) {
-	t.Helper()
-
-	payload, ok := record.Payload.(*model.CredentialsPayload)
-	if !ok {
-		t.Fatalf("payload type = %T, want *model.CredentialsPayload", record.Payload)
-	}
-	if payload.Login != "alice" || payload.Password != password {
-		t.Errorf("payload = %#v, want original credentials", payload)
-	}
-	if record.Metadata.Revision != 1 {
-		t.Errorf("revision = %d, want 1", record.Metadata.Revision)
-	}
 }
 
 func TestClient_CreateBinaryRecord(t *testing.T) {
@@ -193,12 +135,6 @@ func TestClient_CreateBinaryRecord(t *testing.T) {
 	}
 }
 
-type clientGetRecordTestCase struct {
-	name       string
-	recordType model.RecordType
-	payload    model.RecordPayload
-}
-
 func TestClient_GetRecord(t *testing.T) {
 	expiryMonth := 3
 	expiryYear := 38
@@ -251,63 +187,6 @@ func TestClient_GetRecord(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			testClientGetRecord(t, tt)
 		})
-	}
-}
-
-func testClientGetRecord(t *testing.T, tt clientGetRecordTestCase) {
-	t.Helper()
-
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		handleGetRecordTestRequest(t, tt, w, r)
-	}))
-	defer server.Close()
-
-	client, err := New(serverAddress(server), writeServerCertificate(t, server))
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	record, err := client.GetRecord(context.Background(), "test.jwt.token", testRecordID)
-	if err != nil {
-		t.Fatalf("GetRecord() error = %v", err)
-	}
-	if record.Metadata.Type != tt.recordType {
-		t.Errorf("type = %q, want %q", record.Metadata.Type, tt.recordType)
-	}
-	assertClientRecordPayloadEqual(t, record.Payload, tt.payload)
-}
-
-func handleGetRecordTestRequest(
-	t *testing.T,
-	tt clientGetRecordTestCase,
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	t.Helper()
-
-	if r.Method != http.MethodGet {
-		t.Errorf("method = %s, want %s", r.Method, http.MethodGet)
-	}
-	if r.URL.Path != recordsPath+"/"+testRecordID {
-		t.Errorf("path = %s, want record path", r.URL.Path)
-	}
-
-	createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
-	writeRecordResponse(t, w, http.StatusOK, recordResponse{
-		ID:        testRecordID,
-		Type:      tt.recordType,
-		Title:     "Record",
-		Revision:  1,
-		CreatedAt: createdAt,
-		UpdatedAt: createdAt,
-	}, tt.payload)
-}
-
-func assertClientRecordPayloadEqual(t *testing.T, got, want model.RecordPayload) {
-	t.Helper()
-
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("payload = %#v, want %#v", got, want)
 	}
 }
 
@@ -409,11 +288,10 @@ func TestClient_UpdateRecordReturnsAPIError(t *testing.T) {
 	}
 }
 
-type invalidRecordResponseTestCase struct {
-	name     string
-	response string
-	wantErr  error
-	secrets  []string
+func TestRecordErrorCauseMapsDecryptionFailure(t *testing.T) {
+	if !errors.Is(recordErrorCause("record_decryption_failed"), model.ErrRecordDecryptionFailed) {
+		t.Fatal("recordErrorCause() does not map record_decryption_failed")
+	}
 }
 
 func TestClient_GetRecordRejectsInvalidResponse(t *testing.T) {
@@ -492,40 +370,6 @@ func TestClient_GetRecordRejectsInvalidResponse(t *testing.T) {
 	}
 }
 
-func assertGetRecordRejectsInvalidResponse(t *testing.T, tt invalidRecordResponseTestCase) {
-	t.Helper()
-
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(tt.response))
-	}))
-	defer server.Close()
-
-	client, err := New(serverAddress(server), writeServerCertificate(t, server))
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-
-	_, err = client.GetRecord(context.Background(), "test.jwt.token", testRecordID)
-	if err == nil {
-		t.Fatal("GetRecord() error = nil, want invalid response error")
-	}
-	if tt.wantErr != nil && !errors.Is(err, tt.wantErr) {
-		t.Errorf("GetRecord() error = %v, want %v", err, tt.wantErr)
-	}
-	assertErrorDoesNotContainSecrets(t, err, tt.secrets)
-}
-
-func assertErrorDoesNotContainSecrets(t *testing.T, err error, secrets []string) {
-	t.Helper()
-
-	for _, secret := range secrets {
-		if strings.Contains(err.Error(), secret) {
-			t.Errorf("decode error contains secret %q", secret)
-		}
-	}
-}
-
 func TestClient_ListRecordsRejectsInvalidMetadata(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -572,6 +416,168 @@ func TestClient_DeleteRecord(t *testing.T) {
 
 	if err := client.DeleteRecord(context.Background(), "test.jwt.token", testRecordID, 2); err != nil {
 		t.Fatalf("DeleteRecord() error = %v", err)
+	}
+}
+
+func handleCreateRecordTestRequest(
+	t *testing.T,
+	createdAt time.Time,
+	password string,
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	t.Helper()
+
+	if r.Method != http.MethodPost {
+		t.Errorf("method = %s, want %s", r.Method, http.MethodPost)
+	}
+	if r.URL.Path != recordsPath {
+		t.Errorf("path = %s, want %s", r.URL.Path, recordsPath)
+	}
+	if strings.Contains(r.URL.RawQuery, password) || strings.Contains(r.Header.Get("Authorization"), password) {
+		t.Error("credentials password appeared outside JSON body")
+	}
+
+	request := decodeCredentialsRecordRequest(t, r)
+	if request.Payload.Password != password {
+		t.Error("credentials password was not transferred unchanged")
+	}
+	writeRecordResponse(t, w, http.StatusCreated, recordResponse{
+		ID:        testRecordID,
+		Type:      model.RecordTypeCredentials,
+		Title:     request.Title,
+		Revision:  1,
+		CreatedAt: createdAt,
+		UpdatedAt: createdAt,
+	}, &request.Payload)
+}
+
+func decodeCredentialsRecordRequest(t *testing.T, r *http.Request) credentialsRecordRequest {
+	t.Helper()
+
+	var request struct {
+		Type    model.RecordType `json:"type"`
+		Title   string           `json:"title"`
+		Payload json.RawMessage  `json:"payload"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		t.Fatalf("decode request: %v", err)
+	}
+	if request.Type != model.RecordTypeCredentials {
+		t.Errorf("type = %q, want credentials", request.Type)
+	}
+
+	var payload model.CredentialsPayload
+	if err := json.Unmarshal(request.Payload, &payload); err != nil {
+		t.Fatalf("decode credentials payload: %v", err)
+	}
+
+	return credentialsRecordRequest{Title: request.Title, Payload: payload}
+}
+
+func assertCreatedCredentialsRecord(t *testing.T, record model.Record, password string) {
+	t.Helper()
+
+	payload, ok := record.Payload.(*model.CredentialsPayload)
+	if !ok {
+		t.Fatalf("payload type = %T, want *model.CredentialsPayload", record.Payload)
+	}
+	if payload.Login != "alice" || payload.Password != password {
+		t.Errorf("payload = %#v, want original credentials", payload)
+	}
+	if record.Metadata.Revision != 1 {
+		t.Errorf("revision = %d, want 1", record.Metadata.Revision)
+	}
+}
+
+func testClientGetRecord(t *testing.T, tt clientGetRecordTestCase) {
+	t.Helper()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handleGetRecordTestRequest(t, tt, w, r)
+	}))
+	defer server.Close()
+
+	client, err := New(serverAddress(server), writeServerCertificate(t, server))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	record, err := client.GetRecord(context.Background(), "test.jwt.token", testRecordID)
+	if err != nil {
+		t.Fatalf("GetRecord() error = %v", err)
+	}
+	if record.Metadata.Type != tt.recordType {
+		t.Errorf("type = %q, want %q", record.Metadata.Type, tt.recordType)
+	}
+	assertClientRecordPayloadEqual(t, record.Payload, tt.payload)
+}
+
+func handleGetRecordTestRequest(
+	t *testing.T,
+	tt clientGetRecordTestCase,
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	t.Helper()
+
+	if r.Method != http.MethodGet {
+		t.Errorf("method = %s, want %s", r.Method, http.MethodGet)
+	}
+	if r.URL.Path != recordsPath+"/"+testRecordID {
+		t.Errorf("path = %s, want record path", r.URL.Path)
+	}
+
+	createdAt := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
+	writeRecordResponse(t, w, http.StatusOK, recordResponse{
+		ID:        testRecordID,
+		Type:      tt.recordType,
+		Title:     "Record",
+		Revision:  1,
+		CreatedAt: createdAt,
+		UpdatedAt: createdAt,
+	}, tt.payload)
+}
+
+func assertClientRecordPayloadEqual(t *testing.T, got, want model.RecordPayload) {
+	t.Helper()
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("payload = %#v, want %#v", got, want)
+	}
+}
+
+func assertGetRecordRejectsInvalidResponse(t *testing.T, tt invalidRecordResponseTestCase) {
+	t.Helper()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(tt.response))
+	}))
+	defer server.Close()
+
+	client, err := New(serverAddress(server), writeServerCertificate(t, server))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, err = client.GetRecord(context.Background(), "test.jwt.token", testRecordID)
+	if err == nil {
+		t.Fatal("GetRecord() error = nil, want invalid response error")
+	}
+	if tt.wantErr != nil && !errors.Is(err, tt.wantErr) {
+		t.Errorf("GetRecord() error = %v, want %v", err, tt.wantErr)
+	}
+	assertErrorDoesNotContainSecrets(t, err, tt.secrets)
+}
+
+func assertErrorDoesNotContainSecrets(t *testing.T, err error, secrets []string) {
+	t.Helper()
+
+	for _, secret := range secrets {
+		if strings.Contains(err.Error(), secret) {
+			t.Errorf("decode error contains secret %q", secret)
+		}
 	}
 }
 

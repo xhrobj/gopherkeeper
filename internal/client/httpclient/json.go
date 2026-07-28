@@ -25,21 +25,6 @@ type APIError struct {
 	cause error
 }
 
-// Error возвращает безопасное описание ошибки API.
-func (e *APIError) Error() string {
-	return fmt.Sprintf("api request failed: %s", e.Message)
-}
-
-// Unwrap возвращает transport-neutral причину ошибки API, если она известна Клиенту.
-func (e *APIError) Unwrap() error {
-	return e.cause
-}
-
-// UserMessage возвращает сообщение API, предназначенное для пользователя.
-func (e *APIError) UserMessage() string {
-	return e.Message
-}
-
 type errorResponse struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
@@ -61,6 +46,21 @@ type jsonRequest struct {
 	expectedStatus int
 	responseBody   any
 	errorCause     func(string) error
+}
+
+// Error возвращает безопасное описание ошибки API.
+func (e *APIError) Error() string {
+	return fmt.Sprintf("api request failed: %s", e.Message)
+}
+
+// Unwrap возвращает transport-neutral причину ошибки API, если она известна Клиенту.
+func (e *APIError) Unwrap() error {
+	return e.cause
+}
+
+// UserMessage возвращает сообщение API, предназначенное для пользователя.
+func (e *APIError) UserMessage() string {
+	return e.Message
 }
 
 func (c *Client) doJSON(ctx context.Context, request jsonRequest) error {

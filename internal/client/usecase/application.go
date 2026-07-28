@@ -7,23 +7,6 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-// Application выполняет клиентские online- и offline-сценарии поверх удалённых
-// gateway, provider'ов локальной online-сессии и зашифрованного кеша.
-type Application struct {
-	health        HealthChecker
-	users         UserGateway
-	records       RecordGateway
-	sessions      SessionStorageProvider
-	syncCaches    SyncCacheRepositoryProvider
-	offlineCaches OfflineCacheRepositoryProvider
-}
-
-// OfflineApplication выполняет только offline read-only сценарии поверх
-// существующего зашифрованного локального кеша.
-type OfflineApplication struct {
-	offlineCaches OfflineCacheRepositoryProvider
-}
-
 // HealthChecker описывает удалённую проверку доступности Сервера.
 type HealthChecker interface {
 	Health(ctx context.Context) (string, error)
@@ -45,6 +28,23 @@ type SessionStorage interface {
 
 // SessionStorageProvider лениво создаёт локальное хранилище online-сессии.
 type SessionStorageProvider func() (SessionStorage, error)
+
+// Application выполняет клиентские online- и offline-сценарии поверх удалённых
+// gateway, provider'ов локальной online-сессии и зашифрованного кеша.
+type Application struct {
+	health        HealthChecker
+	users         UserGateway
+	records       RecordGateway
+	sessions      SessionStorageProvider
+	syncCaches    SyncCacheRepositoryProvider
+	offlineCaches OfflineCacheRepositoryProvider
+}
+
+// OfflineApplication выполняет только offline read-only сценарии поверх
+// существующего зашифрованного локального кеша.
+type OfflineApplication struct {
+	offlineCaches OfflineCacheRepositoryProvider
+}
 
 // New создаёт application-приложение из готовых зависимостей.
 func New(

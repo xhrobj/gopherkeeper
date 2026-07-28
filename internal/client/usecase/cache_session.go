@@ -31,19 +31,6 @@ func (a *OfflineApplication) OpenCacheSession(
 	return openCacheSession(ctx, a.offlineCaches, request)
 }
 
-func openCacheSession(
-	ctx context.Context,
-	offlineCaches OfflineCacheRepositoryProvider,
-	request OfflineReadRequest,
-) (*CacheSession, error) {
-	repository, err := openOfflineCache(ctx, offlineCaches, request)
-	if err != nil {
-		return nil, err
-	}
-
-	return &CacheSession{repository: repository}, nil
-}
-
 // ListRecords возвращает metadata записей из уже открытого локального кеша.
 func (session *CacheSession) ListRecords(ctx context.Context) ([]model.RecordMetadata, error) {
 	if session == nil || session.repository == nil {
@@ -93,4 +80,17 @@ func (session *CacheSession) Close() error {
 	}
 
 	return nil
+}
+
+func openCacheSession(
+	ctx context.Context,
+	offlineCaches OfflineCacheRepositoryProvider,
+	request OfflineReadRequest,
+) (*CacheSession, error) {
+	repository, err := openOfflineCache(ctx, offlineCaches, request)
+	if err != nil {
+		return nil, err
+	}
+
+	return &CacheSession{repository: repository}, nil
 }

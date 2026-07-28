@@ -25,6 +25,8 @@ func TestMapRPCError(t *testing.T) {
 		{name: "unauthorized", code: codes.Unauthenticated, cause: model.ErrUnauthorized, wantKind: failure.Unauthorized, wantMessage: "message"},
 		{name: "conflict", code: codes.Aborted, cause: model.ErrRecordRevisionConflict, wantKind: failure.Conflict, wantMessage: "message"},
 		{name: "not found", code: codes.NotFound, cause: model.ErrRecordNotFound, wantKind: failure.NotFound, wantMessage: "message"},
+		{name: "record data loss", code: codes.DataLoss, cause: model.ErrRecordDecryptionFailed, wantKind: failure.Unknown, wantMessage: "Record data could not be decrypted"},
+		{name: "unclassified data loss", code: codes.DataLoss, wantKind: failure.Unknown, wantMessage: "Operation failed"},
 		{name: "validation", code: codes.InvalidArgument, cause: model.ErrInvalidRecordData, wantKind: failure.Validation, wantMessage: "message"},
 		{name: "too large", code: codes.ResourceExhausted, cause: model.ErrPayloadTooLarge, wantKind: failure.TooLarge, wantMessage: "message"},
 		{name: "internal", code: codes.Internal, wantKind: failure.Unknown, wantMessage: "Internal server error"},
@@ -34,6 +36,31 @@ func TestMapRPCError(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			assertMappedRPCError(t, test.code, test.cause, test.wantKind, test.wantMessage)
 		})
+	}
+}
+
+func TestMapRPCErrorPreservesContextErrors(t *testing.T) {
+	err := mapRPCError("test", status.FromContextError(context.Canceled).Err(), nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("mapRPCError() error = %v, want context canceled", err)
+	}
+}
+
+func TestInvalidResponseError(t *testing.T) {
+	cause := errors.New("malformed")
+	err := invalidResponseError("login", cause)
+	if !errors.Is(err, cause) {
+		t.Fatalf("invalidResponseError() does not preserve cause: %v", err)
+	}
+	if got := failure.Message(err); got != "Invalid server response" {
+		t.Fatalf("failure.Message() = %q", got)
+	}
+}
+
+func TestRecordErrorCauseMapsDecryptionFailure(t *testing.T) {
+	err := status.Error(codes.DataLoss, "record data could not be decrypted")
+	if !errors.Is(recordErrorCause(err), model.ErrRecordDecryptionFailed) {
+		t.Fatal("recordErrorCause() does not map DataLoss")
 	}
 }
 
@@ -63,23 +90,5 @@ func assertMappedRPCError(
 	var rpcError *RPCError
 	if !errors.As(err, &rpcError) || rpcError.Code != code {
 		t.Fatalf("mapRPCError() RPCError = %#v, want code %s", rpcError, code)
-	}
-}
-
-func TestMapRPCErrorPreservesContextErrors(t *testing.T) {
-	err := mapRPCError("test", status.FromContextError(context.Canceled).Err(), nil)
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("mapRPCError() error = %v, want context canceled", err)
-	}
-}
-
-func TestInvalidResponseError(t *testing.T) {
-	cause := errors.New("malformed")
-	err := invalidResponseError("login", cause)
-	if !errors.Is(err, cause) {
-		t.Fatalf("invalidResponseError() does not preserve cause: %v", err)
-	}
-	if got := failure.Message(err); got != "Invalid server response" {
-		t.Fatalf("failure.Message() = %q", got)
 	}
 }

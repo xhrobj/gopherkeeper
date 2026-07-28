@@ -2,6 +2,7 @@ package grpcclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -25,6 +26,8 @@ type RPCError struct {
 	kind        failure.Kind
 	userMessage string
 }
+
+var _ interface{ Unwrap() []error } = (*RPCError)(nil)
 
 // Error возвращает диагностическое описание gRPC-ошибки.
 func (e *RPCError) Error() string {
@@ -104,6 +107,12 @@ func mapRPCError(operation string, err error, cause error) error {
 		kind = failure.Validation
 	case codes.ResourceExhausted:
 		kind = failure.TooLarge
+	case codes.DataLoss:
+		if errors.Is(cause, model.ErrRecordDecryptionFailed) {
+			userMessage = "Record data could not be decrypted"
+		} else {
+			userMessage = failure.Reason(failure.Unknown)
+		}
 	case codes.Internal:
 		userMessage = "Internal server error"
 	default:
@@ -175,6 +184,8 @@ func recordErrorCause(err error) error {
 		return model.ErrRecordNotFound
 	case codes.Aborted:
 		return model.ErrRecordRevisionConflict
+	case codes.DataLoss:
+		return model.ErrRecordDecryptionFailed
 	case codes.FailedPrecondition:
 		return model.ErrRecordPreconditionRequired
 	case codes.ResourceExhausted:
@@ -185,5 +196,3 @@ func recordErrorCause(err error) error {
 		return nil
 	}
 }
-
-var _ interface{ Unwrap() []error } = (*RPCError)(nil)

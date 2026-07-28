@@ -8,8 +8,6 @@ import (
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-var errDuplicateSyncRecordID = errors.New("duplicate record ID in synchronization state")
-
 // RecordState содержит открытое локальное состояние записи, достаточное для сравнения ревизий.
 type RecordState struct {
 	// ID содержит UUID локальной записи.
@@ -34,6 +32,8 @@ type syncPlan struct {
 	removed    []RecordState
 	unchanged  int
 }
+
+var errDuplicateSyncRecordID = errors.New("duplicate record ID in synchronization state")
 
 func buildSyncPlan(serverRecords []model.RecordMetadata, localRecords []RecordState) (syncPlan, error) {
 	serverByID, err := indexServerRecords(serverRecords)

@@ -26,6 +26,7 @@ func TestTransportError(t *testing.T) {
 		{name: "payload too large", err: model.ErrPayloadTooLarge, code: codes.ResourceExhausted},
 		{name: "not found", err: model.ErrRecordNotFound, code: codes.NotFound},
 		{name: "revision conflict", err: model.ErrRecordRevisionConflict, code: codes.Aborted},
+		{name: "record decryption", err: model.ErrRecordDecryptionFailed, code: codes.DataLoss},
 		{name: "precondition", err: model.ErrRecordPreconditionRequired, code: codes.FailedPrecondition},
 		{name: "invalid request", err: model.ErrInvalidRecordTitle, code: codes.InvalidArgument},
 		{name: "wrapped invalid request", err: fmt.Errorf("wrapped: %w", service.ErrInvalidLogin), code: codes.InvalidArgument},
