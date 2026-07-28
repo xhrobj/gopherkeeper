@@ -187,14 +187,6 @@ func TestRecordViewWindowHeightForState_ShrinksCredentialsWindowToContent(t *tes
 	}
 }
 
-func recordViewLinesText(lines []recordViewLine) string {
-	plain := make([]string, 0, len(lines))
-	for _, line := range lines {
-		plain = append(plain, line.message+line.label+line.value)
-	}
-	return strings.Join(plain, "\n")
-}
-
 func TestRenderRecordViewWindow_BinaryOffersSaveAs(t *testing.T) {
 	state := recordViewState{
 		status: recordViewReady,
@@ -277,6 +269,27 @@ func TestRenderRecordViewAndDeleteForms_KeepOneBlankRowAroundButtons(t *testing.
 	}
 }
 
+func TestCleanCachedRecordViewError_SuggestsSyncForUnreadableRecord(t *testing.T) {
+	err := errors.Join(
+		usecase.ErrLocalCacheRecordsUnreadable,
+		errors.New("corrupted encrypted payload"),
+	)
+
+	got := cleanCachedRecordViewError(err)
+	want := "This cached record is damaged or incompatible.\nRun Cache/Sync... to restore it from the Server."
+	if got != want {
+		t.Fatalf("cleanCachedRecordViewError() = %q, want %q", got, want)
+	}
+}
+
+func recordViewLinesText(lines []recordViewLine) string {
+	plain := make([]string, 0, len(lines))
+	for _, line := range lines {
+		plain = append(plain, line.message+line.label+line.value)
+	}
+	return strings.Join(plain, "\n")
+}
+
 func assertOneBlankRowAroundRecordButtons(t *testing.T, rendered, buttonLabel string) {
 	t.Helper()
 	lines := strings.Split(rendered, "\n")
@@ -289,18 +302,5 @@ func assertOneBlankRowAroundRecordButtons(t *testing.T, rendered, buttonLabel st
 	}
 	if strings.TrimSpace(lines[buttonRow+1]) != "" || buttonRow+2 != len(lines) {
 		t.Fatalf("form does not have exactly one blank row below %q:\n%s", buttonLabel, rendered)
-	}
-}
-
-func TestCleanCachedRecordViewError_SuggestsSyncForUnreadableRecord(t *testing.T) {
-	err := errors.Join(
-		usecase.ErrLocalCacheRecordsUnreadable,
-		errors.New("corrupted encrypted payload"),
-	)
-
-	got := cleanCachedRecordViewError(err)
-	want := "This cached record is damaged or incompatible.\nRun Cache/Sync... to restore it from the Server."
-	if got != want {
-		t.Fatalf("cleanCachedRecordViewError() = %q, want %q", got, want)
 	}
 }

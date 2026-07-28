@@ -10,7 +10,7 @@ import (
 
 const (
 	mouseTestLogin           = "alice"
-	mouseTestPassword        = "secret"
+	mouseTestPassword        = "secret42"
 	wantPasswordFocusMessage = "focus = %d, want password"
 )
 

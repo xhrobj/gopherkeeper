@@ -510,8 +510,8 @@ func TestModel_RegisterFailureHighlightsLogin(t *testing.T) {
 	m := newTestModel(t, config.Config{}, buildinfo.Info{})
 	m.dialog = dialogRegister
 	m.authentication.registerForm.login.setValue("alice")
-	m.authentication.registerForm.password.setValue("secret")
-	m.authentication.registerForm.repeatPassword.setValue("secret")
+	m.authentication.registerForm.password.setValue("secret42")
+	m.authentication.registerForm.repeatPassword.setValue("secret42")
 	m.authentication.registerForm.focus = registerSubmit
 	m.backend = backendStub{register: func(context.Context, string, string) (string, error) {
 		return "", registrationConflictError{login: "alice"}
@@ -537,8 +537,8 @@ func TestModel_RegisterSuccessReturnsToPrefilledLogin(t *testing.T) {
 	m := newTestModel(t, config.Config{}, buildinfo.Info{})
 	m.dialog = dialogRegister
 	m.authentication.registerForm.login.setValue("alice")
-	m.authentication.registerForm.password.setValue("secret")
-	m.authentication.registerForm.repeatPassword.setValue("secret")
+	m.authentication.registerForm.password.setValue("secret42")
+	m.authentication.registerForm.repeatPassword.setValue("secret42")
 	m.authentication.registerForm.focus = registerSubmit
 	m.backend = backendStub{register: func(context.Context, string, string) (string, error) {
 		return "alice", nil

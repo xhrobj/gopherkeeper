@@ -4,9 +4,8 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	domainmodel "github.com/xhrobj/gopherkeeper/internal/model"
 )
-
-type loginFocus int
 
 const (
 	loginName loginFocus = iota
@@ -17,17 +16,55 @@ const (
 )
 
 const (
-	loginLabelWidth    = 8
-	loginFirstFieldRow = 2
-	loginFieldRowStep  = 2
-	loginButtonGap     = 3
-	loginButtonRow     = 6
+	loginLabelWidth   = 8
+	loginFieldRowStep = 2
+	loginButtonGap    = 3
 )
+
+const (
+	registerName registerFocus = iota
+	registerPassword
+	registerRepeatPassword
+	registerSubmit
+	registerClose
+	registerFocusCount
+)
+
+const (
+	registerLabelWidth        = 15
+	registerFieldRowStep      = 2
+	registerButtonGap         = 3
+	registerMinPasswordLength = 8
+	registerMaxPasswordLength = 64
+
+	registerLoginHint          = `^[A-Za-z0-9][A-Za-z0-9._-]{2,31}$`
+	registerPasswordHint       = `^[!-~]{8,64}$`
+	registerRepeatPasswordHint = `== password`
+	registerWelcomeHint        = `Welcome (^-^)/`
+	registerCloseWelcomeHint   = `\(O_O)/`
+)
+
+type loginFocus int
 
 type loginForm struct {
 	login    textField
 	password textField
 	focus    loginFocus
+}
+
+type authWindowLayout struct {
+	content      string
+	fieldBounds  []layoutBounds
+	buttonBounds []layoutBounds
+}
+
+type registerFocus int
+
+type registerForm struct {
+	login          textField
+	password       textField
+	repeatPassword textField
+	focus          registerFocus
 }
 
 func newLoginForm() loginForm {
@@ -122,6 +159,51 @@ func (form *loginForm) delete() {
 	}
 }
 
+func newLoginWindowLayout(
+	t theme,
+	width int,
+	form loginForm,
+	pending bool,
+	blocked bool,
+	spinnerFrame string,
+) authWindowLayout {
+	const (
+		horizontalPadding = 2
+		verticalPadding   = 1
+	)
+
+	title := renderWindowTitle(t.windowTitle, width, "Login", spinnerFrame, pending)
+	fieldLayout := newLabeledFieldColumnLayout(
+		width,
+		loginLabelWidth,
+		16,
+		2,
+		lipgloss.Height(title)+verticalPadding,
+		loginFieldRowStep,
+	)
+
+	rows := []string{
+		renderLoginField(t, "Login", form.login, fieldLayout.inputWidth, form.focus == loginName && !blocked),
+		t.windowBody.Width(fieldLayout.contentWidth).Render(""),
+		renderLoginField(t, "Password", form.password, fieldLayout.inputWidth, form.focus == loginPassword && !blocked),
+		t.windowBody.Width(fieldLayout.contentWidth).Render(""),
+	}
+	buttonLayout := loginButtonsLayout(t, fieldLayout.contentWidth, form.focus, !form.canSubmit(), blocked).
+		positioned(horizontalPadding, lipgloss.Height(title)+verticalPadding+len(rows))
+	rows = append(rows, buttonLayout.content)
+
+	body := t.windowBody.
+		Width(width).
+		Padding(verticalPadding, horizontalPadding).
+		Render(strings.Join(rows, "\n"))
+
+	return authWindowLayout{
+		content:      lipgloss.JoinVertical(lipgloss.Left, title, body),
+		fieldBounds:  fieldLayout.bounds,
+		buttonBounds: buttonLayout.bounds,
+	}
+}
+
 func renderLoginWindow(
 	t theme,
 	width int,
@@ -130,32 +212,18 @@ func renderLoginWindow(
 	blocked bool,
 	spinnerFrame string,
 ) string {
-	layout := newLabeledFieldColumnLayout(
-		width,
-		loginLabelWidth,
-		16,
-		2,
-		loginFirstFieldRow,
-		loginFieldRowStep,
+	return newLoginWindowLayout(t, width, form, pending, blocked, spinnerFrame).content
+}
+
+func (m model) loginWindowLayout() authWindowLayout {
+	return newLoginWindowLayout(
+		m.theme,
+		clamp(m.width-18, 44, 58),
+		m.authentication.loginForm,
+		m.operations.pending(operationLogin),
+		m.interactionBlocked(),
+		m.spinnerFrameValue(),
 	)
-	contentWidth := layout.contentWidth
-	inputWidth := layout.inputWidth
-
-	rows := []string{
-		renderLoginField(t, "Login", form.login, inputWidth, form.focus == loginName && !blocked),
-		t.windowBody.Width(contentWidth).Render(""),
-		renderLoginField(t, "Password", form.password, inputWidth, form.focus == loginPassword && !blocked),
-		t.windowBody.Width(contentWidth).Render(""),
-		renderLoginButtons(t, contentWidth, form.focus, !form.canSubmit(), blocked),
-	}
-
-	title := renderWindowTitle(t.windowTitle, width, "Login", spinnerFrame, pending)
-	body := t.windowBody.
-		Width(width).
-		Padding(1, 2).
-		Render(strings.Join(rows, "\n"))
-
-	return lipgloss.JoinVertical(lipgloss.Left, title, body)
 }
 
 func renderLoginField(t theme, label string, field textField, inputWidth int, active bool) string {
@@ -178,48 +246,6 @@ func loginButtonsLayout(
 	})
 }
 
-func renderLoginButtons(
-	t theme,
-	width int,
-	focus loginFocus,
-	submitDisabled bool,
-	blocked bool,
-) string {
-	return loginButtonsLayout(t, width, focus, submitDisabled, blocked).content
-}
-
-type registerFocus int
-
-const (
-	registerName registerFocus = iota
-	registerPassword
-	registerRepeatPassword
-	registerSubmit
-	registerClose
-	registerFocusCount
-)
-
-const (
-	registerLabelWidth    = 15
-	registerFirstFieldRow = 2
-	registerFieldRowStep  = 2
-	registerButtonGap     = 3
-	registerButtonRow     = 10
-
-	registerLoginHint          = `^[A-Za-z0-9][A-Za-z0-9._-]{2,31}$`
-	registerPasswordHint       = `^[!-~]{8,64}$`
-	registerRepeatPasswordHint = `== password`
-	registerWelcomeHint        = `Welcome (^-^)/`
-	registerCloseWelcomeHint   = `\(O_O)/`
-)
-
-type registerForm struct {
-	login          textField
-	password       textField
-	repeatPassword textField
-	focus          registerFocus
-}
-
 func newRegisterForm() registerForm {
 	return registerForm{
 		login:          newASCIITextField("", false),
@@ -230,10 +256,26 @@ func newRegisterForm() registerForm {
 }
 
 func (form registerForm) canSubmit() bool {
-	return strings.TrimSpace(form.login.value) != "" &&
-		form.password.value != "" &&
-		form.repeatPassword.value != "" &&
+	if _, err := domainmodel.CanonicalizeLogin(form.login.value); err != nil {
+		return false
+	}
+
+	return validRegistrationPassword(form.password.value) &&
 		form.password.value == form.repeatPassword.value
+}
+
+func validRegistrationPassword(password string) bool {
+	if len(password) < registerMinPasswordLength || len(password) > registerMaxPasswordLength {
+		return false
+	}
+
+	for index := 0; index < len(password); index++ {
+		if password[index] < '!' || password[index] > '~' {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (form *registerForm) move(step int, submitDisabled bool) {
@@ -316,6 +358,55 @@ func (form *registerForm) delete() {
 	}
 }
 
+func newRegisterWindowLayout(
+	t theme,
+	width int,
+	form registerForm,
+	pending bool,
+	blocked bool,
+	spinnerFrame string,
+) authWindowLayout {
+	const (
+		horizontalPadding = 2
+		verticalPadding   = 1
+	)
+
+	title := renderWindowTitle(t.windowTitle, width, "Register", spinnerFrame, pending)
+	fieldLayout := newLabeledFieldColumnLayout(
+		width,
+		registerLabelWidth,
+		16,
+		3,
+		lipgloss.Height(title)+verticalPadding,
+		registerFieldRowStep,
+	)
+
+	rows := []string{
+		renderRegisterField(t, "Login", form.login, fieldLayout.inputWidth, form.focus == registerName && !blocked),
+		t.windowBody.Width(fieldLayout.contentWidth).Render(""),
+		renderRegisterField(t, "Password", form.password, fieldLayout.inputWidth, form.focus == registerPassword && !blocked),
+		t.windowBody.Width(fieldLayout.contentWidth).Render(""),
+		renderRegisterField(t, "Repeat password", form.repeatPassword, fieldLayout.inputWidth, form.focus == registerRepeatPassword && !blocked),
+		t.windowBody.Width(fieldLayout.contentWidth).Render(""),
+		renderRegisterHint(t, fieldLayout.contentWidth, form.focus),
+		t.windowBody.Width(fieldLayout.contentWidth).Render(""),
+	}
+	buttonLayout := registerButtonsLayout(t, fieldLayout.contentWidth, form.focus, !form.canSubmit(), blocked).
+		positioned(horizontalPadding, lipgloss.Height(title)+verticalPadding+len(rows))
+	rows = append(rows, buttonLayout.content)
+
+	body := t.windowBody.
+		Width(width).
+		Padding(verticalPadding, horizontalPadding).
+		Render(strings.Join(rows, "\n"))
+
+	return authWindowLayout{
+		content:      lipgloss.JoinVertical(lipgloss.Left, title, body),
+		fieldBounds:  fieldLayout.bounds,
+		buttonBounds: buttonLayout.bounds,
+	}
+}
+
 func renderRegisterWindow(
 	t theme,
 	width int,
@@ -324,36 +415,18 @@ func renderRegisterWindow(
 	blocked bool,
 	spinnerFrame string,
 ) string {
-	layout := newLabeledFieldColumnLayout(
-		width,
-		registerLabelWidth,
-		16,
-		3,
-		registerFirstFieldRow,
-		registerFieldRowStep,
+	return newRegisterWindowLayout(t, width, form, pending, blocked, spinnerFrame).content
+}
+
+func (m model) registerWindowLayout() authWindowLayout {
+	return newRegisterWindowLayout(
+		m.theme,
+		clamp(m.width-18, 48, 62),
+		m.authentication.registerForm,
+		m.operations.pending(operationRegister),
+		m.interactionBlocked(),
+		m.spinnerFrameValue(),
 	)
-	contentWidth := layout.contentWidth
-	inputWidth := layout.inputWidth
-
-	rows := []string{
-		renderRegisterField(t, "Login", form.login, inputWidth, form.focus == registerName && !blocked),
-		t.windowBody.Width(contentWidth).Render(""),
-		renderRegisterField(t, "Password", form.password, inputWidth, form.focus == registerPassword && !blocked),
-		t.windowBody.Width(contentWidth).Render(""),
-		renderRegisterField(t, "Repeat password", form.repeatPassword, inputWidth, form.focus == registerRepeatPassword && !blocked),
-		t.windowBody.Width(contentWidth).Render(""),
-		renderRegisterHint(t, contentWidth, form.focus),
-		t.windowBody.Width(contentWidth).Render(""),
-		renderRegisterButtons(t, contentWidth, form.focus, !form.canSubmit(), blocked),
-	}
-
-	title := renderWindowTitle(t.windowTitle, width, "Register", spinnerFrame, pending)
-	body := t.windowBody.
-		Width(width).
-		Padding(1, 2).
-		Render(strings.Join(rows, "\n"))
-
-	return lipgloss.JoinVertical(lipgloss.Left, title, body)
 }
 
 func renderRegisterField(t theme, label string, field textField, inputWidth int, active bool) string {
@@ -396,14 +469,4 @@ func registerButtonsLayout(
 		{label: "< Register >", active: focus == registerSubmit, disabled: blocked || submitDisabled},
 		{label: "< Close >", active: focus == registerClose, disabled: blocked},
 	})
-}
-
-func renderRegisterButtons(
-	t theme,
-	width int,
-	focus registerFocus,
-	submitDisabled bool,
-	blocked bool,
-) string {
-	return registerButtonsLayout(t, width, focus, submitDisabled, blocked).content
 }

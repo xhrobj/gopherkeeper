@@ -75,12 +75,15 @@ func TestConfigTargetFieldFocus_MapsConfigTargets(t *testing.T) {
 }
 
 func TestNewPathPickerWindowLayout_ClampsDimensions(t *testing.T) {
-	layout := newPathPickerWindowLayout(3, 0)
+	layout := newPathPickerWindowLayout(newTheme(), 3, pathPicker{})
 	if layout.contentWidth != 1 {
 		t.Fatalf("content width = %d, want 1", layout.contentWidth)
 	}
-	if layout.listBounds != (layoutBounds{x: 2, y: 4, width: 1, height: 1}) {
+	if layout.listBounds.x != 2 || layout.listBounds.width != 1 || layout.listBounds.height != 1 {
 		t.Fatalf("list bounds = %#v", layout.listBounds)
+	}
+	if len(layout.buttonBounds) != 2 {
+		t.Fatalf("button bounds count = %d, want 2", len(layout.buttonBounds))
 	}
 }
 

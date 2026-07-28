@@ -6,15 +6,11 @@ import (
 	recordmodel "github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-type recordSource int
-
 const (
 	recordSourceServer recordSource = iota
 	recordSourceCache
 	recordSourceNone
 )
-
-type recordListState int
 
 const (
 	recordListIdle recordListState = iota
@@ -24,6 +20,10 @@ const (
 
 	recordDoubleClickInterval = 350 * time.Millisecond
 )
+
+type recordSource int
+
+type recordListState int
 
 type recordWorkspace struct {
 	source         recordSource

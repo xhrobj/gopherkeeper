@@ -43,35 +43,6 @@ func (stub recordEditBackendStub) UpdateRecord(
 	return stub.updateRecord(ctx, recordID, revision, title, payload)
 }
 
-func newRecordEditTestModel(t *testing.T, backend recordEditBackendStub) model {
-	m := mustNewModel(t,
-		context.Background(),
-		config.Config{},
-		"",
-		buildinfo.Info{},
-		staticBackendFactory(backend),
-	)
-	m.operations.cancel(operationCurrentUser)
-	m.startupCmd = nil
-	m.authentication.session = authSession{state: authAuthenticated, login: "alice"}
-	m.dialog = dialogNone
-	return m
-}
-
-func textRecordForEdit() recordmodel.Record {
-	return recordmodel.Record{
-		Metadata: recordmodel.RecordMetadata{
-			ID:        "7a79b627-0473-48a0-a001-887e79419719",
-			Type:      recordmodel.RecordTypeText,
-			Title:     "Recovery codes",
-			Revision:  2,
-			CreatedAt: time.Date(2026, time.July, 20, 12, 0, 0, 0, time.UTC),
-			UpdatedAt: time.Date(2026, time.July, 20, 13, 0, 0, 0, time.UTC),
-		},
-		Payload: &recordmodel.TextPayload{Text: "code-1\ncode-2", Metadata: "personal"},
-	}
-}
-
 func TestModel_RecordEditMenuAvailability(t *testing.T) {
 	m := newRecordEditTestModel(t, recordEditBackendStub{})
 	m.recordFeature.workspace.apply([]recordmodel.RecordMetadata{textRecordForEdit().Metadata}, 10)
@@ -333,5 +304,34 @@ func TestRecordEditForm_BinaryKeepsEmptyNonNilData(t *testing.T) {
 	binary := payload.(*recordmodel.BinaryPayload)
 	if binary.Data == nil || len(binary.Data) != 0 {
 		t.Fatalf("binary data = %#v, want non-nil empty slice", binary.Data)
+	}
+}
+
+func newRecordEditTestModel(t *testing.T, backend recordEditBackendStub) model {
+	m := mustNewModel(t,
+		context.Background(),
+		config.Config{},
+		"",
+		buildinfo.Info{},
+		staticBackendFactory(backend),
+	)
+	m.operations.cancel(operationCurrentUser)
+	m.startupCmd = nil
+	m.authentication.session = authSession{state: authAuthenticated, login: "alice"}
+	m.dialog = dialogNone
+	return m
+}
+
+func textRecordForEdit() recordmodel.Record {
+	return recordmodel.Record{
+		Metadata: recordmodel.RecordMetadata{
+			ID:        "7a79b627-0473-48a0-a001-887e79419719",
+			Type:      recordmodel.RecordTypeText,
+			Title:     "Recovery codes",
+			Revision:  2,
+			CreatedAt: time.Date(2026, time.July, 20, 12, 0, 0, 0, time.UTC),
+			UpdatedAt: time.Date(2026, time.July, 20, 13, 0, 0, 0, time.UTC),
+		},
+		Payload: &recordmodel.TextPayload{Text: "code-1\ncode-2", Metadata: "personal"},
 	}
 }

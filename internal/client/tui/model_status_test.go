@@ -239,6 +239,82 @@ func TestRenderServerStatus_UsesSameWindowSizeAndNoBorder(t *testing.T) {
 	}
 }
 
+func TestServerStatusWindowLayout_UsesRenderedButtonGeometry(t *testing.T) {
+	theme := newTheme()
+	tests := []struct {
+		name    string
+		options serverStatusWindowOptions
+	}{
+		{
+			name: "ready",
+			options: serverStatusWindowOptions{
+				width:        58,
+				transport:    config.TransportHTTPS,
+				address:      "localhost:8888",
+				state:        serverStatusReady,
+				health:       "ok",
+				activeButton: 1,
+			},
+		},
+		{
+			name: "pending",
+			options: serverStatusWindowOptions{
+				width:        58,
+				transport:    config.TransportGRPC,
+				address:      "localhost:9090",
+				pending:      true,
+				blocked:      true,
+				spinnerFrame: "⠋",
+			},
+		},
+		{
+			name: "failed",
+			options: serverStatusWindowOptions{
+				width:        58,
+				transport:    config.TransportHTTPS,
+				address:      "localhost:8888",
+				state:        serverStatusFailed,
+				failure:      serverStatusFailure{status: "Unreachable", reason: "Connection refused"},
+				activeButton: 1,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			layout := newServerStatusWindowLayout(theme, tt.options)
+			if len(layout.buttonBounds) != 2 {
+				t.Fatalf("button bounds = %d, want 2", len(layout.buttonBounds))
+			}
+
+			lines := strings.Split(ansi.Strip(layout.content), "\n")
+			buttonRow := lineIndexContaining(lines, "< Check >")
+			if buttonRow < 0 {
+				t.Fatal("rendered Server Status buttons were not found")
+			}
+
+			for index, label := range []string{"< Check >", okButtonLabel} {
+				bounds := layout.buttonBounds[index]
+				if bounds.y != buttonRow {
+					t.Fatalf("button %d y = %d, want rendered row %d", index, bounds.y, buttonRow)
+				}
+
+				labelX := strings.Index(lines[buttonRow], label)
+				if labelX < bounds.x || labelX+len(label) > bounds.x+bounds.width {
+					t.Fatalf(
+						"button %d label range %d..%d is outside bounds %d..%d",
+						index,
+						labelX,
+						labelX+len(label),
+						bounds.x,
+						bounds.x+bounds.width,
+					)
+				}
+			}
+		})
+	}
+}
+
 func TestModel_ServerStatusIgnoresStaleResult(t *testing.T) {
 	m := newTestModel(t, config.Config{}, buildinfo.Info{})
 	m.operations.request(operationServerStatus).id = 2
@@ -338,19 +414,6 @@ func TestServerStatusCmd_HonorsMinimumDuration(t *testing.T) {
 	}
 }
 
-func assertServerStatusRow(t *testing.T, view, label, value string) {
-	t.Helper()
-	for _, line := range strings.Split(view, "\n") {
-		if strings.Contains(line, label) && strings.Contains(line, value) {
-			if strings.Index(line, value)-strings.Index(line, label) > 20 {
-				t.Fatalf("%s value is shifted too far to the right: %q", label, line)
-			}
-			return
-		}
-	}
-	t.Fatalf("status row %q = %q was not found:\n%s", label, value, view)
-}
-
 func TestModel_ServerStatusShowsActiveGRPCTransport(t *testing.T) {
 	m := newTestModel(t, config.Config{
 		Transport:   config.TransportGRPC,
@@ -382,6 +445,47 @@ func TestRenderServerStatus_InsertsBlankLineBeforeStatusBlock(t *testing.T) {
 	assertBlankLineBetweenRows(t, view, "Address", "Status")
 }
 
+func TestRenderServerStatus_AlwaysShowsTransportAndAddress(t *testing.T) {
+	theme := newTheme()
+	states := []serverStatusWindowOptions{
+		{
+			width:     58,
+			transport: config.TransportGRPC,
+			address:   "localhost:9090",
+			pending:   true,
+		},
+		{
+			width:     58,
+			transport: config.TransportGRPC,
+			address:   "localhost:9090",
+			state:     serverStatusFailed,
+			failure:   serverStatusFailure{status: "Unreachable", reason: "Connection refused"},
+		},
+	}
+
+	for index, options := range states {
+		view := ansi.Strip(renderServerStatusWindow(theme, options))
+		for _, want := range []string{"Transport", "gRPC", "Address", "localhost:9090"} {
+			if !strings.Contains(view, want) {
+				t.Fatalf("state %d does not contain %q:\n%s", index, want, view)
+			}
+		}
+	}
+}
+
+func assertServerStatusRow(t *testing.T, view, label, value string) {
+	t.Helper()
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, label) && strings.Contains(line, value) {
+			if strings.Index(line, value)-strings.Index(line, label) > 20 {
+				t.Fatalf("%s value is shifted too far to the right: %q", label, line)
+			}
+			return
+		}
+	}
+	t.Fatalf("status row %q = %q was not found:\n%s", label, value, view)
+}
+
 func assertBlankLineBetweenRows(t *testing.T, view, upperLabel, lowerLabel string) {
 	t.Helper()
 	lines := strings.Split(view, "\n")
@@ -410,32 +514,4 @@ func assertBlankLineBetweenRows(t *testing.T, view, upperLabel, lowerLabel strin
 
 func serverStatusLineHasLabel(line, label string) bool {
 	return strings.HasPrefix(strings.TrimSpace(line), label+" ")
-}
-
-func TestRenderServerStatus_AlwaysShowsTransportAndAddress(t *testing.T) {
-	theme := newTheme()
-	states := []serverStatusWindowOptions{
-		{
-			width:     58,
-			transport: config.TransportGRPC,
-			address:   "localhost:9090",
-			pending:   true,
-		},
-		{
-			width:     58,
-			transport: config.TransportGRPC,
-			address:   "localhost:9090",
-			state:     serverStatusFailed,
-			failure:   serverStatusFailure{status: "Unreachable", reason: "Connection refused"},
-		},
-	}
-
-	for index, options := range states {
-		view := ansi.Strip(renderServerStatusWindow(theme, options))
-		for _, want := range []string{"Transport", "gRPC", "Address", "localhost:9090"} {
-			if !strings.Contains(view, want) {
-				t.Fatalf("state %d does not contain %q:\n%s", index, want, view)
-			}
-		}
-	}
 }

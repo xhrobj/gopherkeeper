@@ -9,7 +9,7 @@ import (
 
 const (
 	authFormTestLogin    = "alice"
-	authFormTestPassword = "secret"
+	authFormTestPassword = "secret42"
 	authFormTestSpinner  = "spinner"
 )
 
@@ -31,9 +31,9 @@ func TestLoginForm_EditingAndNavigation(t *testing.T) {
 	form.insertKey("s")
 	form.moveCursorToEnd()
 	form.backspace()
-	form.insert("t")
+	form.insert("2")
 	if form.password.value != authFormTestPassword {
-		t.Fatalf("password = %q, want secret", form.password.value)
+		t.Fatalf("password = %q, want %q", form.password.value, authFormTestPassword)
 	}
 
 	form.setFocus(loginSubmit, true)
@@ -82,17 +82,17 @@ func TestRegisterForm_EditingAndNavigation(t *testing.T) {
 	form.delete()
 	form.repeatPassword.setValue("")
 	form.insertKey("s")
-	form.insert("ecret")
+	form.insert("ecret42")
 	if !form.canSubmit() {
 		t.Fatal("complete registration form cannot be submitted")
 	}
 
 	form.moveCursor(-1)
 	form.backspace()
-	form.insert("e")
+	form.insert("4")
 	form.moveCursorToEnd()
 	if form.repeatPassword.value != authFormTestPassword {
-		t.Fatalf("repeat password = %q, want secret", form.repeatPassword.value)
+		t.Fatalf("repeat password = %q, want %q", form.repeatPassword.value, authFormTestPassword)
 	}
 
 	form.setFocus(registerSubmit, true)
@@ -124,6 +124,37 @@ func TestRegisterForm_EditingAndNavigation(t *testing.T) {
 	}
 }
 
+func TestRegisterForm_CanSubmitValidatesCredentials(t *testing.T) {
+	tests := []struct {
+		name     string
+		login    string
+		password string
+		repeat   string
+		want     bool
+	}{
+		{name: "valid", login: "Alice_42", password: "secret42", repeat: "secret42", want: true},
+		{name: "login too short", login: "ab", password: "secret42", repeat: "secret42"},
+		{name: "invalid login character", login: "alice!", password: "secret42", repeat: "secret42"},
+		{name: "password too short", login: "alice", password: "1234567", repeat: "1234567"},
+		{name: "password too long", login: "alice", password: strings.Repeat("x", registerMaxPasswordLength+1), repeat: strings.Repeat("x", registerMaxPasswordLength+1)},
+		{name: "password contains space", login: "alice", password: "secret 42", repeat: "secret 42"},
+		{name: "passwords differ", login: "alice", password: "secret42", repeat: "secret43"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			form := newRegisterForm()
+			form.login.setValue(test.login)
+			form.password.setValue(test.password)
+			form.repeatPassword.setValue(test.repeat)
+
+			if got := form.canSubmit(); got != test.want {
+				t.Fatalf("canSubmit() = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
 func TestRenderAuthForms_ShowsFieldsButtonsAndPendingState(t *testing.T) {
 	theme := newTheme()
 
@@ -147,15 +178,6 @@ func TestRenderAuthForms_ShowsFieldsButtonsAndPendingState(t *testing.T) {
 
 	blockedRegister := ansi.Strip(renderRegisterWindow(theme, 56, register, false, true, ""))
 	assertAuthFormView(t, blockedRegister, "Register", "Repeat password", "< Register >", closeButtonLabel)
-}
-
-func assertAuthFormView(t *testing.T, view string, parts ...string) {
-	t.Helper()
-	for _, part := range parts {
-		if !strings.Contains(view, part) {
-			t.Errorf("view does not contain %q: %q", part, view)
-		}
-	}
 }
 
 func TestRenderRegisterWindow_ShowsCenteredHintForFocusedControl(t *testing.T) {
@@ -201,5 +223,14 @@ func TestRenderRegisterWindow_ShowsCenteredHintForFocusedControl(t *testing.T) {
 				t.Fatalf("hint %q is not centered: left padding %d, right padding %d", tt.want, left, right)
 			}
 		})
+	}
+}
+
+func assertAuthFormView(t *testing.T, view string, parts ...string) {
+	t.Helper()
+	for _, part := range parts {
+		if !strings.Contains(view, part) {
+			t.Errorf("view does not contain %q: %q", part, view)
+		}
 	}
 }

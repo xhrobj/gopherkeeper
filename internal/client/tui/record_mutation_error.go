@@ -7,12 +7,12 @@ import (
 	recordmodel "github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-type recordMutationKind int
-
 const (
 	recordMutationCreate recordMutationKind = iota
 	recordMutationUpdate
 )
+
+type recordMutationKind int
 
 func cleanRecordMutationError(err error, kind recordMutationKind) string {
 	if err == nil {

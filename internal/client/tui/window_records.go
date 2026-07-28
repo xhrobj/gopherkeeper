@@ -17,6 +17,20 @@ const (
 	recordWorkspaceFirstRowOffset        = 1 + recordWorkspaceBodyVerticalPadding + recordWorkspaceRowsBeforeList
 )
 
+type recordWorkspaceLayout struct {
+	contentWidth int
+	innerHeight  int
+	pageSize     int
+	rowBounds    layoutBounds
+}
+
+type recordColumnWidths struct {
+	recordType int
+	title      int
+	revision   int
+	updated    int
+}
+
 func recordWorkspaceWidth(screenWidth int) int {
 	return clamp(screenWidth-6, 56, 112)
 }
@@ -32,13 +46,6 @@ func recordWorkspacePageSize(screenHeight int) int {
 func recordWorkspacePageSizeForWindow(height int) int {
 	innerHeight := max(8, height-3)
 	return max(1, innerHeight-recordWorkspaceRowsBeforeList)
-}
-
-type recordWorkspaceLayout struct {
-	contentWidth int
-	innerHeight  int
-	pageSize     int
-	rowBounds    layoutBounds
 }
 
 func newRecordWorkspaceLayout(width, height int) recordWorkspaceLayout {
@@ -149,13 +156,6 @@ func renderRecordRows(t theme, width, pageSize int, workspace recordWorkspace) [
 	}
 
 	return rows[:pageSize]
-}
-
-type recordColumnWidths struct {
-	recordType int
-	title      int
-	revision   int
-	updated    int
 }
 
 func recordColumns(width int) recordColumnWidths {

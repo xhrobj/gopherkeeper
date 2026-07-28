@@ -14,26 +14,6 @@ import (
 
 const cacheTestRecordID = "7a79b627-0473-48a0-a001-887e79419719"
 
-func newCacheTestModel(t *testing.T, backend backendStub, authenticated bool) model {
-	t.Helper()
-	m := mustNewModel(
-		t,
-		context.Background(),
-		config.Config{},
-		"",
-		buildinfo.Info{},
-		staticBackendFactory(backend),
-	)
-	m.operations.cancel(operationCurrentUser)
-	m.startupCmd = nil
-	m.dialog = dialogNone
-	m.authentication.session = authSession{state: authGuest}
-	if authenticated {
-		m.authentication.session = authSession{state: authAuthenticated, login: "alice"}
-	}
-	return m
-}
-
 func TestModel_CacheBrowseOpensForGuestAndKeepsPasswordOutOfModel(t *testing.T) {
 	records := []recordmodel.RecordMetadata{{
 		ID: cacheTestRecordID, Type: recordmodel.RecordTypeText, Title: "Offline note", Revision: 2,
@@ -260,6 +240,60 @@ func TestModel_StartingOnlineCreateClosesCacheWorkspace(t *testing.T) {
 	}
 }
 
+func TestCacheBrowseWindowLayout_UsesRenderedButtonGeometry(t *testing.T) {
+	theme := newTheme()
+	const width = 62
+
+	tests := []struct {
+		name    string
+		focus   cacheBrowseFocus
+		pending bool
+		blocked bool
+	}{
+		{name: "ready", focus: cacheBrowseSubmit},
+		{name: "blocked", focus: cacheBrowseCancel, pending: true, blocked: true},
+	}
+
+	labels := []string{"< Browse >", "< Cancel >"}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			form := newCacheBrowseForm("alice")
+			form.password.setValue("correct-horse-battery-staple")
+			form.focus = test.focus
+
+			layout := newCacheBrowseWindowLayout(theme, width, form, test.pending, test.blocked, "*")
+			if len(layout.buttonBounds) != len(labels) {
+				t.Fatalf("button bounds = %d, want %d", len(layout.buttonBounds), len(labels))
+			}
+
+			lines := strings.Split(ansi.Strip(layout.content), "\n")
+			buttonRow := lineIndexContaining(lines, labels[0])
+			if buttonRow < 0 {
+				t.Fatal("rendered Open Local Cache buttons were not found")
+			}
+
+			for index, label := range labels {
+				bounds := layout.buttonBounds[index]
+				if bounds.y != buttonRow {
+					t.Fatalf("button %d y = %d, want rendered row %d", index, bounds.y, buttonRow)
+				}
+
+				labelX := strings.Index(lines[buttonRow], label)
+				if labelX < bounds.x || labelX+len(label) > bounds.x+bounds.width {
+					t.Fatalf(
+						"button %d label range %d..%d is outside bounds %d..%d",
+						index,
+						labelX,
+						labelX+len(label),
+						bounds.x,
+						bounds.x+bounds.width,
+					)
+				}
+			}
+		})
+	}
+}
+
 func TestRenderCacheBrowseWindow_UsesPurpleBody(t *testing.T) {
 	theme := newTheme()
 	form := newCacheBrowseForm("m11")
@@ -270,4 +304,24 @@ func TestRenderCacheBrowseWindow_UsesPurpleBody(t *testing.T) {
 	if strings.Contains(window, theme.label.Render("Login")) {
 		t.Fatal("cache browse form still uses the cyan dialog label style")
 	}
+}
+
+func newCacheTestModel(t *testing.T, backend backendStub, authenticated bool) model {
+	t.Helper()
+	m := mustNewModel(
+		t,
+		context.Background(),
+		config.Config{},
+		"",
+		buildinfo.Info{},
+		staticBackendFactory(backend),
+	)
+	m.operations.cancel(operationCurrentUser)
+	m.startupCmd = nil
+	m.dialog = dialogNone
+	m.authentication.session = authSession{state: authGuest}
+	if authenticated {
+		m.authentication.session = authSession{state: authAuthenticated, login: "alice"}
+	}
+	return m
 }

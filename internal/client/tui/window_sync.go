@@ -7,12 +7,18 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-const (
-	syncLabelWidth      = 9
-	syncPasswordRow     = 4
-	syncButtonRow       = 9
-	syncResultButtonRow = 7
-)
+const syncLabelWidth = 9
+
+type syncWindowLayout struct {
+	content      string
+	fieldBounds  []layoutBounds
+	buttonBounds []layoutBounds
+}
+
+type syncResultWindowLayout struct {
+	content      string
+	buttonBounds []layoutBounds
+}
 
 func syncWindowWidth(screenWidth int) int {
 	return clamp(screenWidth-24, 50, 62)
@@ -22,8 +28,21 @@ func syncResultWindowWidth(screenWidth int) int {
 	return clamp(screenWidth-36, 36, 44)
 }
 
-func renderSyncWindow(t theme, width int, login string, form syncForm, pending, blocked bool, spinnerFrame string) string {
-	contentWidth := max(1, width-4)
+func newSyncWindowLayout(
+	t theme,
+	width int,
+	login string,
+	form syncForm,
+	pending, blocked bool,
+	spinnerFrame string,
+) syncWindowLayout {
+	const (
+		horizontalPadding = 2
+		verticalPadding   = 1
+	)
+
+	title := renderWindowTitle(t.windowTitle, width, "Synchronize Local Cache", spinnerFrame, pending)
+	contentWidth := max(1, width-2*horizontalPadding)
 	inputWidth := max(16, contentWidth-syncLabelWidth-2)
 	labelGap := t.recordFormBody.Width(2).Render("")
 
@@ -35,18 +54,45 @@ func renderSyncWindow(t theme, width int, login string, form syncForm, pending, 
 	rows := []string{
 		userLine,
 		t.recordFormBody.Width(contentWidth).Render(""),
+	}
+
+	passwordRow := lipgloss.Height(title) + verticalPadding + len(rows)
+	rows = append(rows,
 		passwordLine,
 		t.recordFormBody.Width(contentWidth).Render(""),
 		t.recordFormInfo.Width(contentWidth).AlignHorizontal(lipgloss.Center).Render("Updates the encrypted local cache"),
 		t.recordFormInfo.Width(contentWidth).AlignHorizontal(lipgloss.Center).Render("with the current Server data."),
 		t.recordFormBody.Width(contentWidth).Render(""),
-		renderSyncButtons(t, contentWidth, form.focus, !form.canSubmit(), blocked),
+	)
+
+	buttonRow := len(rows)
+	buttonLayout := syncButtonsLayout(t, contentWidth, form.focus, !form.canSubmit(), blocked).
+		positioned(0, buttonRow)
+	rows = append(rows, buttonLayout.content)
+
+	body := t.recordFormBody.
+		Width(width).
+		Padding(verticalPadding, horizontalPadding).
+		Render(strings.Join(rows, "\n"))
+
+	return syncWindowLayout{
+		content: lipgloss.JoinVertical(lipgloss.Left, title, body),
+		fieldBounds: []layoutBounds{{
+			x:      horizontalPadding + syncLabelWidth + 2,
+			y:      passwordRow,
+			width:  inputWidth,
+			height: 1,
+		}},
+		buttonBounds: translateLayoutBounds(
+			buttonLayout.bounds,
+			horizontalPadding,
+			lipgloss.Height(title)+verticalPadding,
+		),
 	}
+}
 
-	title := renderWindowTitle(t.windowTitle, width, "Synchronize Local Cache", spinnerFrame, pending)
-	body := t.recordFormBody.Width(width).Padding(1, 2).Render(strings.Join(rows, "\n"))
-
-	return lipgloss.JoinVertical(lipgloss.Left, title, body)
+func renderSyncWindow(t theme, width int, login string, form syncForm, pending, blocked bool, spinnerFrame string) string {
+	return newSyncWindowLayout(t, width, login, form, pending, blocked, spinnerFrame).content
 }
 
 func syncButtonsLayout(t theme, width int, focus syncFocus, submitDisabled, blocked bool) buttonRowLayout {
@@ -76,25 +122,42 @@ func syncButtonsLayout(t theme, width int, focus syncFocus, submitDisabled, bloc
 	return centeredButtonRowLayout(t.recordFormBody, width, 3, styled)
 }
 
-func renderSyncButtons(t theme, width int, focus syncFocus, submitDisabled, blocked bool) string {
-	return syncButtonsLayout(t, width, focus, submitDisabled, blocked).content
-}
+func newSyncResultWindowLayout(t theme, width int, result SyncSummary, blocked bool) syncResultWindowLayout {
+	const (
+		horizontalPadding = 2
+		verticalPadding   = 1
+	)
 
-func renderSyncResultWindow(t theme, width int, result SyncSummary, blocked bool) string {
-	contentWidth := max(1, width-4)
+	contentWidth := max(1, width-2*horizontalPadding)
 	rows := []string{
 		renderSyncResultRow(t, contentWidth, "Added", result.Added),
 		renderSyncResultRow(t, contentWidth, "Updated", result.Updated),
 		renderSyncResultRow(t, contentWidth, "Removed", result.Removed),
 		renderSyncResultRow(t, contentWidth, "Unchanged", result.Unchanged),
 		t.recordFormBody.Width(contentWidth).Render(""),
-		renderSyncResultButton(t, contentWidth, blocked),
 	}
+	buttonRow := len(rows)
+	buttonLayout := syncResultButtonLayout(t, contentWidth, blocked).positioned(0, buttonRow)
+	rows = append(rows, buttonLayout.content)
 
 	title := renderWindowTitle(t.windowTitle, width, "Synchronization Complete", "", false)
-	body := t.recordFormBody.Width(width).Padding(1, 2).Render(strings.Join(rows, "\n"))
+	body := t.recordFormBody.
+		Width(width).
+		Padding(verticalPadding, horizontalPadding).
+		Render(strings.Join(rows, "\n"))
 
-	return lipgloss.JoinVertical(lipgloss.Left, title, body)
+	return syncResultWindowLayout{
+		content: lipgloss.JoinVertical(lipgloss.Left, title, body),
+		buttonBounds: translateLayoutBounds(
+			buttonLayout.bounds,
+			horizontalPadding,
+			lipgloss.Height(title)+verticalPadding,
+		),
+	}
+}
+
+func renderSyncResultWindow(t theme, width int, result SyncSummary, blocked bool) string {
+	return newSyncResultWindowLayout(t, width, result, blocked).content
 }
 
 func renderSyncResultRow(t theme, width int, label string, value int) string {
@@ -111,8 +174,4 @@ func syncResultButtonLayout(t theme, width int, blocked bool) buttonRowLayout {
 	}
 
 	return singleStyledButtonLayout(t.recordFormBody, style, width, okButtonLabel)
-}
-
-func renderSyncResultButton(t theme, width int, blocked bool) string {
-	return syncResultButtonLayout(t, width, blocked).content
 }

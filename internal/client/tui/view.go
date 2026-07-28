@@ -5,16 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 )
-
-func renderMenuHint(t theme, blocked bool) string {
-	if blocked {
-		return t.menuHintBlocked.Render(menuHintText)
-	}
-
-	return t.menuHint.Render(menuHintText)
-}
 
 func (m model) View() tea.View {
 	content := m.render()
@@ -24,6 +15,14 @@ func (m model) View() tea.View {
 	view.WindowTitle = "(^-^)/"
 
 	return view
+}
+
+func renderMenuHint(t theme, blocked bool) string {
+	if blocked {
+		return t.menuHintBlocked.Render(menuHintText)
+	}
+
+	return t.menuHint.Render(menuHintText)
 }
 
 func (m model) render() string {
@@ -112,44 +111,24 @@ func (m model) renderDialog() string {
 	case dialogNone:
 		return ""
 	case dialogAbout:
-		return renderAboutWindow(
-			m.theme,
-			aboutWindowWidth(m.width),
-			buildinfo.Value(m.info.Version),
-			buildinfo.Value(m.info.Date),
-			buildinfo.Value(m.info.Commit),
-			m.activeButton,
-		)
+		return m.aboutWindowLayout().content
 	case dialogControls:
 		width := clamp(m.width-18, 50, 58)
 		return renderControlsWindow(m.theme, width)
 	case dialogConfig:
-		return renderConfigWindow(m.theme, configWindowWidth(m.width), m.configForm, m.configFile)
+		return m.configWindowLayout().content
 	case dialogPathPicker:
-		return renderPathPickerWindow(
+		return newPathPickerWindowLayout(
 			m.theme,
 			pathPickerWindowWidth(m.width),
 			m.pathPicker,
-		)
+		).content
 	case dialogServerStatus:
-		return renderServerStatusWindow(m.theme, serverStatusWindowOptions{
-			width:        serverStatusWindowWidth(m.width),
-			transport:    m.config.Transport,
-			address:      m.config.ActiveAddress(),
-			state:        m.statusState,
-			health:       m.statusValue,
-			failure:      m.statusFailure,
-			activeButton: m.activeButton,
-			pending:      m.operations.pending(operationServerStatus),
-			blocked:      blocked,
-			spinnerFrame: spinnerFrame,
-		})
+		return m.serverStatusWindowLayout().content
 	case dialogLogin:
-		width := clamp(m.width-18, 44, 58)
-		return renderLoginWindow(m.theme, width, m.authentication.loginForm, m.operations.pending(operationLogin), blocked, spinnerFrame)
+		return m.loginWindowLayout().content
 	case dialogRegister:
-		width := clamp(m.width-18, 48, 62)
-		return renderRegisterWindow(m.theme, width, m.authentication.registerForm, m.operations.pending(operationRegister), blocked, spinnerFrame)
+		return m.registerWindowLayout().content
 	case dialogCurrentUser:
 		width := clamp(m.width-24, 44, 58)
 		return renderCurrentUserWindow(m.theme, width, m.authentication.session.login, m.operations.pending(operationCurrentUser), blocked, spinnerFrame)
@@ -240,6 +219,7 @@ func (m model) renderAlert() string {
 func (m model) renderTooSmall() string {
 	width := max(1, m.width)
 	height := max(1, m.height)
+
 	message := fmt.Sprintf(
 		"Terminal window is too small.\n\nRequired: %d×%d\nCurrent:  %d×%d\n\nResize the terminal or press ^Q to exit.",
 		minimumWidth,

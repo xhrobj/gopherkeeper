@@ -112,6 +112,7 @@ func TestRenderConfigInputs_RespectCellWidthForWideUnicode(t *testing.T) {
 		}
 	}
 }
+
 func TestRenderConfigInput_ShowsCursorOnlyForFocusedField(t *testing.T) {
 	theme := newTheme()
 	field := newUnicodeTextField("abcd")
@@ -128,6 +129,7 @@ func TestRenderConfigInput_ShowsCursorOnlyForFocusedField(t *testing.T) {
 		t.Fatal("blurred config input renders the cursor")
 	}
 }
+
 func TestModel_SystemConfigMnemonicOpensPrefilledDialog(t *testing.T) {
 	cfg := config.Config{
 		Transport:   config.TransportGRPC,
@@ -169,6 +171,7 @@ func TestModel_SystemConfigMnemonicOpensPrefilledDialog(t *testing.T) {
 		"< Cancel >",
 	)
 }
+
 func TestModel_ConfigAcceptsTerminalPaste(t *testing.T) {
 	m := newTestModel(t, config.Config{Address: "localhost:8080"}, buildinfo.Info{})
 	m.dialog = dialogConfig
@@ -184,6 +187,7 @@ func TestModel_ConfigAcceptsTerminalPaste(t *testing.T) {
 		t.Fatalf("pasted address = %q, want vault.example:9443", got.configForm.fields[configAddress].value)
 	}
 }
+
 func TestModel_ConfigSaveUpdatesRuntimeConfig(t *testing.T) {
 	m := newTestModel(t, config.Config{Address: "localhost:8080"}, buildinfo.Info{})
 	m.dialog = dialogConfig
@@ -205,6 +209,7 @@ func TestModel_ConfigSaveUpdatesRuntimeConfig(t *testing.T) {
 		t.Fatalf("CA cert = %q", got.config.CACertFile)
 	}
 }
+
 func TestModel_ConfigCancelKeepsResolvedConfig(t *testing.T) {
 	initial := config.Config{Address: "localhost:8080", CacheDir: "/old/cache"}
 	m := newTestModel(t, initial, buildinfo.Info{})
@@ -223,6 +228,77 @@ func TestModel_ConfigCancelKeepsResolvedConfig(t *testing.T) {
 		t.Fatalf("dialog = %d, want none", got.dialog)
 	}
 }
+
+func TestConfigWindowLayout_UsesRenderedControlGeometry(t *testing.T) {
+	theme := newTheme()
+	cfg := config.Config{
+		Transport:   config.TransportHTTPS,
+		Address:     "https.example:8443",
+		GRPCAddress: "grpc.example:9090",
+		CACertFile:  "certs/ca.pem",
+		SessionDir:  "session-dir",
+		CacheDir:    "cache-dir",
+	}
+	form := newConfigForm(cfg)
+	form.focus = configSave
+	layout := newConfigWindowLayout(theme, 82, form, "configs/client.json")
+	lines := strings.Split(ansi.Strip(layout.content), "\n")
+
+	assertContains := func(name, label string, bounds layoutBounds) {
+		t.Helper()
+		if bounds.y < 0 || bounds.y >= len(lines) {
+			t.Fatalf("%s y = %d, rendered height = %d", name, bounds.y, len(lines))
+		}
+
+		labelX := strings.Index(lines[bounds.y], label)
+		if labelX < 0 {
+			t.Fatalf("%s label %q was not found on rendered row %d: %q", name, label, bounds.y, lines[bounds.y])
+		}
+		if labelX < bounds.x || labelX+lipgloss.Width(label) > bounds.x+bounds.width {
+			t.Fatalf(
+				"%s label range %d..%d is outside bounds %d..%d",
+				name,
+				labelX,
+				labelX+lipgloss.Width(label),
+				bounds.x,
+				bounds.x+bounds.width,
+			)
+		}
+	}
+
+	if len(layout.transportBounds) != 2 {
+		t.Fatalf("transport bounds = %d, want 2", len(layout.transportBounds))
+	}
+	assertContains("HTTPS transport", "[X] HTTPS", layout.transportBounds[0])
+	assertContains("gRPC transport", "[ ] gRPC", layout.transportBounds[1])
+
+	fieldValues := []string{cfg.Address, cfg.GRPCAddress, cfg.CACertFile, cfg.SessionDir, cfg.CacheDir}
+	if len(layout.fieldBounds) != len(fieldValues) {
+		t.Fatalf("field bounds = %d, want %d", len(layout.fieldBounds), len(fieldValues))
+	}
+	for index, value := range fieldValues {
+		assertContains("field", value, layout.fieldBounds[index])
+	}
+
+	if len(layout.browseBounds) != 3 {
+		t.Fatalf("browse bounds = %d, want 3", len(layout.browseBounds))
+	}
+	for index, bounds := range layout.browseBounds {
+		assertContains("browse button", configBrowseLabel, bounds)
+		if bounds.y != layout.fieldBounds[index+2].y {
+			t.Fatalf("browse button %d y = %d, field y = %d", index, bounds.y, layout.fieldBounds[index+2].y)
+		}
+	}
+
+	buttonLabels := []string{"< Save >", "< Cancel >"}
+	if len(layout.buttonBounds) != len(buttonLabels) {
+		t.Fatalf("button bounds = %d, want %d", len(layout.buttonBounds), len(buttonLabels))
+	}
+	for index, label := range buttonLabels {
+		assertContains("dialog button", label, layout.buttonBounds[index])
+	}
+}
+
 func TestRenderConfigWindow_ShowsMissingConfigPersistenceHint(t *testing.T) {
 	view := renderConfigWindow(newTheme(), 82, newConfigForm(config.Config{}), "")
 	plain := ansi.Strip(view)
@@ -233,6 +309,7 @@ func TestRenderConfigWindow_ShowsMissingConfigPersistenceHint(t *testing.T) {
 		t.Fatalf("config view does not explain persistence: %q", plain)
 	}
 }
+
 func TestRenderConfigWindow_ShowsOnlyTwoYellowRequiredMarkers(t *testing.T) {
 	theme := newTheme()
 	view := renderConfigWindow(theme, 82, newConfigForm(config.Config{}), "")
@@ -858,22 +935,6 @@ func TestRenderConfigPathPickerWindow_SeparatesButtonsWithBlankLine(t *testing.T
 	}
 }
 
-func changeWorkingDirectory(t *testing.T, directory string) {
-	t.Helper()
-	original, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("get working directory: %v", err)
-	}
-	if err := os.Chdir(directory); err != nil {
-		t.Fatalf("change working directory: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := os.Chdir(original); err != nil {
-			t.Errorf("restore working directory: %v", err)
-		}
-	})
-}
-
 func TestConfigSelectedPath(t *testing.T) {
 	rootDirectory := filepath.Join(string(filepath.Separator), "tmp", "project")
 	tests := []struct {
@@ -1183,31 +1244,6 @@ func TestRuntimeConfigChanged(t *testing.T) {
 	}
 }
 
-func withConfigAddress(cfg config.Config, value string) config.Config {
-	cfg.Address = value
-	return cfg
-}
-
-func withConfigGRPCAddress(cfg config.Config, value string) config.Config {
-	cfg.GRPCAddress = value
-	return cfg
-}
-
-func withConfigCACertFile(cfg config.Config, value string) config.Config {
-	cfg.CACertFile = value
-	return cfg
-}
-
-func withConfigSessionDir(cfg config.Config, value string) config.Config {
-	cfg.SessionDir = value
-	return cfg
-}
-
-func withConfigCacheDir(cfg config.Config, value string) config.Config {
-	cfg.CacheDir = value
-	return cfg
-}
-
 func TestModel_ConfigInactiveAddressChangeDoesNotReplaceRuntime(t *testing.T) {
 	initial := config.Config{
 		Transport:   config.TransportHTTPS,
@@ -1327,4 +1363,45 @@ func TestModel_ConfigSaveFailureClosesPreparedTransportAndKeepsCurrentBackend(t 
 	if got.configForm.errorMessage != "Unable to save config file" {
 		t.Fatalf("config error = %q", got.configForm.errorMessage)
 	}
+}
+
+func changeWorkingDirectory(t *testing.T, directory string) {
+	t.Helper()
+	original, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get working directory: %v", err)
+	}
+	if err := os.Chdir(directory); err != nil {
+		t.Fatalf("change working directory: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(original); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	})
+}
+
+func withConfigAddress(cfg config.Config, value string) config.Config {
+	cfg.Address = value
+	return cfg
+}
+
+func withConfigGRPCAddress(cfg config.Config, value string) config.Config {
+	cfg.GRPCAddress = value
+	return cfg
+}
+
+func withConfigCACertFile(cfg config.Config, value string) config.Config {
+	cfg.CACertFile = value
+	return cfg
+}
+
+func withConfigSessionDir(cfg config.Config, value string) config.Config {
+	cfg.SessionDir = value
+	return cfg
+}
+
+func withConfigCacheDir(cfg config.Config, value string) config.Config {
+	cfg.CacheDir = value
+	return cfg
 }

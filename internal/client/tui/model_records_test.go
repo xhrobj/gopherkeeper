@@ -11,21 +11,6 @@ import (
 	recordmodel "github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-func newRecordsTestModel(t *testing.T, cfg config.Config, backend recordsBackendStub) model {
-	m := mustNewModel(t,
-		context.Background(),
-		cfg,
-		"",
-		buildinfo.Info{},
-		staticBackendFactory(backend),
-	)
-	m.operations.cancel(operationCurrentUser)
-	m.startupCmd = nil
-	m.authentication.session = authSession{state: authGuest}
-	m.dialog = dialogNone
-	return m
-}
-
 func TestModel_BeginOnlineRecordList(t *testing.T) {
 	backend := recordsBackendStub{
 		listRecords: func(context.Context) ([]recordmodel.RecordMetadata, error) {
@@ -467,4 +452,19 @@ func TestModel_RecordsViewMenuOpensSelectedRecord(t *testing.T) {
 	if got.recordFeature.view.status != recordViewReady || got.recordFeature.view.record.Metadata.ID != "42" {
 		t.Fatalf("record view = %#v", got.recordFeature.view)
 	}
+}
+
+func newRecordsTestModel(t *testing.T, cfg config.Config, backend recordsBackendStub) model {
+	m := mustNewModel(t,
+		context.Background(),
+		cfg,
+		"",
+		buildinfo.Info{},
+		staticBackendFactory(backend),
+	)
+	m.operations.cancel(operationCurrentUser)
+	m.startupCmd = nil
+	m.authentication.session = authSession{state: authGuest}
+	m.dialog = dialogNone
+	return m
 }

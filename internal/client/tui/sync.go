@@ -8,8 +8,6 @@ import (
 	domainmodel "github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-type syncFocus int
-
 const (
 	syncPassword syncFocus = iota
 	syncSubmit
@@ -17,9 +15,17 @@ const (
 	syncFocusCount
 )
 
+type syncFocus int
+
 type syncForm struct {
 	password textField
 	focus    syncFocus
+}
+
+type syncResultMsg struct {
+	requestID uint64
+	result    SyncSummary
+	err       error
 }
 
 func newSyncForm() syncForm {
@@ -93,12 +99,6 @@ func (form *syncForm) moveCursorToEnd() {
 	if form.focus == syncPassword {
 		form.password.moveCursorToEnd()
 	}
-}
-
-type syncResultMsg struct {
-	requestID uint64
-	result    SyncSummary
-	err       error
 }
 
 func syncCommand(ctx context.Context, backend Backend, requestID uint64, password string) tea.Cmd {

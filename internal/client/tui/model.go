@@ -18,8 +18,6 @@ const (
 	defaultHeight = 25
 )
 
-type dialogID int
-
 const (
 	dialogNone dialogID = iota
 	dialogLogin
@@ -41,23 +39,55 @@ const (
 	dialogSyncResult
 )
 
-type alertState int
-
 const (
 	alertNone alertState = iota
 	alertError
 	alertNotice
 )
 
-type configSaver func(string, config.Config) error
-
-type serverStatusState int
-
 const (
 	serverStatusIdle serverStatusState = iota
 	serverStatusReady
 	serverStatusFailed
 )
+
+type dialogID int
+
+type alertState int
+
+type configSaver func(string, config.Config) error
+
+type serverStatusState int
+
+// authFeatureState объединяет пользовательское состояние сценариев авторизации.
+type authFeatureState struct {
+	session          authSession
+	currentUserCheck currentUserCheckMode
+	loginForm        loginForm
+	registerForm     registerForm
+}
+
+// recordFeatureState объединяет состояние рабочего пространства и CRUD-сценариев записей.
+type recordFeatureState struct {
+	workspace      recordWorkspace
+	view           recordViewState
+	binarySaveForm binarySaveForm
+	typePicker     recordTypePicker
+	createForm     recordForm
+	edit           recordEditState
+	deletion       recordDeleteState
+}
+
+// cacheFeatureState хранит форму открытия локального кеша.
+type cacheFeatureState struct {
+	form cacheBrowseForm
+}
+
+// syncFeatureState объединяет состояние формы и результата синхронизации.
+type syncFeatureState struct {
+	form   syncForm
+	result SyncSummary
+}
 
 type model struct {
 	width             int
@@ -97,6 +127,37 @@ type model struct {
 	operations        operationCoordinator
 	statusMinDuration time.Duration
 	activitySpinner   spinner.Model
+}
+
+func (m model) Init() tea.Cmd {
+	return m.startupCmd
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch typed := msg.(type) {
+	case tea.WindowSizeMsg:
+		return m.updateWindowSize(typed)
+	case spinner.TickMsg:
+		return m.updateSpinner(typed)
+	case tea.MouseClickMsg:
+		return m.updateMouse(typed)
+	case tea.MouseWheelMsg:
+		return m.updateMouseWheel(typed)
+	case tea.PasteMsg:
+		return m.updatePaste(typed)
+	case tea.KeyPressMsg:
+		return m.updateKeyPress(typed)
+	}
+
+	if updated, command, handled := m.updateResultMessage(msg); handled {
+		return updated, command
+	}
+
+	if m.dialog == dialogPathPicker {
+		return m.updatePathPicker(msg)
+	}
+
+	return m, nil
 }
 
 func newModel(
@@ -148,65 +209,4 @@ func newModel(
 	m.startupCmd = m.beginCurrentUserCheck(currentUserCheckRestore)
 
 	return m, nil
-}
-
-func (m model) Init() tea.Cmd {
-	return m.startupCmd
-}
-
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch typed := msg.(type) {
-	case tea.WindowSizeMsg:
-		return m.updateWindowSize(typed)
-	case spinner.TickMsg:
-		return m.updateSpinner(typed)
-	case tea.MouseClickMsg:
-		return m.updateMouse(typed)
-	case tea.MouseWheelMsg:
-		return m.updateMouseWheel(typed)
-	case tea.PasteMsg:
-		return m.updatePaste(typed)
-	case tea.KeyPressMsg:
-		return m.updateKeyPress(typed)
-	}
-
-	if updated, command, handled := m.updateResultMessage(msg); handled {
-		return updated, command
-	}
-
-	if m.dialog == dialogPathPicker {
-		return m.updatePathPicker(msg)
-	}
-
-	return m, nil
-}
-
-// authFeatureState объединяет пользовательское состояние сценариев авторизации.
-type authFeatureState struct {
-	session          authSession
-	currentUserCheck currentUserCheckMode
-	loginForm        loginForm
-	registerForm     registerForm
-}
-
-// recordFeatureState объединяет состояние рабочего пространства и CRUD-сценариев записей.
-type recordFeatureState struct {
-	workspace      recordWorkspace
-	view           recordViewState
-	binarySaveForm binarySaveForm
-	typePicker     recordTypePicker
-	createForm     recordForm
-	edit           recordEditState
-	deletion       recordDeleteState
-}
-
-// cacheFeatureState хранит форму открытия локального кеша.
-type cacheFeatureState struct {
-	form cacheBrowseForm
-}
-
-// syncFeatureState объединяет состояние формы и результата синхронизации.
-type syncFeatureState struct {
-	form   syncForm
-	result SyncSummary
 }

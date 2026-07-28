@@ -9,13 +9,13 @@ import (
 	recordmodel "github.com/xhrobj/gopherkeeper/internal/model"
 )
 
-type recordViewStatus int
-
 const (
 	recordViewIdle recordViewStatus = iota
 	recordViewLoading
 	recordViewReady
 )
+
+type recordViewStatus int
 
 type recordViewState struct {
 	source   recordSource
@@ -25,6 +25,18 @@ type recordViewState struct {
 	offset   int
 	revealed bool
 	textArea readOnlyTextArea
+}
+
+type recordViewResultMsg struct {
+	requestID uint64
+	record    recordmodel.Record
+	err       error
+}
+
+type cachedRecordViewResultMsg struct {
+	requestID uint64
+	record    recordmodel.Record
+	err       error
 }
 
 func (state *recordViewState) begin(metadata recordmodel.RecordMetadata, sources ...recordSource) {
@@ -66,12 +78,6 @@ func (state *recordViewState) resize(screenWidth, screenHeight int) {
 		max(1, recordViewContentWidth(screenWidth)-1),
 		readOnlyTextAreaRows(screenHeight),
 	)
-}
-
-type recordViewResultMsg struct {
-	requestID uint64
-	record    recordmodel.Record
-	err       error
 }
 
 func (m model) recordViewTarget() (string, bool) {
@@ -146,12 +152,6 @@ func recordViewCommand(ctx context.Context, backend Backend, requestID uint64, r
 		record, err := backend.GetRecord(ctx, recordID)
 		return recordViewResultMsg{requestID: requestID, record: record, err: err}
 	}
-}
-
-type cachedRecordViewResultMsg struct {
-	requestID uint64
-	record    recordmodel.Record
-	err       error
 }
 
 func cachedRecordViewCommand(

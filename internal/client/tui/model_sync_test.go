@@ -6,28 +6,12 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
 	"github.com/xhrobj/gopherkeeper/internal/client/usecase"
 )
-
-func newSyncTestModel(t *testing.T, backend backendStub) model {
-	t.Helper()
-	m := mustNewModel(
-		t,
-		context.Background(),
-		config.Config{},
-		"",
-		buildinfo.Info{},
-		staticBackendFactory(backend),
-	)
-	m.operations.cancel(operationCurrentUser)
-	m.startupCmd = nil
-	m.authentication.session = authSession{state: authAuthenticated, login: "alice"}
-	m.dialog = dialogNone
-	return m
-}
 
 func TestModel_SyncMenuAvailability(t *testing.T) {
 	m := newSyncTestModel(t, backendStub{})
@@ -155,19 +139,6 @@ func TestModel_CloseSyncInvalidatesLateResult(t *testing.T) {
 	}
 }
 
-func assertMenuActionDisabledState(t *testing.T, definition menuDefinition, action actionID, want bool) {
-	t.Helper()
-	for _, item := range definition.items {
-		if item.action == action {
-			if item.disabled != want {
-				t.Fatalf("action %d disabled = %t, want %t", action, item.disabled, want)
-			}
-			return
-		}
-	}
-	t.Fatalf("action %d not found", action)
-}
-
 func TestRenderSyncWindows_UsePurpleBodyAndCompactResult(t *testing.T) {
 	theme := newTheme()
 	form := newSyncForm()
@@ -194,4 +165,149 @@ func TestRenderSyncWindows_UsePurpleBodyAndCompactResult(t *testing.T) {
 	if !strings.Contains(resultWindow, theme.recordFormButtonActive.Render("< OK >")) {
 		t.Fatal("Sync result does not render the purple OK button")
 	}
+}
+
+func TestSyncWindowLayout_UsesRenderedButtonGeometry(t *testing.T) {
+	theme := newTheme()
+	const width = 62
+
+	tests := []struct {
+		name           string
+		focus          syncFocus
+		blocked        bool
+		pending        bool
+		expectedStyles []lipgloss.Style
+	}{
+		{
+			name:           "ready",
+			focus:          syncSubmit,
+			expectedStyles: []lipgloss.Style{theme.recordFormButtonActive, theme.recordFormButton},
+		},
+		{
+			name:           "blocked",
+			focus:          syncCancel,
+			blocked:        true,
+			pending:        true,
+			expectedStyles: []lipgloss.Style{theme.recordFormButtonDisabled, theme.recordFormButtonDisabledActive},
+		},
+	}
+
+	labels := []string{"< Sync >", "< Cancel >"}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			form := newSyncForm()
+			form.password.setValue(syncFormTestPassword)
+			form.focus = test.focus
+
+			layout := newSyncWindowLayout(
+				theme,
+				width,
+				"alice",
+				form,
+				test.pending,
+				test.blocked,
+				"*",
+			)
+			if len(layout.buttonBounds) != len(labels) {
+				t.Fatalf("button bounds = %d, want %d", len(layout.buttonBounds), len(labels))
+			}
+
+			lines := strings.Split(ansi.Strip(layout.content), "\n")
+			buttonRow := lineIndexContaining(lines, labels[0])
+			if buttonRow < 0 {
+				t.Fatal("rendered Sync buttons were not found")
+			}
+
+			for index, bounds := range layout.buttonBounds {
+				if bounds.y != buttonRow {
+					t.Fatalf("button %d y = %d, want rendered row %d", index, bounds.y, buttonRow)
+				}
+
+				renderedButton := ansi.Strip(test.expectedStyles[index].Render(labels[index]))
+				wantX := strings.Index(lines[buttonRow], renderedButton)
+				if bounds.x != wantX {
+					t.Fatalf("button %d x = %d, want rendered column %d", index, bounds.x, wantX)
+				}
+
+				wantWidth := lipgloss.Width(test.expectedStyles[index].Render(labels[index]))
+				if bounds.width != wantWidth {
+					t.Fatalf("button %d width = %d, want rendered width %d", index, bounds.width, wantWidth)
+				}
+			}
+		})
+	}
+}
+
+func TestSyncResultWindowLayout_UsesRenderedButtonGeometry(t *testing.T) {
+	theme := newTheme()
+	const width = 44
+
+	tests := []struct {
+		name    string
+		blocked bool
+		style   lipgloss.Style
+	}{
+		{name: "ready", style: theme.recordFormButtonActive},
+		{name: "blocked", blocked: true, style: theme.recordFormButtonDisabledActive},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			layout := newSyncResultWindowLayout(
+				theme,
+				width,
+				SyncSummary{Added: 1, Updated: 2, Removed: 3, Unchanged: 4},
+				test.blocked,
+			)
+			if len(layout.buttonBounds) != 1 {
+				t.Fatalf("button bounds = %d, want 1", len(layout.buttonBounds))
+			}
+
+			lines := strings.Split(ansi.Strip(layout.content), "\n")
+			buttonRow := lineIndexContaining(lines, okButtonLabel)
+			if buttonRow < 0 {
+				t.Fatal("rendered Sync result button was not found")
+			}
+
+			bounds := layout.buttonBounds[0]
+			if bounds.y != buttonRow {
+				t.Fatalf("button y = %d, want rendered row %d", bounds.y, buttonRow)
+			}
+
+			wantWidth := lipgloss.Width(test.style.Render(okButtonLabel))
+			if bounds.width != wantWidth {
+				t.Fatalf("button width = %d, want rendered width %d", bounds.width, wantWidth)
+			}
+		})
+	}
+}
+
+func newSyncTestModel(t *testing.T, backend backendStub) model {
+	t.Helper()
+	m := mustNewModel(
+		t,
+		context.Background(),
+		config.Config{},
+		"",
+		buildinfo.Info{},
+		staticBackendFactory(backend),
+	)
+	m.operations.cancel(operationCurrentUser)
+	m.startupCmd = nil
+	m.authentication.session = authSession{state: authAuthenticated, login: "alice"}
+	m.dialog = dialogNone
+	return m
+}
+
+func assertMenuActionDisabledState(t *testing.T, definition menuDefinition, action actionID, want bool) {
+	t.Helper()
+	for _, item := range definition.items {
+		if item.action == action {
+			if item.disabled != want {
+				t.Fatalf("action %d disabled = %t, want %t", action, item.disabled, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("action %d not found", action)
 }

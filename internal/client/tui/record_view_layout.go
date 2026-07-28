@@ -1,8 +1,26 @@
 package tui
 
-func recordViewWindowWidth(screenWidth int) int   { return clamp(screenWidth-14, 56, 92) }
+type recordViewWindowLayout struct {
+	contentWidth   int
+	bodyHeight     int
+	viewportHeight int
+	buttonRow      int
+}
+
+type recordViewContentLayout struct {
+	window          recordViewWindowLayout
+	visible         []recordViewLine
+	textAreaBounds  layoutBounds
+	textAreaVisible bool
+	textAreaUp      layoutBounds
+	textAreaDown    layoutBounds
+}
+
+func recordViewWindowWidth(screenWidth int) int { return clamp(screenWidth-14, 56, 92) }
+
 func recordViewWindowHeight(screenHeight int) int { return clamp(screenHeight-6, 16, 36) }
-func recordViewContentWidth(screenWidth int) int  { return max(1, recordViewWindowWidth(screenWidth)-4) }
+
+func recordViewContentWidth(screenWidth int) int { return max(1, recordViewWindowWidth(screenWidth)-4) }
 
 func recordViewWindowHeightForState(t theme, screenWidth, screenHeight int, state recordViewState) int {
 	height := recordViewWindowHeight(screenHeight)
@@ -23,13 +41,6 @@ func recordViewPageSizeForState(t theme, screenWidth, screenHeight int, state re
 	return newRecordViewWindowLayout(width, height).viewportHeight
 }
 
-type recordViewWindowLayout struct {
-	contentWidth   int
-	bodyHeight     int
-	viewportHeight int
-	buttonRow      int
-}
-
 func newRecordViewWindowLayout(width, height int) recordViewWindowLayout {
 	bodyHeight := max(1, height-1)
 	viewportHeight := max(1, bodyHeight-3)
@@ -40,15 +51,6 @@ func newRecordViewWindowLayout(width, height int) recordViewWindowLayout {
 		viewportHeight: viewportHeight,
 		buttonRow:      2 + viewportHeight,
 	}
-}
-
-type recordViewContentLayout struct {
-	window          recordViewWindowLayout
-	visible         []recordViewLine
-	textAreaBounds  layoutBounds
-	textAreaVisible bool
-	textAreaUp      layoutBounds
-	textAreaDown    layoutBounds
 }
 
 func newRecordViewContentLayout(t theme, width, height int, state recordViewState) recordViewContentLayout {

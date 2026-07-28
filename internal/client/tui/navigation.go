@@ -14,6 +14,13 @@ type actionTargets struct {
 	hasDelete     bool
 }
 
+type dialogChangePathPickerState struct {
+	binarySave   bool
+	binaryCreate bool
+	binaryEdit   bool
+	action       actionID
+}
+
 func (m model) activateDialogButton() (tea.Model, tea.Cmd) {
 	switch m.dialog {
 	case dialogLogin:
@@ -406,13 +413,6 @@ func (m *model) closeActiveDialog() {
 	}
 	m.dialog = dialogNone
 	m.activeButton = 0
-}
-
-type dialogChangePathPickerState struct {
-	binarySave   bool
-	binaryCreate bool
-	binaryEdit   bool
-	action       actionID
 }
 
 func (m *model) prepareDialogChange(action actionID) {

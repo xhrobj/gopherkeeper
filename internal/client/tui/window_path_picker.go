@@ -6,6 +6,15 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+const pathPickerButtonGap = 3
+
+type pathPickerWindowLayout struct {
+	content      string
+	contentWidth int
+	listBounds   layoutBounds
+	buttonBounds []layoutBounds
+}
+
 func pathPickerListHeight(screenHeight int) int {
 	return clamp(screenHeight-12, 6, 14)
 }
@@ -14,29 +23,49 @@ func pathPickerWindowWidth(screenWidth int) int {
 	return clamp(screenWidth-16, 54, 82)
 }
 
-type pathPickerWindowLayout struct {
-	contentWidth int
-	listBounds   layoutBounds
-}
+func newPathPickerWindowLayout(t theme, width int, state pathPicker) pathPickerWindowLayout {
+	const (
+		horizontalPadding = 2
+		verticalPadding   = 1
+		listRow           = 2
+	)
 
-func newPathPickerWindowLayout(windowWidth, listHeight int) pathPickerWindowLayout {
-	contentWidth := max(1, windowWidth-4)
+	contentWidth := max(1, width-2*horizontalPadding)
+	selectedPath := renderConfigReadOnlyInput(
+		t,
+		t.readOnly,
+		state.selectedValue(),
+		max(1, contentWidth-lipgloss.Width("Path  ")),
+		true,
+	)
+	pathRow := t.label.Render("Path") + t.windowBody.Width(2).Render("") + selectedPath
+	list := renderPathPickerList(t, contentWidth, state)
+	listHeight := max(1, state.height)
+	buttonRow := listRow + listHeight + 1
+	buttonLayout := pathPickerButtonsLayout(t, contentWidth, state).positioned(0, buttonRow)
+
+	title := t.windowTitle.Width(width).Render(state.title())
+	body := t.windowBody.
+		Width(width).
+		Padding(verticalPadding, horizontalPadding).
+		Render(strings.Join([]string{pathRow, "", list, "", buttonLayout.content}, "\n"))
+	contentOffsetY := lipgloss.Height(title) + verticalPadding
 
 	return pathPickerWindowLayout{
+		content:      lipgloss.JoinVertical(lipgloss.Left, title, body),
 		contentWidth: contentWidth,
 		listBounds: layoutBounds{
-			x:      2,
-			y:      4,
+			x:      horizontalPadding,
+			y:      contentOffsetY + listRow,
 			width:  contentWidth,
-			height: max(1, listHeight),
+			height: listHeight,
 		},
+		buttonBounds: translateLayoutBounds(
+			buttonLayout.bounds,
+			horizontalPadding,
+			contentOffsetY,
+		),
 	}
-}
-
-const pathPickerButtonGap = 3
-
-func pathPickerButtonRow(listHeight int) int {
-	return max(1, listHeight) + 5
 }
 
 func pathPickerButtonsLayout(t theme, width int, state pathPicker) buttonRowLayout {
@@ -64,27 +93,7 @@ func renderPathPickerButtons(t theme, width int, state pathPicker) string {
 }
 
 func renderPathPickerWindow(t theme, width int, state pathPicker) string {
-	layout := newPathPickerWindowLayout(width, state.height)
-	contentWidth := layout.contentWidth
-	selectedPath := renderConfigReadOnlyInput(
-		t,
-		t.readOnly,
-		state.selectedValue(),
-		max(1, contentWidth-lipgloss.Width("Path  ")),
-		true,
-	)
-	pathRow := t.label.Render("Path") + t.windowBody.Width(2).Render("") + selectedPath
-
-	list := renderPathPickerList(t, contentWidth, state)
-	buttons := renderPathPickerButtons(t, contentWidth, state)
-
-	title := t.windowTitle.Width(width).Render(state.title())
-	body := t.windowBody.
-		Width(width).
-		Padding(1, 2).
-		Render(strings.Join([]string{pathRow, "", list, "", buttons}, "\n"))
-
-	return lipgloss.JoinVertical(lipgloss.Left, title, body)
+	return newPathPickerWindowLayout(t, width, state).content
 }
 
 func renderPathPickerList(t theme, width int, state pathPicker) string {

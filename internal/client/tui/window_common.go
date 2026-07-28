@@ -6,7 +6,21 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-const currentUserButtonRow = 4
+type currentUserWindowLayout struct {
+	content      string
+	buttonBounds []layoutBounds
+}
+
+type alertWindowLayout struct {
+	content      string
+	buttonBounds []layoutBounds
+}
+
+type formButton struct {
+	label    string
+	active   bool
+	disabled bool
+}
 
 func renderWindowTitle(style lipgloss.Style, width int, title, spinnerFrame string, pending bool) string {
 	title = fitSingleLine(title, max(1, width))
@@ -27,15 +41,20 @@ func renderShadow(t theme, width, height int) string {
 	return t.shadow.Width(max(1, width)).Height(max(1, height)).Render("")
 }
 
-func renderCurrentUserWindow(
+func newCurrentUserWindowLayout(
 	t theme,
 	width int,
 	login string,
 	pending bool,
 	blocked bool,
 	spinnerFrame string,
-) string {
-	contentWidth := max(1, width-4)
+) currentUserWindowLayout {
+	const (
+		horizontalPadding = 2
+		verticalPadding   = 1
+	)
+
+	contentWidth := max(1, width-2*horizontalPadding)
 	message := t.aboutText.Render("Logged in as ") + t.aboutTitle.Render(login)
 	buttonStyle := t.aboutButtonActive
 
@@ -50,25 +69,46 @@ func renderCurrentUserWindow(
 	rows := []string{
 		t.aboutBody.Width(contentWidth).AlignHorizontal(lipgloss.Center).Render(message),
 		t.aboutBody.Width(contentWidth).Render(""),
-		renderSingleStyledButton(t.aboutBody, buttonStyle, contentWidth, okButtonLabel),
 	}
+	buttonRow := len(rows)
+	buttonLayout := singleStyledButtonLayout(t.aboutBody, buttonStyle, contentWidth, okButtonLabel).
+		positioned(0, buttonRow)
+	rows = append(rows, buttonLayout.content)
 
 	title := renderWindowTitle(t.windowTitle, width, "Current User", spinnerFrame, pending)
 	body := t.aboutBody.
 		Width(width).
-		Padding(1, 2).
+		Padding(verticalPadding, horizontalPadding).
 		Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 
-	return lipgloss.JoinVertical(lipgloss.Left, title, body)
+	return currentUserWindowLayout{
+		content: lipgloss.JoinVertical(lipgloss.Left, title, body),
+		buttonBounds: translateLayoutBounds(
+			buttonLayout.bounds,
+			horizontalPadding,
+			lipgloss.Height(title)+verticalPadding,
+		),
+	}
 }
 
-func renderAlertWindow(
+func renderCurrentUserWindow(
+	t theme,
+	width int,
+	login string,
+	pending bool,
+	blocked bool,
+	spinnerFrame string,
+) string {
+	return newCurrentUserWindowLayout(t, width, login, pending, blocked, spinnerFrame).content
+}
+
+func newAlertWindowLayout(
 	t theme,
 	state alertState,
 	title string,
 	message string,
 	highlight string,
-) string {
+) alertWindowLayout {
 	const width = 54
 
 	bodyStyle := t.aboutBody
@@ -94,15 +134,29 @@ func renderAlertWindow(
 		)
 	}
 
+	buttonRow := len(rows) + 1
+	buttons := singleStyledButtonLayout(bodyStyle, buttonStyle, contentWidth, okButtonLabel).
+		positioned(2, buttonRow)
 	rows = append(rows,
 		bodyStyle.Width(width).Render(""),
-		bodyStyle.Width(2).Render("")+
-			renderSingleStyledButton(bodyStyle, buttonStyle, contentWidth, okButtonLabel)+
-			bodyStyle.Width(2).Render(""),
+		bodyStyle.Width(2).Render("")+buttons.content+bodyStyle.Width(2).Render(""),
 		bodyStyle.Width(width).Render(""),
 	)
 
-	return lipgloss.JoinVertical(lipgloss.Left, rows...)
+	return alertWindowLayout{
+		content:      lipgloss.JoinVertical(lipgloss.Left, rows...),
+		buttonBounds: buttons.bounds,
+	}
+}
+
+func renderAlertWindow(
+	t theme,
+	state alertState,
+	title string,
+	message string,
+	highlight string,
+) string {
+	return newAlertWindowLayout(t, state, title, message, highlight).content
 }
 
 func renderAlertMessageRows(
@@ -152,12 +206,14 @@ func wrapAlertParagraph(paragraph string, width int) []string {
 
 	lines := make([]string, 0, len(words))
 	line := ""
+
 	for _, word := range words {
 		lines, line = appendAlertWord(lines, line, word, width)
 	}
 	if line != "" {
 		lines = append(lines, line)
 	}
+
 	return lines
 }
 
@@ -181,20 +237,8 @@ func appendAlertWord(lines []string, line, word string, width int) ([]string, st
 		return lines, ""
 	}
 	lines = append(lines, parts[:len(parts)-1]...)
+
 	return lines, parts[len(parts)-1]
-}
-
-func alertButtonRow(message, highlight string) int {
-	if highlight != "" {
-		return 5
-	}
-
-	lineCount := len(wrapAlertText(message, 50))
-	if lineCount == 0 {
-		lineCount = 1
-	}
-
-	return 4 + lineCount
 }
 
 func renderAlertMessage(
@@ -271,12 +315,6 @@ func fitSingleLine(value string, width int) string {
 	}
 
 	return string(runes) + truncationMarker
-}
-
-type formButton struct {
-	label    string
-	active   bool
-	disabled bool
 }
 
 func formButtonsLayout(t theme, width, gap int, buttons []formButton) buttonRowLayout {

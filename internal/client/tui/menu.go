@@ -12,8 +12,6 @@ const (
 	dropdownY = 1
 )
 
-type menuID int
-
 const (
 	menuSystem menuID = iota
 	menuAccount
@@ -22,25 +20,6 @@ const (
 	menuWindow
 	menuHelp
 )
-
-type menuDefinition struct {
-	name     string
-	mnemonic rune
-	disabled bool
-	items    []menuItem
-}
-
-type menuItem struct {
-	label              string
-	mnemonic           rune
-	mnemonicOccurrence int
-	shortcut           string
-	action             actionID
-	disabled           bool
-	separator          bool
-}
-
-type actionID int
 
 const (
 	actionNone actionID = iota
@@ -63,6 +42,43 @@ const (
 	actionControls
 	actionAbout
 )
+
+type menuID int
+
+type actionID int
+
+type menuItem struct {
+	label              string
+	mnemonic           rune
+	mnemonicOccurrence int
+	shortcut           string
+	action             actionID
+	disabled           bool
+	separator          bool
+}
+
+type menuDefinition struct {
+	name     string
+	mnemonic rune
+	disabled bool
+	items    []menuItem
+}
+
+type menuBarLayout struct {
+	content string
+	bounds  []layoutBounds
+}
+
+type dropdownItemLayout struct {
+	selected int
+	item     menuItem
+	bounds   layoutBounds
+}
+
+type dropdownMenuLayout struct {
+	bounds layoutBounds
+	items  []dropdownItemLayout
+}
 
 var menus = []menuDefinition{
 	{
@@ -239,11 +255,6 @@ func hasEnabledMenuItem(definition menuDefinition) bool {
 	}
 
 	return false
-}
-
-type menuBarLayout struct {
-	content string
-	bounds  []layoutBounds
 }
 
 func buildMenuBarLayout(t theme, definitions []menuDefinition, width int, active int, focused, blocked bool) menuBarLayout {
@@ -507,17 +518,6 @@ func menuIndexAtX(bounds []layoutBounds, x int) (int, bool) {
 	}
 
 	return 0, false
-}
-
-type dropdownItemLayout struct {
-	selected int
-	item     menuItem
-	bounds   layoutBounds
-}
-
-type dropdownMenuLayout struct {
-	bounds layoutBounds
-	items  []dropdownItemLayout
 }
 
 func buildDropdownMenuLayout(screenWidth, activeMenu int, definition menuDefinition) dropdownMenuLayout {

@@ -6,13 +6,13 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-type textFieldPolicy int
-
 const (
 	textFieldASCII textFieldPolicy = iota
 	textFieldUnicode
 	textFieldDigits
 )
+
+type textFieldPolicy int
 
 type textField struct {
 	value     string
