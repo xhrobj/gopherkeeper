@@ -1,10 +1,10 @@
 package httpserver
 
 import (
-	"errors"
 	"net/http"
 
-	"github.com/xhrobj/gopherkeeper/internal/model"
+	"github.com/xhrobj/gopherkeeper/internal/apierror"
+	"github.com/xhrobj/gopherkeeper/internal/server/transport/errorcode"
 	"github.com/xhrobj/gopherkeeper/internal/server/transport/http/middleware"
 )
 
@@ -31,7 +31,7 @@ func currentUserHandler(users CurrentUserReader) http.Handler {
 }
 
 func writeCurrentUserError(w http.ResponseWriter, err error) {
-	if errors.Is(err, model.ErrUserNotFound) {
+	if errorcode.FromError(err) == apierror.Unauthorized {
 		middleware.WriteUnauthorizedResponse(w)
 		return
 	}

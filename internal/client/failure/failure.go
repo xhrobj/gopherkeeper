@@ -7,13 +7,11 @@ import (
 	"crypto/x509"
 	"errors"
 	"net"
+	"net/http"
 	"net/url"
 	"strings"
 	"syscall"
 )
-
-// Kind описывает категорию ошибки, значимую для пользовательских интерфейсов Клиента.
-type Kind int
 
 const (
 	// Unknown обозначает ошибку, для которой не удалось определить категорию.
@@ -59,6 +57,9 @@ const (
 	TooLarge
 )
 
+// Kind описывает категорию ошибки, значимую для пользовательских интерфейсов Клиента.
+type Kind int
+
 // Error хранит типизированную клиентскую ошибку, диагностический контекст
 // и безопасное сообщение для пользовательского интерфейса.
 type Error struct {
@@ -67,6 +68,10 @@ type Error struct {
 	userMessage string
 	cause       error
 }
+
+type kindProvider interface{ FailureKind() Kind }
+
+type messageProvider interface{ UserMessage() string }
 
 // Wrap создаёт типизированную ошибку, сохраняя отдельные диагностический
 // контекст и безопасное пользовательское сообщение.
@@ -107,9 +112,6 @@ func (e *Error) UserMessage() string {
 	return Reason(e.kind)
 }
 
-type kindProvider interface{ FailureKind() Kind }
-type messageProvider interface{ UserMessage() string }
-
 // KindOf определяет категорию ошибки по типизированным обёрткам и системным причинам.
 func KindOf(err error) Kind {
 	if err == nil {
@@ -132,79 +134,10 @@ func KindOf(err error) Kind {
 		if kind := KindOf(urlError.Err); kind != Unknown {
 			return kind
 		}
-	}
-
-	return kindFromErrorMessage(err.Error())
-}
-
-func kindFromKnownErrors(err error) Kind {
-	switch {
-	case errors.Is(err, context.Canceled):
-		return Canceled
-	case errors.Is(err, context.DeadlineExceeded):
-		return Timeout
-	case errors.Is(err, syscall.ECONNREFUSED):
-		return Unavailable
-	case errors.Is(err, syscall.ENETUNREACH), errors.Is(err, syscall.EHOSTUNREACH):
-		return NetworkUnreachable
-	default:
-		return Unknown
-	}
-}
-
-func kindFromTypedNetworkErrors(err error) Kind {
-	var dnsError *net.DNSError
-	if errors.As(err, &dnsError) {
-		if dnsError.IsTimeout {
-			return Timeout
-		}
-		return HostNotFound
-	}
-	var certificateAuthority x509.UnknownAuthorityError
-	if errors.As(err, &certificateAuthority) {
-		return TLSCertificate
-	}
-	var hostnameError x509.HostnameError
-	if errors.As(err, &hostnameError) {
-		return TLSCertificate
-	}
-	var certificateInvalid x509.CertificateInvalidError
-	if errors.As(err, &certificateInvalid) {
-		return TLSCertificate
-	}
-	var recordHeaderError tls.RecordHeaderError
-	if errors.As(err, &recordHeaderError) {
-		return TLSHandshake
-	}
-	var networkError net.Error
-	if errors.As(err, &networkError) && networkError.Timeout() {
-		return Timeout
+		return kindFromUntypedTLSError(urlError.Err.Error())
 	}
 
 	return Unknown
-}
-
-func kindFromErrorMessage(value string) Kind {
-	// Некоторые ошибки net/http не имеют публичного отдельного типа.
-	message := strings.ToLower(value)
-	switch {
-	case strings.Contains(message, "server gave http response to https client"):
-		return HTTPSRequired
-	case strings.Contains(message, "x509") || strings.Contains(message, "certificate"):
-		return TLSCertificate
-	case strings.Contains(message, "tls"):
-		return TLSHandshake
-	case strings.Contains(message, "no such host") || strings.Contains(message, "name or service not known"):
-		return HostNotFound
-	case strings.Contains(message, "network is unreachable"):
-		return NetworkUnreachable
-	case strings.Contains(message, "connection refused"):
-		return Unavailable
-	case strings.Contains(message, "timeout") || strings.Contains(message, "deadline exceeded"):
-		return Timeout
-	default:
-		return Unknown
-	}
 }
 
 // Message возвращает наиболее близкое безопасное пользовательское сообщение.
@@ -278,4 +211,79 @@ func Reason(kind Kind) string {
 	default:
 		return "Operation failed"
 	}
+}
+
+func kindFromKnownErrors(err error) Kind {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return Canceled
+	case errors.Is(err, context.DeadlineExceeded):
+		return Timeout
+	case errors.Is(err, http.ErrSchemeMismatch):
+		return HTTPSRequired
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return Unavailable
+	case errors.Is(err, syscall.ENETUNREACH), errors.Is(err, syscall.EHOSTUNREACH):
+		return NetworkUnreachable
+	default:
+		return Unknown
+	}
+}
+
+func kindFromTypedNetworkErrors(err error) Kind {
+	var dnsError *net.DNSError
+	if errors.As(err, &dnsError) {
+		if dnsError.IsTimeout {
+			return Timeout
+		}
+		return HostNotFound
+	}
+
+	var certificateVerification *tls.CertificateVerificationError
+	if errors.As(err, &certificateVerification) {
+		return TLSCertificate
+	}
+
+	var certificateAuthority x509.UnknownAuthorityError
+	if errors.As(err, &certificateAuthority) {
+		return TLSCertificate
+	}
+
+	var hostnameError x509.HostnameError
+	if errors.As(err, &hostnameError) {
+		return TLSCertificate
+	}
+
+	var certificateInvalid x509.CertificateInvalidError
+	if errors.As(err, &certificateInvalid) {
+		return TLSCertificate
+	}
+
+	var alertError tls.AlertError
+	if errors.As(err, &alertError) {
+		return TLSHandshake
+	}
+
+	var recordHeaderError tls.RecordHeaderError
+	if errors.As(err, &recordHeaderError) {
+		return TLSHandshake
+	}
+
+	var networkError net.Error
+	if errors.As(err, &networkError) && networkError.Timeout() {
+		return Timeout
+	}
+
+	return Unknown
+}
+
+func kindFromUntypedTLSError(value string) Kind {
+	// некоторые ошибки TLS-handshake не имеют отдельного публичного типа
+	message := strings.ToLower(strings.TrimSpace(value))
+
+	if strings.HasPrefix(message, "tls:") || strings.Contains(message, ": tls:") {
+		return TLSHandshake
+	}
+
+	return Unknown
 }

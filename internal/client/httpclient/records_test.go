@@ -288,12 +288,6 @@ func TestClient_UpdateRecordReturnsAPIError(t *testing.T) {
 	}
 }
 
-func TestRecordErrorCauseMapsDecryptionFailure(t *testing.T) {
-	if !errors.Is(recordErrorCause("record_decryption_failed"), model.ErrRecordDecryptionFailed) {
-		t.Fatal("recordErrorCause() does not map record_decryption_failed")
-	}
-}
-
 func TestClient_GetRecordRejectsInvalidResponse(t *testing.T) {
 	tests := []invalidRecordResponseTestCase{
 		{

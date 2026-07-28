@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
+	"github.com/xhrobj/gopherkeeper/internal/client/failure"
 )
 
 func commandResult[T any](t *testing.T, command tea.Cmd) T {
@@ -119,4 +120,22 @@ func assertViewContains(t *testing.T, value string, parts ...string) {
 			t.Errorf("view does not contain %q: %q", part, plain)
 		}
 	}
+}
+
+func unavailableTestError() error {
+	return failure.Wrap(
+		failure.Unavailable,
+		"test server unavailable",
+		failure.Reason(failure.Unavailable),
+		nil,
+	)
+}
+
+func tlsCertificateTestError() error {
+	return failure.Wrap(
+		failure.TLSCertificate,
+		"test TLS certificate failure",
+		failure.Reason(failure.TLSCertificate),
+		nil,
+	)
 }

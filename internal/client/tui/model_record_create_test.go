@@ -111,7 +111,7 @@ func TestModel_RecordCreateFlow(t *testing.T) {
 func TestModel_RecordCreateErrorKeepsForm(t *testing.T) {
 	backend := recordCreateBackendStub{
 		createRecord: func(context.Context, string, recordmodel.RecordPayload) (recordmodel.Record, error) {
-			return recordmodel.Record{}, errors.New("connection refused")
+			return recordmodel.Record{}, unavailableTestError()
 		},
 	}
 	m := newRecordCreateTestModel(t, backend)

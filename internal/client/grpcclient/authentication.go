@@ -22,7 +22,7 @@ func (c *Client) Register(ctx context.Context, login, password string) (model.Us
 
 	response, err := c.auth.Register(callCtx, request)
 	if err != nil {
-		return model.User{}, mapRPCError("registration", err, registrationErrorCause(err))
+		return model.User{}, mapRPCError("registration", err)
 	}
 	if response == nil || response.GetUser() == nil {
 		return model.User{}, invalidResponseError("registration", errors.New("user is missing"))
@@ -42,7 +42,7 @@ func (c *Client) Login(ctx context.Context, login, password string) (model.Authe
 
 	response, err := c.auth.Login(callCtx, request)
 	if err != nil {
-		return model.Authentication{}, mapRPCError("login", err, loginErrorCause(err))
+		return model.Authentication{}, mapRPCError("login", err)
 	}
 	if response == nil || response.GetUser() == nil || response.GetAccessToken() == "" {
 		return model.Authentication{}, invalidResponseError("login", errors.New("authentication data is incomplete"))
@@ -71,7 +71,7 @@ func (c *Client) CurrentUser(ctx context.Context, accessToken string) (model.Use
 
 	response, err := c.auth.CurrentUser(callCtx, &gopherkeeperpb.CurrentUserRequest{})
 	if err != nil {
-		return model.User{}, mapRPCError("current user", err, currentUserErrorCause(err))
+		return model.User{}, mapRPCError("current user", err)
 	}
 	if response == nil || response.GetUser() == nil {
 		return model.User{}, invalidResponseError("current user", errors.New("user is missing"))

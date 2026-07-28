@@ -29,7 +29,7 @@ func (c *Client) CreateRecord(
 
 	response, err := c.records.CreateRecord(callCtx, request)
 	if err != nil {
-		return model.Record{}, mapRPCError("create record", err, recordErrorCause(err))
+		return model.Record{}, mapRPCError("create record", err)
 	}
 	return recordFromProtoResponse("create record", response)
 }
@@ -74,7 +74,7 @@ func (c *Client) GetRecord(ctx context.Context, accessToken string, recordID str
 
 	response, err := c.records.GetRecord(callCtx, request)
 	if err != nil {
-		return model.Record{}, mapRPCError("get record", err, recordErrorCause(err))
+		return model.Record{}, mapRPCError("get record", err)
 	}
 	return recordFromProtoResponse("get record", response)
 }
@@ -103,7 +103,7 @@ func (c *Client) UpdateRecord(
 
 	response, err := c.records.UpdateRecord(callCtx, request)
 	if err != nil {
-		return model.Record{}, mapRPCError("update record", err, recordErrorCause(err))
+		return model.Record{}, mapRPCError("update record", err)
 	}
 	return recordFromProtoResponse("update record", response)
 }
@@ -124,7 +124,7 @@ func (c *Client) DeleteRecord(
 
 	response, err := c.records.DeleteRecord(callCtx, request)
 	if err != nil {
-		return mapRPCError("delete record", err, recordErrorCause(err))
+		return mapRPCError("delete record", err)
 	}
 	if response == nil {
 		return invalidResponseError("delete record", errors.New("response is nil"))

@@ -1,16 +1,21 @@
 package httpserver
 
+import "github.com/xhrobj/gopherkeeper/internal/apierror"
+
 const (
-	errorCodeInvalidRequest       = "invalid_request"
-	errorCodeInvalidCredentials   = "invalid_credentials"
-	errorCodeLoginAlreadyExists   = "login_already_exists"
-	errorCodePayloadTooLarge      = "payload_too_large"
-	errorCodeUnsupportedMediaType = "unsupported_media_type"
-	errorCodeInternal             = "internal_error"
-	errorCodeRecordDecryption     = "record_decryption_failed"
+	errorCodeInvalidRequest       = string(apierror.InvalidRequest)
+	errorCodeInvalidCredentials   = string(apierror.InvalidCredentials)
+	errorCodeLoginAlreadyExists   = string(apierror.LoginAlreadyExists)
+	errorCodeRequestTooLarge      = string(apierror.RequestTooLarge)
+	errorCodePayloadTooLarge      = string(apierror.PayloadTooLarge)
+	errorCodeInvalidRecordData    = string(apierror.InvalidRecordData)
+	errorCodeUnsupportedMediaType = string(apierror.UnsupportedMediaType)
+	errorCodeInternal             = string(apierror.Internal)
+	errorCodeRecordDecryption     = string(apierror.RecordDecryptionFailed)
 )
 
 const (
+	errorMessageRequestTooLarge      = "request is too large"
 	errorMessageInvalidCredentials   = "invalid login or password"
 	errorMessagePayloadTooLarge      = "payload is too large"
 	errorMessageUnsupportedMediaType = "content type must be application/json"

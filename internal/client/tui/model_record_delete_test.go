@@ -107,7 +107,7 @@ func TestModel_RecordDeleteFlowRemovesRecord(t *testing.T) {
 func TestModel_RecordDeleteErrorKeepsConfirmation(t *testing.T) {
 	backend := recordDeleteBackendStub{
 		deleteRecord: func(context.Context, string, int64) error {
-			return errors.New("delete record: connection refused")
+			return unavailableTestError()
 		},
 	}
 	m := newRecordDeleteTestModel(t, backend)

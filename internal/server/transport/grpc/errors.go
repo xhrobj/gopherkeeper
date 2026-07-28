@@ -4,11 +4,17 @@ import (
 	"context"
 	"errors"
 
-	"github.com/xhrobj/gopherkeeper/internal/model"
-	"github.com/xhrobj/gopherkeeper/internal/server/service"
+	"github.com/xhrobj/gopherkeeper/internal/apierror"
+	"github.com/xhrobj/gopherkeeper/internal/server/transport/errorcode"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+type grpcErrorSpec struct {
+	code    codes.Code
+	message string
+}
 
 var (
 	errInvalidRequest      = errors.New("invalid gRPC request")
@@ -23,41 +29,68 @@ func transportError(err error) error {
 		return status.Error(codes.Canceled, "request canceled")
 	case errors.Is(err, context.DeadlineExceeded):
 		return status.Error(codes.DeadlineExceeded, "request deadline exceeded")
-	case errors.Is(err, service.ErrInvalidCredentials):
-		return status.Error(codes.Unauthenticated, "invalid login or password")
-	case errors.Is(err, model.ErrLoginAlreadyExists):
-		return status.Error(codes.AlreadyExists, "login is already registered")
-	case errors.Is(err, model.ErrUserNotFound), errors.Is(err, model.ErrUnauthorized):
-		return status.Error(codes.Unauthenticated, "authentication required")
-	case errors.Is(err, model.ErrPayloadTooLarge):
-		return status.Error(codes.ResourceExhausted, "payload is too large")
-	case errors.Is(err, model.ErrRecordNotFound):
-		return status.Error(codes.NotFound, "record not found")
-	case errors.Is(err, model.ErrRecordRevisionConflict):
-		return status.Error(codes.Aborted, "record revision conflict")
-	case errors.Is(err, model.ErrRecordDecryptionFailed):
-		return status.Error(codes.DataLoss, "record data could not be decrypted")
-	case errors.Is(err, model.ErrRecordPreconditionRequired):
-		return status.Error(codes.FailedPrecondition, "record revision is required")
-	case errors.Is(err, errInvalidRequest),
-		errors.Is(err, service.ErrInvalidLogin),
-		errors.Is(err, service.ErrInvalidPassword),
-		errors.Is(err, service.ErrPasswordTooShort),
-		errors.Is(err, service.ErrPasswordTooLong),
-		errors.Is(err, model.ErrInvalidRecordID),
-		errors.Is(err, model.ErrInvalidRecordRevision),
-		errors.Is(err, model.ErrInvalidRecordTitle),
-		errors.Is(err, model.ErrInvalidTextPayload),
-		errors.Is(err, model.ErrInvalidCredentialsPayload),
-		errors.Is(err, model.ErrInvalidCardPayload),
-		errors.Is(err, model.ErrInvalidBinaryPayload),
-		errors.Is(err, model.ErrRecordTypeUnsupported):
-		return status.Error(codes.InvalidArgument, "invalid request")
-	default:
-		return status.Error(codes.Internal, "internal server error")
 	}
+
+	apiCode := errorcode.FromError(err)
+	if errors.Is(err, errInvalidRequest) {
+		apiCode = apierror.InvalidRequest
+	}
+
+	spec := grpcErrorSpecForCode(apiCode)
+
+	return statusErrorWithAPIErrorCode(spec.code, spec.message, apiCode)
 }
 
 func unauthenticatedError() error {
-	return status.Error(codes.Unauthenticated, "authentication required")
+	return statusErrorWithAPIErrorCode(
+		codes.Unauthenticated,
+		"authentication required",
+		apierror.Unauthorized,
+	)
+}
+
+func grpcErrorSpecForCode(apiCode apierror.Code) grpcErrorSpec {
+	switch apiCode {
+	case apierror.InvalidRequest:
+		return grpcErrorSpec{code: codes.InvalidArgument, message: "invalid request"}
+	case apierror.InvalidRecordData:
+		return grpcErrorSpec{code: codes.InvalidArgument, message: "invalid record data"}
+	case apierror.InvalidCredentials:
+		return grpcErrorSpec{code: codes.Unauthenticated, message: "invalid login or password"}
+	case apierror.LoginAlreadyExists:
+		return grpcErrorSpec{code: codes.AlreadyExists, message: "login is already registered"}
+	case apierror.Unauthorized:
+		return grpcErrorSpec{code: codes.Unauthenticated, message: "authentication required"}
+	case apierror.PayloadTooLarge:
+		return grpcErrorSpec{code: codes.ResourceExhausted, message: "payload is too large"}
+	case apierror.RecordNotFound:
+		return grpcErrorSpec{code: codes.NotFound, message: "record not found"}
+	case apierror.RecordRevisionConflict:
+		return grpcErrorSpec{code: codes.Aborted, message: "record revision conflict"}
+	case apierror.RecordDecryptionFailed:
+		return grpcErrorSpec{code: codes.DataLoss, message: "record data could not be decrypted"}
+	case apierror.PreconditionRequired:
+		return grpcErrorSpec{code: codes.FailedPrecondition, message: "record revision is required"}
+	default:
+		return grpcErrorSpec{code: codes.Internal, message: "internal server error"}
+	}
+}
+
+func statusErrorWithAPIErrorCode(code codes.Code, message string, apiCode apierror.Code) error {
+	grpcStatus := status.New(code, message)
+
+	reason, ok := apierror.GRPCReason(apiCode)
+	if !ok {
+		return grpcStatus.Err()
+	}
+
+	withDetails, err := grpcStatus.WithDetails(&errdetails.ErrorInfo{
+		Reason: reason,
+		Domain: apierror.Domain,
+	})
+	if err != nil {
+		return grpcStatus.Err()
+	}
+
+	return withDetails.Err()
 }

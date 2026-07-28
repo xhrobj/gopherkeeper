@@ -271,8 +271,8 @@ func TestRegisterHandler_RejectsOversizedBody(t *testing.T) {
 		t,
 		response,
 		http.StatusRequestEntityTooLarge,
-		errorCodePayloadTooLarge,
-		errorMessagePayloadTooLarge,
+		errorCodeRequestTooLarge,
+		errorMessageRequestTooLarge,
 	)
 }
 

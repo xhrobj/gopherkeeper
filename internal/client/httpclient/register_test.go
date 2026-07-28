@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xhrobj/gopherkeeper/internal/apierror"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
@@ -70,7 +71,7 @@ func TestClient_RegisterReturnsAPIError(t *testing.T) {
 	if apiError.StatusCode != http.StatusConflict {
 		t.Errorf("status code = %d, want %d", apiError.StatusCode, http.StatusConflict)
 	}
-	if apiError.Code != "login_already_exists" {
+	if apiError.Code != apierror.LoginAlreadyExists {
 		t.Errorf("code = %q, want login_already_exists", apiError.Code)
 	}
 	if apiError.Message != "login is already registered" {
@@ -92,7 +93,7 @@ func TestClient_RegisterDoesNotMapSharedCodesToRecordErrors(t *testing.T) {
 		wantNot error
 	}{
 		{name: "invalid request", code: "invalid_request", status: http.StatusBadRequest, wantNot: model.ErrInvalidRecordData},
-		{name: "payload too large", code: "payload_too_large", status: http.StatusRequestEntityTooLarge, wantNot: model.ErrPayloadTooLarge},
+		{name: "request too large", code: "request_too_large", status: http.StatusRequestEntityTooLarge, wantNot: model.ErrPayloadTooLarge},
 	}
 
 	for _, tt := range tests {

@@ -20,18 +20,9 @@ func (c *Client) CurrentUser(ctx context.Context, accessToken string) (model.Use
 		accessToken:    accessToken,
 		expectedStatus: http.StatusOK,
 		responseBody:   &current,
-		errorCause:     currentUserErrorCause,
 	}); err != nil {
 		return model.User{}, err
 	}
 
 	return userFromResponse(current), nil
-}
-
-func currentUserErrorCause(code string) error {
-	if code == "unauthorized" {
-		return model.ErrUnauthorized
-	}
-
-	return nil
 }

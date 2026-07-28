@@ -3,10 +3,10 @@ package httpclient
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
+	"github.com/xhrobj/gopherkeeper/internal/apierror"
 	"github.com/xhrobj/gopherkeeper/internal/client/failure"
 	"github.com/xhrobj/gopherkeeper/internal/model"
 )
@@ -16,8 +16,8 @@ type APIError struct {
 	// StatusCode содержит HTTP-статус ответа.
 	StatusCode int
 
-	// Code содержит код ошибки API.
-	Code string
+	// Code содержит transport-neutral код ошибки API.
+	Code apierror.Code
 
 	// Message содержит текст ошибки, предназначенный для пользователя.
 	Message string
@@ -45,7 +45,6 @@ type jsonRequest struct {
 	requestBody    any
 	expectedStatus int
 	responseBody   any
-	errorCause     func(string) error
 }
 
 // Error возвращает безопасное описание ошибки API.
@@ -56,6 +55,11 @@ func (e *APIError) Error() string {
 // Unwrap возвращает transport-neutral причину ошибки API, если она известна Клиенту.
 func (e *APIError) Unwrap() error {
 	return e.cause
+}
+
+// FailureKind возвращает категорию ошибки для пользовательского интерфейса.
+func (e *APIError) FailureKind() failure.Kind {
+	return failure.KindFromAPIErrorCode(e.Code)
 }
 
 // UserMessage возвращает сообщение API, предназначенное для пользователя.
@@ -81,8 +85,7 @@ func (c *Client) doJSON(ctx context.Context, request jsonRequest) error {
 	}
 
 	if response.StatusCode() != request.expectedStatus {
-		err := decodeAPIError(response.StatusCode(), response.Status(), response.Body())
-		return withAPIErrorCause(err, request.errorCause)
+		return decodeAPIError(response.StatusCode(), response.Status(), response.Body())
 	}
 
 	if request.responseBody == nil {
@@ -105,31 +108,17 @@ func decodeAPIError(statusCode int, status string, body []byte) error {
 		return fmt.Errorf("api request returned status %s", status)
 	}
 
+	code, known := apierror.Parse(responseError.Code)
+	if !known {
+		return fmt.Errorf("api request returned status %s with unknown error code %q", status, responseError.Code)
+	}
+
 	return &APIError{
 		StatusCode: statusCode,
-		Code:       responseError.Code,
+		Code:       code,
 		Message:    responseError.Message,
+		cause:      failure.CauseFromAPIErrorCode(code),
 	}
-}
-
-func withAPIErrorCause(err error, causeForCode func(string) error) error {
-	if causeForCode == nil {
-		return err
-	}
-
-	var apiError *APIError
-	if !errors.As(err, &apiError) {
-		return err
-	}
-
-	cause := causeForCode(apiError.Code)
-	if cause == nil {
-		return err
-	}
-
-	mapped := *apiError
-	mapped.cause = cause
-	return &mapped
 }
 
 func userFromResponse(response userResponse) model.User {

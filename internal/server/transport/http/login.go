@@ -1,11 +1,11 @@
 package httpserver
 
 import (
-	"errors"
 	"net/http"
 	"time"
 
-	"github.com/xhrobj/gopherkeeper/internal/server/service"
+	"github.com/xhrobj/gopherkeeper/internal/apierror"
+	"github.com/xhrobj/gopherkeeper/internal/server/transport/errorcode"
 )
 
 const errorMessageInvalidLoginRequest = "invalid login request"
@@ -39,8 +39,8 @@ func loginHandler(authenticator UserAuthenticator) http.HandlerFunc {
 				writeErrorResponse(
 					w,
 					http.StatusRequestEntityTooLarge,
-					errorCodePayloadTooLarge,
-					errorMessagePayloadTooLarge,
+					errorCodeRequestTooLarge,
+					errorMessageRequestTooLarge,
 				)
 				return
 			}
@@ -86,7 +86,7 @@ func decodeLoginRequest(w http.ResponseWriter, r *http.Request) (loginRequest, e
 }
 
 func writeLoginError(w http.ResponseWriter, err error) {
-	if errors.Is(err, service.ErrInvalidCredentials) {
+	if errorcode.FromError(err) == apierror.InvalidCredentials {
 		writeErrorResponse(
 			w,
 			http.StatusUnauthorized,

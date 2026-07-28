@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"syscall"
 	"testing"
 
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
@@ -66,7 +67,7 @@ func TestModel_RecordListResultShowsSafeError(t *testing.T) {
 
 	updated, _ := m.Update(recordListResultMsg{
 		requestID: 42,
-		err:       errors.New("list records: connection refused"),
+		err:       errors.Join(errors.New("list records"), syscall.ECONNREFUSED),
 	})
 	got := updated.(model)
 
@@ -119,7 +120,7 @@ func TestModel_RecordListRefreshErrorKeepsPreviousTable(t *testing.T) {
 	m.operations.request(operationListRecords).pending = true
 	m.operations.request(operationListRecords).id = 42
 
-	updated, _ := m.Update(recordListResultMsg{requestID: 42, err: errors.New("connection refused")})
+	updated, _ := m.Update(recordListResultMsg{requestID: 42, err: syscall.ECONNREFUSED})
 	got := updated.(model)
 	if got.recordFeature.workspace.state != recordListReady || len(got.recordFeature.workspace.records) != 1 || got.recordFeature.workspace.records[0].Title != "Old" {
 		t.Fatalf("refresh error cleared previous table: %#v", got.recordFeature.workspace)

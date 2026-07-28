@@ -111,7 +111,7 @@ func (c *Client) Health(ctx context.Context) (string, error) {
 
 	response, err := c.health.Check(callCtx, &healthpb.HealthCheckRequest{})
 	if err != nil {
-		return "", mapRPCError("health", err, nil)
+		return "", mapRPCError("health", err)
 	}
 	if response == nil {
 		return "", invalidResponseError("health", errors.New("response is nil"))

@@ -7,6 +7,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/xhrobj/gopherkeeper/internal/apierror"
+	"github.com/xhrobj/gopherkeeper/internal/client/failure"
+	"github.com/xhrobj/gopherkeeper/internal/model"
 )
 
 func TestClient_DoJSONReturnsStatusErrorForInvalidErrorResponse(t *testing.T) {
@@ -17,6 +21,7 @@ func TestClient_DoJSONReturnsStatusErrorForInvalidErrorResponse(t *testing.T) {
 		{name: "malformed JSON", body: `{"code":`},
 		{name: "missing code", body: `{"message":"internal server error"}`},
 		{name: "missing message", body: `{"code":"internal_error"}`},
+		{name: "unknown code", body: `{"code":"future_error","message":"safe message"}`},
 	}
 
 	for _, tt := range tests {
@@ -117,18 +122,26 @@ func TestClient_DoJSONReturnsNetworkError(t *testing.T) {
 	}
 }
 
-func TestDecodeAPIError_DoesNotAssignSemanticCause(t *testing.T) {
+func TestDecodeAPIErrorAssignsSemanticCause(t *testing.T) {
+	t.Parallel()
+
 	err := decodeAPIError(
 		http.StatusBadRequest,
 		"400 Bad Request",
-		[]byte(`{"code":"invalid_request","message":"safe message"}`),
+		[]byte(`{"code":"invalid_record_data","message":"invalid record data"}`),
 	)
 
 	var apiError *APIError
 	if !errors.As(err, &apiError) {
 		t.Fatalf("decodeAPIError() error = %T, want *APIError", err)
 	}
-	if apiError.cause != nil {
-		t.Errorf("decodeAPIError() cause = %v, want nil", apiError.cause)
+	if apiError.Code != apierror.InvalidRecordData {
+		t.Fatalf("decodeAPIError() code = %q, want %q", apiError.Code, apierror.InvalidRecordData)
+	}
+	if !errors.Is(err, model.ErrInvalidRecordData) {
+		t.Fatalf("decodeAPIError() error = %v, want invalid-record-data cause", err)
+	}
+	if got := failure.KindOf(err); got != failure.Validation {
+		t.Fatalf("failure.KindOf() = %d, want %d", got, failure.Validation)
 	}
 }

@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
@@ -76,7 +75,7 @@ func TestModel_SyncFlow(t *testing.T) {
 
 func TestModel_SyncFailureKeepsOnlineState(t *testing.T) {
 	m := newSyncTestModel(t, backendStub{sync: func(context.Context, string) (SyncSummary, error) {
-		return SyncSummary{}, errors.New("sync: connection refused")
+		return SyncSummary{}, unavailableTestError()
 	}})
 	m.recordFeature.workspace.open = true
 	m.dialog = dialogSync

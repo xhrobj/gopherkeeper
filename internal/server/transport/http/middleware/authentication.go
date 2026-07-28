@@ -42,16 +42,6 @@ func UserIDFromContext(ctx context.Context) (int64, bool) {
 	return userID, ok
 }
 
-func bearerToken(headerValue string) (string, bool) {
-	fields := strings.Fields(headerValue)
-
-	if len(fields) != 2 || !strings.EqualFold(fields[0], authorizationSchemeBearer) {
-		return "", false
-	}
-
-	return fields[1], true
-}
-
 // WriteUnauthorizedResponse записывает стандартный ответ для неаутентифицированного HTTP-запроса.
 func WriteUnauthorizedResponse(w http.ResponseWriter) {
 	w.Header().Set("WWW-Authenticate", authorizationSchemeBearer)
@@ -61,4 +51,14 @@ func WriteUnauthorizedResponse(w http.ResponseWriter) {
 		errorCodeUnauthorized,
 		errorMessageUnauthorized,
 	)
+}
+
+func bearerToken(headerValue string) (string, bool) {
+	fields := strings.Fields(headerValue)
+
+	if len(fields) != 2 || !strings.EqualFold(fields[0], authorizationSchemeBearer) {
+		return "", false
+	}
+
+	return fields[1], true
 }

@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 
@@ -343,7 +342,7 @@ func TestModel_CurrentUserNetworkFailureKeepsAuthenticatedState(t *testing.T) {
 	m.dialog = dialogNone
 	m.recordFeature.workspace = recordWorkspace{open: true, state: recordListReady}
 	m.backend = backendStub{currentUser: func(context.Context) (string, error) {
-		return "", errors.New("get current user: connection refused")
+		return "", unavailableTestError()
 	}}
 
 	updated, command := m.activate(actionCurrentUser)

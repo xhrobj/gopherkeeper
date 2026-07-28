@@ -157,14 +157,14 @@ func TestCreateRecordHandler_MapsBinaryPayloadValidation(t *testing.T) {
 			name:        "missing data",
 			body:        `{"type":"binary","title":"Empty","payload":{"filename":"empty.bin"}}`,
 			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
+			wantCode:    errorCodeInvalidRecordData,
 			wantMessage: errorMessageInvalidRecordRequest,
 		},
 		{
 			name:        "null data",
 			body:        `{"type":"binary","title":"Empty","payload":{"filename":"empty.bin","data":null}}`,
 			wantStatus:  http.StatusBadRequest,
-			wantCode:    errorCodeInvalidRequest,
+			wantCode:    errorCodeInvalidRecordData,
 			wantMessage: errorMessageInvalidRecordRequest,
 		},
 		{
@@ -665,8 +665,8 @@ func TestRecordHandlers_RejectOversizedBody(t *testing.T) {
 				t,
 				response,
 				http.StatusRequestEntityTooLarge,
-				errorCodePayloadTooLarge,
-				errorMessagePayloadTooLarge,
+				errorCodeRequestTooLarge,
+				errorMessageRequestTooLarge,
 			)
 		})
 	}
@@ -860,9 +860,9 @@ func TestWriteRecordError(t *testing.T) {
 		code:    errorCodePreconditionRequired,
 		message: errorMessagePreconditionRequired,
 	}
-	invalidRequest := errorResponseExpectation{
+	invalidRecordData := errorResponseExpectation{
 		status:  http.StatusBadRequest,
-		code:    errorCodeInvalidRequest,
+		code:    errorCodeInvalidRecordData,
 		message: errorMessageInvalidRecordRequest,
 	}
 	internal := errorResponseExpectation{
@@ -881,14 +881,14 @@ func TestWriteRecordError(t *testing.T) {
 		{name: "revision conflict", err: revisionConflictError, want: revisionConflict},
 		{name: "record decryption", err: decryptionError, want: recordDecryption},
 		{name: "precondition required", err: preconditionRequiredError, want: preconditionRequired},
-		{name: "invalid record ID", err: model.ErrInvalidRecordID, want: invalidRequest},
-		{name: "invalid record revision", err: model.ErrInvalidRecordRevision, want: invalidRequest},
-		{name: "invalid record title", err: model.ErrInvalidRecordTitle, want: invalidRequest},
-		{name: "invalid text payload", err: model.ErrInvalidTextPayload, want: invalidRequest},
-		{name: "invalid credentials payload", err: model.ErrInvalidCredentialsPayload, want: invalidRequest},
-		{name: "invalid card payload", err: model.ErrInvalidCardPayload, want: invalidRequest},
-		{name: "invalid binary payload", err: model.ErrInvalidBinaryPayload, want: invalidRequest},
-		{name: "unsupported record type", err: model.ErrRecordTypeUnsupported, want: invalidRequest},
+		{name: "invalid record ID", err: model.ErrInvalidRecordID, want: invalidRecordData},
+		{name: "invalid record revision", err: model.ErrInvalidRecordRevision, want: invalidRecordData},
+		{name: "invalid record title", err: model.ErrInvalidRecordTitle, want: invalidRecordData},
+		{name: "invalid text payload", err: model.ErrInvalidTextPayload, want: invalidRecordData},
+		{name: "invalid credentials payload", err: model.ErrInvalidCredentialsPayload, want: invalidRecordData},
+		{name: "invalid card payload", err: model.ErrInvalidCardPayload, want: invalidRecordData},
+		{name: "invalid binary payload", err: model.ErrInvalidBinaryPayload, want: invalidRecordData},
+		{name: "unsupported record type", err: model.ErrRecordTypeUnsupported, want: invalidRecordData},
 		{name: "internal error", err: internalError, want: internal},
 	}
 

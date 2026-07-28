@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -87,7 +86,7 @@ func TestModel_ServerStatusRendersFoxProError(t *testing.T) {
 	m.width = 100
 	m.height = 32
 	m.backend = backendStub{health: func(context.Context) (string, error) {
-		return "", errors.New("server unavailable: connection refused")
+		return "", unavailableTestError()
 	}}
 
 	updated, cmd := m.activate(actionServerStatus)
@@ -116,19 +115,19 @@ func TestModel_ServerStatusRendersFoxProError(t *testing.T) {
 func TestDescribeServerStatusError(t *testing.T) {
 	tests := []struct {
 		name       string
-		message    string
+		err        error
 		wantStatus string
 		wantReason string
 	}{
 		{
 			name:       "connection refused",
-			message:    "send health request: Get \"https://localhost:8888/health\": dial tcp: connect: connection refused",
+			err:        unavailableTestError(),
 			wantStatus: "Unreachable",
 			wantReason: "Connection refused",
 		},
 		{
 			name:       "TLS certificate",
-			message:    "send health request: Get \"https://localhost:8888/health\": tls: failed to verify certificate: x509: certificate signed by unknown authority",
+			err:        tlsCertificateTestError(),
 			wantStatus: "TLS error",
 			wantReason: "Certificate verification failed",
 		},
@@ -136,7 +135,7 @@ func TestDescribeServerStatusError(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := describeServerStatusError(errors.New(test.message))
+			got := describeServerStatusError(test.err)
 			if got.status != test.wantStatus || got.reason != test.wantReason {
 				t.Fatalf("failure = %#v, want status %q reason %q", got, test.wantStatus, test.wantReason)
 			}

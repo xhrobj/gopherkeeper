@@ -23,17 +23,6 @@ const (
 	multiDeviceOfflineWarning  = "Source: encrypted local cache (data may be stale)."
 )
 
-func TestIntegration_CLITwoDeviceOfflineAndConflictFlow(t *testing.T) {
-	flow := newMultiDeviceOfflineFlow(t)
-	recordID := flow.createAndSynchronizeRecord()
-
-	flow.stopServerAndReadOffline(recordID)
-	flow.restartServerAndCreateConflict(recordID)
-	flow.assertOfflineCacheRemainsOldUntilSync(recordID)
-	flow.synchronizeSecondClient(recordID)
-	flow.assertIndependentCaches(recordID)
-}
-
 type multiDeviceCLIClient struct {
 	sessionDir string
 	cacheDir   string
@@ -47,6 +36,17 @@ type multiDeviceOfflineFlow struct {
 	caCertFile string
 	first      multiDeviceCLIClient
 	second     multiDeviceCLIClient
+}
+
+func TestIntegration_CLITwoDeviceOfflineAndConflictFlow(t *testing.T) {
+	flow := newMultiDeviceOfflineFlow(t)
+	recordID := flow.createAndSynchronizeRecord()
+
+	flow.stopServerAndReadOffline(recordID)
+	flow.restartServerAndCreateConflict(recordID)
+	flow.assertOfflineCacheRemainsOldUntilSync(recordID)
+	flow.synchronizeSecondClient(recordID)
+	flow.assertIndependentCaches(recordID)
 }
 
 func newMultiDeviceOfflineFlow(t *testing.T) *multiDeviceOfflineFlow {
