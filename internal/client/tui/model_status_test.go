@@ -279,37 +279,11 @@ func TestServerStatusWindowLayout_UsesRenderedButtonGeometry(t *testing.T) {
 		},
 	}
 
+	labels := []string{"< Check >", okButtonLabel}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			layout := newServerStatusWindowLayout(theme, tt.options)
-			if len(layout.buttonBounds) != 2 {
-				t.Fatalf("button bounds = %d, want 2", len(layout.buttonBounds))
-			}
-
-			lines := strings.Split(ansi.Strip(layout.content), "\n")
-			buttonRow := lineIndexContaining(lines, "< Check >")
-			if buttonRow < 0 {
-				t.Fatal("rendered Server Status buttons were not found")
-			}
-
-			for index, label := range []string{"< Check >", okButtonLabel} {
-				bounds := layout.buttonBounds[index]
-				if bounds.y != buttonRow {
-					t.Fatalf("button %d y = %d, want rendered row %d", index, bounds.y, buttonRow)
-				}
-
-				labelX := strings.Index(lines[buttonRow], label)
-				if labelX < bounds.x || labelX+len(label) > bounds.x+bounds.width {
-					t.Fatalf(
-						"button %d label range %d..%d is outside bounds %d..%d",
-						index,
-						labelX,
-						labelX+len(label),
-						bounds.x,
-						bounds.x+bounds.width,
-					)
-				}
-			}
+			assertRenderedLabelsWithinBounds(t, layout.content, layout.buttonBounds, labels, "server status button")
 		})
 	}
 }

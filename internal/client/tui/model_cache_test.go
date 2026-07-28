@@ -262,34 +262,7 @@ func TestCacheBrowseWindowLayout_UsesRenderedButtonGeometry(t *testing.T) {
 			form.focus = test.focus
 
 			layout := newCacheBrowseWindowLayout(theme, width, form, test.pending, test.blocked, "*")
-			if len(layout.buttonBounds) != len(labels) {
-				t.Fatalf("button bounds = %d, want %d", len(layout.buttonBounds), len(labels))
-			}
-
-			lines := strings.Split(ansi.Strip(layout.content), "\n")
-			buttonRow := lineIndexContaining(lines, labels[0])
-			if buttonRow < 0 {
-				t.Fatal("rendered Open Local Cache buttons were not found")
-			}
-
-			for index, label := range labels {
-				bounds := layout.buttonBounds[index]
-				if bounds.y != buttonRow {
-					t.Fatalf("button %d y = %d, want rendered row %d", index, bounds.y, buttonRow)
-				}
-
-				labelX := strings.Index(lines[buttonRow], label)
-				if labelX < bounds.x || labelX+len(label) > bounds.x+bounds.width {
-					t.Fatalf(
-						"button %d label range %d..%d is outside bounds %d..%d",
-						index,
-						labelX,
-						labelX+len(label),
-						bounds.x,
-						bounds.x+bounds.width,
-					)
-				}
-			}
+			assertRenderedLabelsWithinBounds(t, layout.content, layout.buttonBounds, labels, "cache browse button")
 		})
 	}
 }

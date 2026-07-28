@@ -252,30 +252,7 @@ func TestCurrentUserWindowLayout_UsesRenderedButtonGeometry(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			layout := newCurrentUserWindowLayout(theme, 52, "alice", tt.pending, tt.blocked, "⠋")
-			if len(layout.buttonBounds) != 1 {
-				t.Fatalf("button bounds = %d, want 1", len(layout.buttonBounds))
-			}
-
-			lines := strings.Split(ansi.Strip(layout.content), "\n")
-			buttonRow := lineIndexContaining(lines, okButtonLabel)
-			if buttonRow < 0 {
-				t.Fatal("rendered Current User button was not found")
-			}
-
-			bounds := layout.buttonBounds[0]
-			if bounds.y != buttonRow {
-				t.Fatalf("button y = %d, want rendered row %d", bounds.y, buttonRow)
-			}
-
-			buttonStyle := theme.aboutButtonActive
-			if tt.blocked {
-				buttonStyle = theme.aboutButtonDisabledActive
-			}
-			wantWidth := lipgloss.Width(buttonStyle.Render(okButtonLabel))
-			if bounds.width != wantWidth {
-				t.Fatalf("button width = %d, want rendered width %d", bounds.width, wantWidth)
-			}
+			assertCurrentUserWindowButtonGeometry(t, theme, tt.pending, tt.blocked)
 		})
 	}
 }
@@ -328,5 +305,32 @@ func assertControlsRowWidths(t *testing.T, lines []string, width int) {
 		if line != "" && lipgloss.Width(line) != width {
 			t.Fatalf("controls row width = %d, want %d: %q", lipgloss.Width(line), width, line)
 		}
+	}
+}
+
+func assertCurrentUserWindowButtonGeometry(t *testing.T, theme theme, pending, blocked bool) {
+	t.Helper()
+
+	layout := newCurrentUserWindowLayout(theme, 52, "alice", pending, blocked, "⠋")
+	if len(layout.buttonBounds) != 1 {
+		t.Fatalf("button bounds = %d, want 1", len(layout.buttonBounds))
+	}
+
+	lines := strings.Split(ansi.Strip(layout.content), "\n")
+	buttonRow := lineIndexContaining(lines, okButtonLabel)
+	if buttonRow < 0 {
+		t.Fatal("rendered Current User button was not found")
+	}
+	bounds := layout.buttonBounds[0]
+	if bounds.y != buttonRow {
+		t.Fatalf("button y = %d, want rendered row %d", bounds.y, buttonRow)
+	}
+
+	buttonStyle := theme.aboutButtonActive
+	if blocked {
+		buttonStyle = theme.aboutButtonDisabledActive
+	}
+	if wantWidth := lipgloss.Width(buttonStyle.Render(okButtonLabel)); bounds.width != wantWidth {
+		t.Fatalf("button width = %d, want rendered width %d", bounds.width, wantWidth)
 	}
 }

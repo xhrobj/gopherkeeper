@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/xhrobj/gopherkeeper/internal/buildinfo"
 	"github.com/xhrobj/gopherkeeper/internal/client/config"
@@ -138,4 +139,59 @@ func tlsCertificateTestError() error {
 		failure.Reason(failure.TLSCertificate),
 		nil,
 	)
+}
+
+func assertRenderedLabelsWithinBounds(
+	t *testing.T,
+	content string,
+	bounds []layoutBounds,
+	labels []string,
+	group string,
+) {
+	t.Helper()
+
+	if len(bounds) != len(labels) {
+		t.Fatalf("%s bounds = %d, want %d", group, len(bounds), len(labels))
+	}
+	lines := strings.Split(ansi.Strip(content), "\n")
+	row := lineIndexContaining(lines, labels[0])
+	if row < 0 {
+		t.Fatalf("rendered %s controls were not found", group)
+	}
+
+	for index, label := range labels {
+		if bounds[index].y != row {
+			t.Fatalf("%s %d y = %d, want rendered row %d", group, index, bounds[index].y, row)
+		}
+		assertRenderedLabelWithinBounds(t, lines, group, label, bounds[index])
+	}
+}
+
+func assertRenderedLabelWithinBounds(
+	t *testing.T,
+	lines []string,
+	name string,
+	label string,
+	bounds layoutBounds,
+) {
+	t.Helper()
+
+	if bounds.y < 0 || bounds.y >= len(lines) {
+		t.Fatalf("%s y = %d, rendered height = %d", name, bounds.y, len(lines))
+	}
+	labelX := strings.Index(lines[bounds.y], label)
+	if labelX < 0 {
+		t.Fatalf("%s label %q was not found on rendered row %d: %q", name, label, bounds.y, lines[bounds.y])
+	}
+	labelWidth := lipgloss.Width(label)
+	if labelX < bounds.x || labelX+labelWidth > bounds.x+bounds.width {
+		t.Fatalf(
+			"%s label range %d..%d is outside bounds %d..%d",
+			name,
+			labelX,
+			labelX+labelWidth,
+			bounds.x,
+			bounds.x+bounds.width,
+		)
+	}
 }

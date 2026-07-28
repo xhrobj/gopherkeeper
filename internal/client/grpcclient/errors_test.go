@@ -92,28 +92,14 @@ func TestMapRPCErrorUsesAPIErrorDetails(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-
-			transportErr := grpcErrorWithAPIErrorCode(t, test.grpcCode, test.message, test.apiCode)
-			err := mapRPCError("test", transportErr)
-
-			if test.wantCause == nil {
-				if got := failure.CauseFromAPIErrorCode(test.apiCode); got != nil {
-					t.Fatalf("CauseFromAPIErrorCode() = %v, want nil", got)
-				}
-			} else if !errors.Is(err, test.wantCause) {
-				t.Fatalf("mapRPCError() error = %v, want cause %v", err, test.wantCause)
-			}
-			if got := failure.KindOf(err); got != test.wantKind {
-				t.Fatalf("failure.KindOf() = %d, want %d", got, test.wantKind)
-			}
-			if got := failure.Message(err); got != test.message {
-				t.Fatalf("failure.Message() = %q, want %q", got, test.message)
-			}
-
-			var rpcError *RPCError
-			if !errors.As(err, &rpcError) || rpcError.APIErrorCode != test.apiCode {
-				t.Fatalf("mapRPCError() RPCError = %#v, want API code %q", rpcError, test.apiCode)
-			}
+			assertRPCErrorUsesAPIErrorDetails(
+				t,
+				test.grpcCode,
+				test.apiCode,
+				test.message,
+				test.wantCause,
+				test.wantKind,
+			)
 		})
 	}
 }
@@ -241,4 +227,45 @@ func grpcErrorWithAPIErrorCode(
 	}
 
 	return withDetails.Err()
+}
+
+func assertRPCErrorUsesAPIErrorDetails(
+	t *testing.T,
+	grpcCode codes.Code,
+	apiCode apierror.Code,
+	message string,
+	wantCause error,
+	wantKind failure.Kind,
+) {
+	t.Helper()
+
+	transportErr := grpcErrorWithAPIErrorCode(t, grpcCode, message, apiCode)
+	err := mapRPCError("test", transportErr)
+
+	assertRPCErrorCause(t, err, apiCode, wantCause)
+	if got := failure.KindOf(err); got != wantKind {
+		t.Fatalf("failure.KindOf() = %d, want %d", got, wantKind)
+	}
+	if got := failure.Message(err); got != message {
+		t.Fatalf("failure.Message() = %q, want %q", got, message)
+	}
+
+	var rpcError *RPCError
+	if !errors.As(err, &rpcError) || rpcError.APIErrorCode != apiCode {
+		t.Fatalf("mapRPCError() RPCError = %#v, want API code %q", rpcError, apiCode)
+	}
+}
+
+func assertRPCErrorCause(t *testing.T, err error, apiCode apierror.Code, wantCause error) {
+	t.Helper()
+
+	if wantCause == nil {
+		if got := failure.CauseFromAPIErrorCode(apiCode); got != nil {
+			t.Fatalf("CauseFromAPIErrorCode() = %v, want nil", got)
+		}
+		return
+	}
+	if !errors.Is(err, wantCause) {
+		t.Fatalf("mapRPCError() error = %v, want cause %v", err, wantCause)
+	}
 }

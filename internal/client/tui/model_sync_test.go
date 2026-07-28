@@ -194,45 +194,16 @@ func TestSyncWindowLayout_UsesRenderedButtonGeometry(t *testing.T) {
 	labels := []string{"< Sync >", "< Cancel >"}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			form := newSyncForm()
-			form.password.setValue(syncFormTestPassword)
-			form.focus = test.focus
-
-			layout := newSyncWindowLayout(
+			assertSyncWindowButtonGeometry(
+				t,
 				theme,
 				width,
-				"alice",
-				form,
+				test.focus,
 				test.pending,
 				test.blocked,
-				"*",
+				labels,
+				test.expectedStyles,
 			)
-			if len(layout.buttonBounds) != len(labels) {
-				t.Fatalf("button bounds = %d, want %d", len(layout.buttonBounds), len(labels))
-			}
-
-			lines := strings.Split(ansi.Strip(layout.content), "\n")
-			buttonRow := lineIndexContaining(lines, labels[0])
-			if buttonRow < 0 {
-				t.Fatal("rendered Sync buttons were not found")
-			}
-
-			for index, bounds := range layout.buttonBounds {
-				if bounds.y != buttonRow {
-					t.Fatalf("button %d y = %d, want rendered row %d", index, bounds.y, buttonRow)
-				}
-
-				renderedButton := ansi.Strip(test.expectedStyles[index].Render(labels[index]))
-				wantX := strings.Index(lines[buttonRow], renderedButton)
-				if bounds.x != wantX {
-					t.Fatalf("button %d x = %d, want rendered column %d", index, bounds.x, wantX)
-				}
-
-				wantWidth := lipgloss.Width(test.expectedStyles[index].Render(labels[index]))
-				if bounds.width != wantWidth {
-					t.Fatalf("button %d width = %d, want rendered width %d", index, bounds.width, wantWidth)
-				}
-			}
 		})
 	}
 }
@@ -309,4 +280,57 @@ func assertMenuActionDisabledState(t *testing.T, definition menuDefinition, acti
 		}
 	}
 	t.Fatalf("action %d not found", action)
+}
+
+func assertSyncWindowButtonGeometry(
+	t *testing.T,
+	theme theme,
+	width int,
+	focus syncFocus,
+	pending bool,
+	blocked bool,
+	labels []string,
+	expectedStyles []lipgloss.Style,
+) {
+	t.Helper()
+
+	form := newSyncForm()
+	form.password.setValue(syncFormTestPassword)
+	form.focus = focus
+	layout := newSyncWindowLayout(theme, width, "alice", form, pending, blocked, "*")
+	if len(layout.buttonBounds) != len(labels) {
+		t.Fatalf("button bounds = %d, want %d", len(layout.buttonBounds), len(labels))
+	}
+
+	lines := strings.Split(ansi.Strip(layout.content), "\n")
+	buttonRow := lineIndexContaining(lines, labels[0])
+	if buttonRow < 0 {
+		t.Fatal("rendered Sync buttons were not found")
+	}
+	for index, bounds := range layout.buttonBounds {
+		assertSyncButtonGeometry(t, lines[buttonRow], buttonRow, index, bounds, labels[index], expectedStyles[index])
+	}
+}
+
+func assertSyncButtonGeometry(
+	t *testing.T,
+	line string,
+	buttonRow int,
+	index int,
+	bounds layoutBounds,
+	label string,
+	style lipgloss.Style,
+) {
+	t.Helper()
+
+	if bounds.y != buttonRow {
+		t.Fatalf("button %d y = %d, want rendered row %d", index, bounds.y, buttonRow)
+	}
+	renderedButton := ansi.Strip(style.Render(label))
+	if wantX := strings.Index(line, renderedButton); bounds.x != wantX {
+		t.Fatalf("button %d x = %d, want rendered column %d", index, bounds.x, wantX)
+	}
+	if wantWidth := lipgloss.Width(style.Render(label)); bounds.width != wantWidth {
+		t.Fatalf("button %d width = %d, want rendered width %d", index, bounds.width, wantWidth)
+	}
 }

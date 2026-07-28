@@ -201,27 +201,7 @@ func TestRenderRegisterWindow_ShowsCenteredHintForFocusedControl(t *testing.T) {
 			form.focus = tt.focus
 
 			view := ansi.Strip(renderRegisterWindow(theme, 56, form, false, false, ""))
-			lines := strings.Split(view, "\n")
-			lineIndex := -1
-			for index, line := range lines {
-				if strings.TrimSpace(line) == tt.want {
-					lineIndex = index
-					break
-				}
-			}
-			if lineIndex < 1 || lineIndex+1 >= len(lines) {
-				t.Fatalf("hint %q is missing or not separated by rows:\n%s", tt.want, view)
-			}
-			if strings.TrimSpace(lines[lineIndex-1]) != "" || strings.TrimSpace(lines[lineIndex+1]) != "" {
-				t.Fatalf("hint %q is not surrounded by empty rows:\n%s", tt.want, view)
-			}
-
-			line := lines[lineIndex]
-			left := len(line) - len(strings.TrimLeft(line, " "))
-			right := len(line) - len(strings.TrimRight(line, " "))
-			if left-right < -1 || left-right > 1 {
-				t.Fatalf("hint %q is not centered: left padding %d, right padding %d", tt.want, left, right)
-			}
+			assertCenteredRegisterHint(t, view, tt.want)
 		})
 	}
 }
@@ -233,4 +213,33 @@ func assertAuthFormView(t *testing.T, view string, parts ...string) {
 			t.Errorf("view does not contain %q: %q", part, view)
 		}
 	}
+}
+
+func assertCenteredRegisterHint(t *testing.T, view, hint string) {
+	t.Helper()
+
+	lines := strings.Split(view, "\n")
+	lineIndex := trimmedLineIndex(lines, hint)
+	if lineIndex < 1 || lineIndex+1 >= len(lines) {
+		t.Fatalf("hint %q is missing or not separated by rows:\n%s", hint, view)
+	}
+	if strings.TrimSpace(lines[lineIndex-1]) != "" || strings.TrimSpace(lines[lineIndex+1]) != "" {
+		t.Fatalf("hint %q is not surrounded by empty rows:\n%s", hint, view)
+	}
+
+	line := lines[lineIndex]
+	left := len(line) - len(strings.TrimLeft(line, " "))
+	right := len(line) - len(strings.TrimRight(line, " "))
+	if left-right < -1 || left-right > 1 {
+		t.Fatalf("hint %q is not centered: left padding %d, right padding %d", hint, left, right)
+	}
+}
+
+func trimmedLineIndex(lines []string, value string) int {
+	for index, line := range lines {
+		if strings.TrimSpace(line) == value {
+			return index
+		}
+	}
+	return -1
 }

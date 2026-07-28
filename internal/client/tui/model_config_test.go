@@ -244,59 +244,10 @@ func TestConfigWindowLayout_UsesRenderedControlGeometry(t *testing.T) {
 	layout := newConfigWindowLayout(theme, 82, form, "configs/client.json")
 	lines := strings.Split(ansi.Strip(layout.content), "\n")
 
-	assertContains := func(name, label string, bounds layoutBounds) {
-		t.Helper()
-		if bounds.y < 0 || bounds.y >= len(lines) {
-			t.Fatalf("%s y = %d, rendered height = %d", name, bounds.y, len(lines))
-		}
-
-		labelX := strings.Index(lines[bounds.y], label)
-		if labelX < 0 {
-			t.Fatalf("%s label %q was not found on rendered row %d: %q", name, label, bounds.y, lines[bounds.y])
-		}
-		if labelX < bounds.x || labelX+lipgloss.Width(label) > bounds.x+bounds.width {
-			t.Fatalf(
-				"%s label range %d..%d is outside bounds %d..%d",
-				name,
-				labelX,
-				labelX+lipgloss.Width(label),
-				bounds.x,
-				bounds.x+bounds.width,
-			)
-		}
-	}
-
-	if len(layout.transportBounds) != 2 {
-		t.Fatalf("transport bounds = %d, want 2", len(layout.transportBounds))
-	}
-	assertContains("HTTPS transport", "[X] HTTPS", layout.transportBounds[0])
-	assertContains("gRPC transport", "[ ] gRPC", layout.transportBounds[1])
-
-	fieldValues := []string{cfg.Address, cfg.GRPCAddress, cfg.CACertFile, cfg.SessionDir, cfg.CacheDir}
-	if len(layout.fieldBounds) != len(fieldValues) {
-		t.Fatalf("field bounds = %d, want %d", len(layout.fieldBounds), len(fieldValues))
-	}
-	for index, value := range fieldValues {
-		assertContains("field", value, layout.fieldBounds[index])
-	}
-
-	if len(layout.browseBounds) != 3 {
-		t.Fatalf("browse bounds = %d, want 3", len(layout.browseBounds))
-	}
-	for index, bounds := range layout.browseBounds {
-		assertContains("browse button", configBrowseLabel, bounds)
-		if bounds.y != layout.fieldBounds[index+2].y {
-			t.Fatalf("browse button %d y = %d, field y = %d", index, bounds.y, layout.fieldBounds[index+2].y)
-		}
-	}
-
-	buttonLabels := []string{"< Save >", "< Cancel >"}
-	if len(layout.buttonBounds) != len(buttonLabels) {
-		t.Fatalf("button bounds = %d, want %d", len(layout.buttonBounds), len(buttonLabels))
-	}
-	for index, label := range buttonLabels {
-		assertContains("dialog button", label, layout.buttonBounds[index])
-	}
+	assertConfigTransportGeometry(t, lines, layout.transportBounds)
+	assertConfigFieldGeometry(t, lines, layout.fieldBounds, cfg)
+	assertConfigBrowseGeometry(t, lines, layout.browseBounds, layout.fieldBounds)
+	assertConfigButtonGeometry(t, lines, layout.buttonBounds)
 }
 
 func TestRenderConfigWindow_ShowsMissingConfigPersistenceHint(t *testing.T) {
@@ -1404,4 +1355,59 @@ func withConfigSessionDir(cfg config.Config, value string) config.Config {
 func withConfigCacheDir(cfg config.Config, value string) config.Config {
 	cfg.CacheDir = value
 	return cfg
+}
+
+func assertConfigTransportGeometry(t *testing.T, lines []string, bounds []layoutBounds) {
+	t.Helper()
+
+	labels := []string{"[X] HTTPS", "[ ] gRPC"}
+	if len(bounds) != len(labels) {
+		t.Fatalf("transport bounds = %d, want %d", len(bounds), len(labels))
+	}
+	for index, label := range labels {
+		assertRenderedLabelWithinBounds(t, lines, "transport", label, bounds[index])
+	}
+}
+
+func assertConfigFieldGeometry(t *testing.T, lines []string, bounds []layoutBounds, cfg config.Config) {
+	t.Helper()
+
+	values := []string{cfg.Address, cfg.GRPCAddress, cfg.CACertFile, cfg.SessionDir, cfg.CacheDir}
+	if len(bounds) != len(values) {
+		t.Fatalf("field bounds = %d, want %d", len(bounds), len(values))
+	}
+	for index, value := range values {
+		assertRenderedLabelWithinBounds(t, lines, "field", value, bounds[index])
+	}
+}
+
+func assertConfigBrowseGeometry(
+	t *testing.T,
+	lines []string,
+	browseBounds []layoutBounds,
+	fieldBounds []layoutBounds,
+) {
+	t.Helper()
+
+	if len(browseBounds) != 3 {
+		t.Fatalf("browse bounds = %d, want 3", len(browseBounds))
+	}
+	for index, bounds := range browseBounds {
+		assertRenderedLabelWithinBounds(t, lines, "browse button", configBrowseLabel, bounds)
+		if bounds.y != fieldBounds[index+2].y {
+			t.Fatalf("browse button %d y = %d, field y = %d", index, bounds.y, fieldBounds[index+2].y)
+		}
+	}
+}
+
+func assertConfigButtonGeometry(t *testing.T, lines []string, bounds []layoutBounds) {
+	t.Helper()
+
+	labels := []string{"< Save >", "< Cancel >"}
+	if len(bounds) != len(labels) {
+		t.Fatalf("button bounds = %d, want %d", len(bounds), len(labels))
+	}
+	for index, label := range labels {
+		assertRenderedLabelWithinBounds(t, lines, "dialog button", label, bounds[index])
+	}
 }
